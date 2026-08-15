@@ -69,7 +69,7 @@ function shortenRecordId(recordId: string) {
   return `${recordId.slice(0, 8)}...`;
 }
 
-function getRecordLabel(fields: FieldDefinition[], record: EntityRecord) {
+export function getRecordLabel(fields: FieldDefinition[], record: EntityRecord) {
   const labelField = [...fields]
     .filter((field) => field.type === "text")
     .sort((left, right) => left.position - right.position)[0];
@@ -85,7 +85,10 @@ function getRecordLabel(fields: FieldDefinition[], record: EntityRecord) {
     : shortenRecordId(record.id);
 }
 
-function getRelationOptionLabel(fields: FieldDefinition[], record: EntityRecord) {
+export function getRelationOptionLabel(
+  fields: FieldDefinition[],
+  record: EntityRecord,
+) {
   const label = getRecordLabel(fields, record);
 
   return record.archivedAt ? `${label} (Archived)` : label;

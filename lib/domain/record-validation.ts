@@ -35,6 +35,16 @@ type RelationValueValidator = (
   value: string,
 ) => Promise<boolean>;
 
+type RecordValuesValidationResult =
+  | {
+      success: true;
+      values: EntityRecord["values"];
+    }
+  | {
+      success: false;
+      errors: Record<string, string>;
+    };
+
 function getSubmittedValue(formData: FormData, field: FieldDefinition) {
   const values = formData.getAll(field.key);
   const value = values.at(-1);
@@ -173,5 +183,99 @@ export async function validateRecordFormData(
     success: true,
     values: recordValues,
     submittedValues,
+  };
+}
+
+export async function validateRecordValues(
+  fields: FieldDefinition[],
+  values: EntityRecord["values"],
+  validateRelationValue?: RelationValueValidator,
+): Promise<RecordValuesValidationResult> {
+  const errors: Record<string, string> = {};
+  const recordValues: EntityRecord["values"] = {};
+  const fieldKeys = new Set(fields.map((field) => field.key));
+
+  Object.keys(values).forEach((key) => {
+    if (!fieldKeys.has(key)) {
+      errors._form = "The record included an unknown field.";
+    }
+  });
+
+  for (const field of fields) {
+    const value = values[field.key];
+
+    if (value === undefined || value === null || value === "") {
+      if (field.required) {
+        errors[field.key] = `${field.name} is required.`;
+      } else if (value !== undefined) {
+        recordValues[field.key] = null;
+      }
+
+      continue;
+    }
+
+    switch (field.type) {
+      case "text":
+        if (typeof value !== "string") {
+          errors[field.key] = `${field.name} must be text.`;
+        } else {
+          recordValues[field.key] = value;
+        }
+        break;
+      case "number":
+        if (typeof value !== "number" || Number.isNaN(value)) {
+          errors[field.key] = `${field.name} must be a number.`;
+        } else {
+          recordValues[field.key] = value;
+        }
+        break;
+      case "date":
+        if (typeof value !== "string" || !isValidDate(value)) {
+          errors[field.key] = `${field.name} must be a valid date.`;
+        } else {
+          recordValues[field.key] = value;
+        }
+        break;
+      case "boolean":
+        if (typeof value !== "boolean") {
+          errors[field.key] = `${field.name} must be true or false.`;
+        } else {
+          recordValues[field.key] = value;
+        }
+        break;
+      case "relation":
+        if (!field.relatedEntityTypeId) {
+          errors[field.key] = `${field.name} is missing relation metadata.`;
+          break;
+        }
+
+        if (typeof value !== "string" || !isUuid(value)) {
+          errors[field.key] = `${field.name} must reference a valid record.`;
+          break;
+        }
+
+        if (
+          validateRelationValue &&
+          !(await validateRelationValue(field, value))
+        ) {
+          errors[field.key] = `${field.name} must reference an existing record.`;
+          break;
+        }
+
+        recordValues[field.key] = value;
+        break;
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return {
+      success: false,
+      errors,
+    };
+  }
+
+  return {
+    success: true,
+    values: recordValues,
   };
 }

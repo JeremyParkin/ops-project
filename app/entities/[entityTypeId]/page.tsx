@@ -23,17 +23,32 @@ import {
   getRelationLookups,
   listEntityRecords,
 } from "@/lib/domain/record-repository";
+import {
+  countWorkflowReferencesByFieldId,
+  listWorkflows,
+} from "@/lib/domain/workflow-repository";
 
 export const dynamic = "force-dynamic";
+
+function entityPageHref(
+  entityTypeId: string,
+  params: Array<string | false | "">,
+) {
+  const query = params.filter(Boolean).join("&");
+
+  return query ? `/entities/${entityTypeId}?${query}` : `/entities/${entityTypeId}`;
+}
 
 async function loadEntityPageData({
   entityTypeId,
   showArchivedRecords,
   showArchivedEntities,
+  showArchivedFields,
 }: {
   entityTypeId: string;
   showArchivedRecords: boolean;
   showArchivedEntities: boolean;
+  showArchivedFields: boolean;
 }) {
   const context = {
     workspaceId: DEMO_WORKSPACE_ID,
@@ -41,8 +56,14 @@ async function loadEntityPageData({
   };
 
   try {
-    const [navigationEntityTypes, activeEntityTypes, allEntityTypes, entityContext] =
-      await Promise.all([
+    const [
+      navigationEntityTypes,
+      activeEntityTypes,
+      allEntityTypes,
+      entityContext,
+      fieldManagementContext,
+      workflows,
+    ] = await Promise.all([
       listEntityTypes({
         workspaceId: DEMO_WORKSPACE_ID,
         includeArchived: showArchivedEntities,
@@ -53,6 +74,11 @@ async function loadEntityPageData({
         includeArchived: true,
       }),
       getEntityContext(context),
+      getEntityContext({
+        ...context,
+        includeArchivedFields: showArchivedFields,
+      }),
+      listWorkflows({ workspaceId: DEMO_WORKSPACE_ID }),
     ]);
     const [records, relationLookups] = await Promise.all([
       listEntityRecords({
@@ -72,6 +98,11 @@ async function loadEntityPageData({
       activeEntityTypes,
       allEntityTypes,
       entityContext,
+      fieldManagementContext,
+      workflowReferenceCountByFieldId: countWorkflowReferencesByFieldId({
+        workflows,
+        fieldDefinitionIds: fieldManagementContext.fields.map((field) => field.id),
+      }),
       records,
       relationLookups,
     };
@@ -90,19 +121,23 @@ export default async function EntityPage({
   searchParams: Promise<{
     showArchived?: string;
     showArchivedEntities?: string;
+    showArchivedFields?: string;
   }>;
 }) {
   const { entityTypeId } = await params;
   const {
     showArchived: showArchivedParam,
     showArchivedEntities: showArchivedEntitiesParam,
+    showArchivedFields: showArchivedFieldsParam,
   } = await searchParams;
   const showArchivedRecords = showArchivedParam === "true";
   const showArchivedEntities = showArchivedEntitiesParam === "true";
+  const showArchivedFields = showArchivedFieldsParam === "true";
   const pageData = await loadEntityPageData({
     entityTypeId,
     showArchivedRecords,
     showArchivedEntities,
+    showArchivedFields,
   });
 
   if (!pageData) {
@@ -115,6 +150,8 @@ export default async function EntityPage({
     activeEntityTypes,
     allEntityTypes,
     entityContext: { entityType, fields },
+    fieldManagementContext,
+    workflowReferenceCountByFieldId,
     records,
     relationLookups,
   } = pageData;
@@ -134,15 +171,27 @@ export default async function EntityPage({
   const archivedEntityQuery = showArchivedEntities
     ? "showArchivedEntities=true"
     : "";
-  const showArchivedRecordsHref = `/entities/${entityType.id}?${[
+  const archivedFieldsQuery = showArchivedFields
+    ? "showArchivedFields=true"
+    : "";
+  const showArchivedRecordsHref = entityPageHref(entityType.id, [
     "showArchived=true",
     archivedEntityQuery,
-  ]
-    .filter(Boolean)
-    .join("&")}`;
-  const hideArchivedRecordsHref = showArchivedEntities
-    ? `/entities/${entityType.id}?showArchivedEntities=true`
-    : `/entities/${entityType.id}`;
+    archivedFieldsQuery,
+  ]);
+  const hideArchivedRecordsHref = entityPageHref(entityType.id, [
+    archivedEntityQuery,
+    archivedFieldsQuery,
+  ]);
+  const showArchivedFieldsHref = entityPageHref(entityType.id, [
+    "showArchivedFields=true",
+    showArchivedRecords ? "showArchived=true" : "",
+    archivedEntityQuery,
+  ]);
+  const hideArchivedFieldsHref = entityPageHref(entityType.id, [
+    showArchivedRecords ? "showArchived=true" : "",
+    archivedEntityQuery,
+  ]);
 
   return (
     <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
@@ -168,9 +217,24 @@ export default async function EntityPage({
             <FieldManagementList
               workspaceId={context.workspaceId}
               entityTypeId={entityType.id}
-              fields={fields}
+              fields={fieldManagementContext.fields}
               entityNameById={entityNameById}
+              workflowReferenceCountByFieldId={workflowReferenceCountByFieldId}
             />
+            <div className="mx-auto -mt-6 w-full max-w-6xl">
+              <Link
+                href={
+                  showArchivedFields
+                    ? hideArchivedFieldsHref
+                    : showArchivedFieldsHref
+                }
+                className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+              >
+                {showArchivedFields
+                  ? "Hide archived fields"
+                  : "Show archived fields"}
+              </Link>
+            </div>
             <RecordCreateForm
               entityType={entityType}
               fields={fields}

@@ -26,13 +26,26 @@ import {
   validateRecordFormData,
 } from "@/lib/domain/record-validation";
 import {
+  executeRecordCreatedWorkflows,
+  executeRecordUpdatedWorkflows,
+} from "@/lib/domain/workflow-engine";
+import { getChangedFieldDefinitionIds } from "@/lib/domain/workflow-change-detection";
+import {
+  createWorkflowFormStateFromDefinition,
+  type WorkflowFormState,
+  validateWorkflowFormData,
+} from "@/lib/domain/workflow-validation";
+import {
+  archiveFieldDefinition,
   archiveEntityType,
   createFieldDefinition,
   createEntityTypeWithFields,
+  deleteFieldDefinition,
   deleteEntityType,
   getEntityTypeRelationFieldSummary,
   getEntityContext,
   listEntityTypes,
+  restoreFieldDefinition,
   restoreEntityType,
   updateEntityTypeMetadata,
   updateFieldDefinition as updateFieldDefinitionInRepository,
@@ -49,6 +62,13 @@ import {
   type RecordActionState,
   updateEntityRecord as updateEntityRecordInRepository,
 } from "@/lib/domain/record-repository";
+import {
+  createWorkflowDefinition,
+  deleteWorkflowDefinition,
+  getWorkflow,
+  setWorkflowEnabled,
+  updateWorkflowDefinition,
+} from "@/lib/domain/workflow-repository";
 
 type CreateRecordContext = {
   workspaceId: string;
@@ -66,6 +86,16 @@ type UpdateFieldDefinitionContext = CreateRecordContext & {
 };
 
 export type EntityTypeActionState = {
+  success: boolean;
+  message: string;
+};
+
+export type WorkflowActionState = {
+  success: boolean;
+  message: string;
+};
+
+export type FieldLifecycleActionState = {
   success: boolean;
   message: string;
 };
@@ -169,8 +199,10 @@ export async function createRecord(
     };
   }
 
+  let createdRecordId: string;
+
   try {
-    await createEntityRecord({
+    createdRecordId = await createEntityRecord({
       workspaceId: entityType.workspaceId,
       entityTypeId: entityType.id,
       fields,
@@ -187,12 +219,47 @@ export async function createRecord(
     };
   }
 
+  let workflowMessage = "";
+
+  try {
+    const workflowSummary = await executeRecordCreatedWorkflows({
+      workspaceId: entityType.workspaceId,
+      triggerEntityTypeId: entityType.id,
+      triggerRecord: {
+        id: createdRecordId,
+        workspaceId: entityType.workspaceId,
+        entityTypeId: entityType.id,
+        values: validation.values,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
+    workflowSummary.targetEntityTypeIds.forEach((targetEntityTypeId) => {
+      revalidatePath(`/entities/${targetEntityTypeId}`);
+    });
+
+    if (workflowSummary.succeeded > 0 || workflowSummary.failed > 0) {
+      workflowMessage = ` ${workflowSummary.succeeded} workflow${
+        workflowSummary.succeeded === 1 ? "" : "s"
+      } succeeded`;
+
+      if (workflowSummary.failed > 0) {
+        workflowMessage += `, ${workflowSummary.failed} failed`;
+      }
+
+      workflowMessage += ".";
+    }
+  } catch {
+    workflowMessage = " Workflow execution could not be checked.";
+  }
+
   revalidatePath(`/entities/${entityType.id}`);
 
   return {
     ...initialRecordFormState,
     success: true,
-    message: `${entityType.name} created.`,
+    message: `${entityType.name} created.${workflowMessage}`,
   };
 }
 
@@ -367,6 +434,26 @@ export async function updateRecord(
     };
   }
 
+  let previousRecord;
+
+  try {
+    previousRecord = await getEntityRecord({
+      workspaceId: entityType.workspaceId,
+      entityTypeId: entityType.id,
+      recordId: context.recordId,
+      fields,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to load the existing record. Please try again.",
+      errors: {
+        _form: "The existing record could not be loaded.",
+      },
+      values: validation.submittedValues,
+    };
+  }
+
   try {
     await updateEntityRecordInRepository({
       workspaceId: entityType.workspaceId,
@@ -384,6 +471,32 @@ export async function updateRecord(
       },
       values: validation.submittedValues,
     };
+  }
+
+  try {
+    const nextRecord = await getEntityRecord({
+      workspaceId: entityType.workspaceId,
+      entityTypeId: entityType.id,
+      recordId: context.recordId,
+      fields,
+    });
+    const changedFieldDefinitionIds = getChangedFieldDefinitionIds({
+      fields,
+      previousRecord,
+      nextRecord,
+    });
+    const workflowSummary = await executeRecordUpdatedWorkflows({
+      workspaceId: entityType.workspaceId,
+      triggerEntityTypeId: entityType.id,
+      triggerRecord: nextRecord,
+      changedFieldDefinitionIds,
+    });
+
+    workflowSummary.targetEntityTypeIds.forEach((targetEntityTypeId) => {
+      revalidatePath(`/entities/${targetEntityTypeId}`);
+    });
+  } catch {
+    // Workflow execution must not roll back or block a successful user edit.
   }
 
   revalidatePath(`/entities/${entityType.id}`);
@@ -555,7 +668,13 @@ export async function updateFieldDefinition(
     return validation.state;
   }
 
-  const { entityType } = await getEntityContext(context);
+  const { entityType, fields } = await getEntityContext({
+    ...context,
+    includeArchivedFields: true,
+  });
+  const field = fields.find(
+    (candidateField) => candidateField.id === context.fieldDefinitionId,
+  );
 
   if (entityType.archivedAt) {
     return {
@@ -563,6 +682,17 @@ export async function updateFieldDefinition(
       message: "Archived entities are read-only. Restore this entity before editing fields.",
       errors: {
         _form: "Archived entities are read-only.",
+      },
+      values: validation.values,
+    };
+  }
+
+  if (!field || field.archivedAt) {
+    return {
+      success: false,
+      message: "Archived fields cannot be edited. Restore this field first.",
+      errors: {
+        _form: "Archived fields are read-only.",
       },
       values: validation.values,
     };
@@ -607,6 +737,171 @@ export async function updateFieldDefinition(
     message: "Field updated.",
     errors: {},
     values: validation.values,
+  };
+}
+
+export async function archiveField(
+  context: UpdateFieldDefinitionContext,
+  previousState: FieldLifecycleActionState,
+  formData: FormData,
+): Promise<FieldLifecycleActionState> {
+  void previousState;
+  void formData;
+
+  try {
+    const { entityType } = await getEntityContext(context);
+
+    if (entityType.archivedAt) {
+      return {
+        success: false,
+        message: "Archived entities are read-only. Restore this entity before editing fields.",
+      };
+    }
+
+    await archiveFieldDefinition(context);
+  } catch {
+    return {
+      success: false,
+      message: "Unable to archive the field. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Field archived.",
+  };
+}
+
+export async function restoreField(
+  context: UpdateFieldDefinitionContext,
+  previousState: FieldLifecycleActionState,
+  formData: FormData,
+): Promise<FieldLifecycleActionState> {
+  void previousState;
+  void formData;
+
+  try {
+    const { entityType } = await getEntityContext({
+      ...context,
+      includeArchivedFields: true,
+    });
+
+    if (entityType.archivedAt) {
+      return {
+        success: false,
+        message: "Archived entities are read-only. Restore this entity before editing fields.",
+      };
+    }
+
+    await restoreFieldDefinition(context);
+  } catch {
+    return {
+      success: false,
+      message: "Unable to restore the field. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Field restored.",
+  };
+}
+
+function formatFieldDeleteBlockMessage({
+  recordValueCount,
+  relationValueCount,
+  workflowReferenceCount,
+}: {
+  recordValueCount: number;
+  relationValueCount: number;
+  workflowReferenceCount: number;
+}) {
+  const reasons = [];
+
+  if (recordValueCount > 0) {
+    reasons.push(
+      `${recordValueCount} record value${
+        recordValueCount === 1 ? "" : "s"
+      } stored under this field key`,
+    );
+  }
+
+  if (relationValueCount > 0) {
+    reasons.push(
+      `${relationValueCount} relation value${
+        relationValueCount === 1 ? "" : "s"
+      }`,
+    );
+  }
+
+  if (workflowReferenceCount > 0) {
+    reasons.push(
+      `${workflowReferenceCount} workflow reference${
+        workflowReferenceCount === 1 ? "" : "s"
+      }`,
+    );
+  }
+
+  return `Cannot delete this field because it is still used by ${reasons.join(
+    ", ",
+  )}.`;
+}
+
+export async function deleteField(
+  context: UpdateFieldDefinitionContext,
+  previousState: FieldLifecycleActionState,
+  formData: FormData,
+): Promise<FieldLifecycleActionState> {
+  void previousState;
+  void formData;
+
+  try {
+    const { entityType, fields } = await getEntityContext({
+      ...context,
+      includeArchivedFields: true,
+    });
+    const field = fields.find(
+      (candidateField) => candidateField.id === context.fieldDefinitionId,
+    );
+
+    if (entityType.archivedAt) {
+      return {
+        success: false,
+        message: "Archived entities are read-only. Restore this entity before editing fields.",
+      };
+    }
+
+    if (!field?.archivedAt) {
+      return {
+        success: false,
+        message: "Archive this field before permanently deleting it.",
+      };
+    }
+
+    const result = await deleteFieldDefinition(context);
+
+    if (!result.deleted) {
+      return {
+        success: false,
+        message: formatFieldDeleteBlockMessage(result),
+      };
+    }
+  } catch {
+    return {
+      success: false,
+      message: "Unable to delete the field. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Field permanently deleted.",
   };
 }
 
@@ -784,4 +1079,260 @@ export async function deleteEntity(
   revalidatePath("/");
   revalidatePath("/entities");
   redirect("/");
+}
+
+export async function createWorkflow(
+  previousState: WorkflowFormState,
+  formData: FormData,
+): Promise<WorkflowFormState> {
+  const nextFormVersion = previousState.formVersion + 1;
+  const activeEntityTypes = await listEntityTypes({
+    workspaceId: DEMO_WORKSPACE_ID,
+  });
+  const activeEntityContexts = await Promise.all(
+    activeEntityTypes.map((entityType) =>
+      getEntityContext({
+        workspaceId: DEMO_WORKSPACE_ID,
+        entityTypeId: entityType.id,
+      }),
+    ),
+  );
+  const validation = await validateWorkflowFormData({
+    formData,
+    formVersion: nextFormVersion,
+    activeEntityContexts,
+    validateConstantRelationValue: async (field, value) => {
+      if (!field.relatedEntityTypeId) {
+        return false;
+      }
+
+      return entityRecordExists({
+        workspaceId: DEMO_WORKSPACE_ID,
+        entityTypeId: field.relatedEntityTypeId,
+        recordId: value,
+      });
+    },
+  });
+
+  if (!validation.success) {
+    return validation.state;
+  }
+
+  try {
+    await createWorkflowDefinition({
+      workspaceId: DEMO_WORKSPACE_ID,
+      name: validation.workflow.name,
+      enabled: validation.workflow.enabled,
+      triggerType: validation.workflow.triggerType,
+      triggerEntityTypeId: validation.workflow.triggerEntityTypeId,
+      actionTargetEntityTypeId: validation.workflow.actionTargetEntityTypeId,
+      actionConfig: validation.workflow.actionConfig,
+    });
+  } catch {
+    return {
+      ...validation.state,
+      success: false,
+      formVersion: nextFormVersion,
+      message: "Unable to create the workflow. Please try again.",
+      errors: {
+        _form: "The database rejected the workflow.",
+      },
+    };
+  }
+
+  revalidatePath("/workflows");
+  redirect("/workflows");
+}
+
+export async function updateWorkflow(
+  context: {
+    workflowId: string;
+  },
+  previousState: WorkflowFormState,
+  formData: FormData,
+): Promise<WorkflowFormState> {
+  const nextFormVersion = previousState.formVersion + 1;
+  const activeEntityTypes = await listEntityTypes({
+    workspaceId: DEMO_WORKSPACE_ID,
+  });
+  const activeEntityContexts = await Promise.all(
+    activeEntityTypes.map((entityType) =>
+      getEntityContext({
+        workspaceId: DEMO_WORKSPACE_ID,
+        entityTypeId: entityType.id,
+        includeArchivedFields: true,
+      }),
+    ),
+  );
+  const validation = await validateWorkflowFormData({
+    formData,
+    formVersion: nextFormVersion,
+    activeEntityContexts,
+    validateConstantRelationValue: async (field, value) => {
+      if (!field.relatedEntityTypeId) {
+        return false;
+      }
+
+      return entityRecordExists({
+        workspaceId: DEMO_WORKSPACE_ID,
+        entityTypeId: field.relatedEntityTypeId,
+        recordId: value,
+      });
+    },
+  });
+
+  if (!validation.success) {
+    return validation.state;
+  }
+
+  try {
+    await updateWorkflowDefinition({
+      workspaceId: DEMO_WORKSPACE_ID,
+      workflowId: context.workflowId,
+      name: validation.workflow.name,
+      enabled: validation.workflow.enabled,
+      triggerType: validation.workflow.triggerType,
+      triggerEntityTypeId: validation.workflow.triggerEntityTypeId,
+      actionTargetEntityTypeId: validation.workflow.actionTargetEntityTypeId,
+      actionConfig: validation.workflow.actionConfig,
+    });
+  } catch {
+    return {
+      ...validation.state,
+      success: false,
+      formVersion: nextFormVersion,
+      message: "Unable to update the workflow. Please try again.",
+      errors: {
+        _form: "The database rejected the workflow update.",
+      },
+    };
+  }
+
+  revalidatePath("/workflows");
+  redirect("/workflows");
+}
+
+export async function enableWorkflow(
+  context: {
+    workflowId: string;
+  },
+  previousState: WorkflowActionState,
+  formData: FormData,
+): Promise<WorkflowActionState> {
+  void previousState;
+  void formData;
+
+  try {
+    await setWorkflowEnabled({
+      workspaceId: DEMO_WORKSPACE_ID,
+      workflowId: context.workflowId,
+      enabled: true,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to enable the workflow.",
+    };
+  }
+
+  revalidatePath("/workflows");
+
+  return {
+    success: true,
+    message: "Workflow enabled.",
+  };
+}
+
+export async function disableWorkflow(
+  context: {
+    workflowId: string;
+  },
+  previousState: WorkflowActionState,
+  formData: FormData,
+): Promise<WorkflowActionState> {
+  void previousState;
+  void formData;
+
+  try {
+    await setWorkflowEnabled({
+      workspaceId: DEMO_WORKSPACE_ID,
+      workflowId: context.workflowId,
+      enabled: false,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to disable the workflow.",
+    };
+  }
+
+  revalidatePath("/workflows");
+
+  return {
+    success: true,
+    message: "Workflow disabled.",
+  };
+}
+
+export async function deleteWorkflow(
+  context: {
+    workflowId: string;
+  },
+  previousState: WorkflowActionState,
+  formData: FormData,
+): Promise<WorkflowActionState> {
+  void previousState;
+  void formData;
+
+  try {
+    await deleteWorkflowDefinition({
+      workspaceId: DEMO_WORKSPACE_ID,
+      workflowId: context.workflowId,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to delete the workflow.",
+    };
+  }
+
+  revalidatePath("/workflows");
+
+  return {
+    success: true,
+    message: "Workflow deleted.",
+  };
+}
+
+export async function getWorkflowFormState(workflowId: string) {
+  const workflow = await getWorkflow({
+    workspaceId: DEMO_WORKSPACE_ID,
+    workflowId,
+  });
+  const activeEntityTypes = await listEntityTypes({
+    workspaceId: DEMO_WORKSPACE_ID,
+  });
+  const activeEntityContexts = await Promise.all(
+    activeEntityTypes.map((entityType) =>
+      getEntityContext({
+        workspaceId: DEMO_WORKSPACE_ID,
+        entityTypeId: entityType.id,
+        includeArchivedFields: true,
+      }),
+    ),
+  );
+  const sourceEntityContext = activeEntityContexts.find(
+    (context) => context.entityType.id === workflow.triggerEntityTypeId,
+  );
+
+  return createWorkflowFormStateFromDefinition({
+    workflow,
+    sourceEntityContext,
+    entityNameById: Object.fromEntries(
+      activeEntityContexts.map((context) => [
+        context.entityType.id,
+        context.entityType.name,
+      ]),
+    ),
+  });
 }

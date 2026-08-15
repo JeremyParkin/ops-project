@@ -61,6 +61,12 @@ export function EntityNavigation({
       </nav>
       <div className="mt-4 border-t border-slate-100 pt-4">
         <Link
+          href="/workflows"
+          className="mb-3 block text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+        >
+          Workflows
+        </Link>
+        <Link
           href={
             activeEntityTypeId
               ? showArchivedEntities

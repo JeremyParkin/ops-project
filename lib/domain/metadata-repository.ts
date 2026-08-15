@@ -24,6 +24,7 @@ type FieldDefinitionRow = {
   related_entity_type_id: string | null;
   required: boolean;
   position: number;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -31,6 +32,7 @@ type FieldDefinitionRow = {
 type EntityContextInput = {
   workspaceId: string;
   entityTypeId: string;
+  includeArchivedFields?: boolean;
 };
 
 type CreateEntityTypeWithFieldsInput = {
@@ -71,6 +73,12 @@ type UpdateEntityTypeMetadataInput = {
 
 type EntityTypeLifecycleInput = EntityContextInput;
 
+type FieldDefinitionLifecycleInput = {
+  workspaceId: string;
+  entityTypeId: string;
+  fieldDefinitionId: string;
+};
+
 function mapEntityType(row: EntityTypeRow): EntityType {
   return {
     id: row.id,
@@ -96,6 +104,7 @@ function mapFieldDefinition(row: FieldDefinitionRow): FieldDefinition {
     relatedEntityTypeId: row.related_entity_type_id ?? undefined,
     required: row.required,
     position: row.position,
+    archivedAt: row.archived_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -104,6 +113,7 @@ function mapFieldDefinition(row: FieldDefinitionRow): FieldDefinition {
 export async function getEntityContext({
   workspaceId,
   entityTypeId,
+  includeArchivedFields = false,
 }: EntityContextInput) {
   const supabase = createServerSupabaseClient();
 
@@ -118,13 +128,19 @@ export async function getEntityContext({
     throw new Error(`Unable to load entity type: ${entityTypeError.message}`);
   }
 
-  const { data: fieldRows, error: fieldsError } = await supabase
+  let fieldsQuery = supabase
     .from("field_definitions")
     .select("*")
     .eq("workspace_id", workspaceId)
     .eq("entity_type_id", entityTypeId)
-    .order("position", { ascending: true })
-    .returns<FieldDefinitionRow[]>();
+    .order("position", { ascending: true });
+
+  if (!includeArchivedFields) {
+    fieldsQuery = fieldsQuery.is("archived_at", null);
+  }
+
+  const { data: fieldRows, error: fieldsError } =
+    await fieldsQuery.returns<FieldDefinitionRow[]>();
 
   if (fieldsError) {
     throw new Error(`Unable to load field definitions: ${fieldsError.message}`);
@@ -242,7 +258,11 @@ export async function createFieldDefinition({
   required,
 }: CreateFieldDefinitionInput) {
   const supabase = createServerSupabaseClient();
-  const { fields } = await getEntityContext({ workspaceId, entityTypeId });
+  const { fields } = await getEntityContext({
+    workspaceId,
+    entityTypeId,
+    includeArchivedFields: true,
+  });
   const existingSlugs = new Set(fields.map((field) => field.slug));
   const slug = createUniqueSlug(createSlug(name, "field"), existingSlugs);
   const { data, error } = await supabase.rpc("add_field_definition", {
@@ -276,7 +296,11 @@ export async function updateFieldDefinition({
   required,
 }: UpdateFieldDefinitionInput) {
   const supabase = createServerSupabaseClient();
-  const { fields } = await getEntityContext({ workspaceId, entityTypeId });
+  const { fields } = await getEntityContext({
+    workspaceId,
+    entityTypeId,
+    includeArchivedFields: true,
+  });
   const currentField = fields.find((field) => field.id === fieldDefinitionId);
 
   if (!currentField) {
@@ -315,6 +339,100 @@ export async function updateFieldDefinition({
   return {
     fieldDefinitionId: result.field_definition_id,
     violationCount: result.violation_count,
+  };
+}
+
+export async function archiveFieldDefinition({
+  workspaceId,
+  entityTypeId,
+  fieldDefinitionId,
+}: FieldDefinitionLifecycleInput) {
+  const supabase = createServerSupabaseClient();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("field_definitions")
+    .update({
+      archived_at: now,
+      updated_at: now,
+    })
+    .eq("workspace_id", workspaceId)
+    .eq("entity_type_id", entityTypeId)
+    .eq("id", fieldDefinitionId)
+    .select("id")
+    .maybeSingle<{ id: string }>();
+
+  if (error) {
+    throw new Error(`Unable to archive field definition: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("Unable to archive field definition: field not found.");
+  }
+}
+
+export async function restoreFieldDefinition({
+  workspaceId,
+  entityTypeId,
+  fieldDefinitionId,
+}: FieldDefinitionLifecycleInput) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("field_definitions")
+    .update({
+      archived_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("workspace_id", workspaceId)
+    .eq("entity_type_id", entityTypeId)
+    .eq("id", fieldDefinitionId)
+    .select("id")
+    .maybeSingle<{ id: string }>();
+
+  if (error) {
+    throw new Error(`Unable to restore field definition: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("Unable to restore field definition: field not found.");
+  }
+}
+
+export async function deleteFieldDefinition({
+  workspaceId,
+  entityTypeId,
+  fieldDefinitionId,
+}: FieldDefinitionLifecycleInput) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase.rpc(
+    "delete_field_definition_if_safe",
+    {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_field_definition_id: fieldDefinitionId,
+    },
+  );
+
+  if (error) {
+    throw new Error(`Unable to delete field definition: ${error.message}`);
+  }
+
+  const resultRows = data as Array<{
+    deleted: boolean;
+    record_value_count: number;
+    relation_value_count: number;
+    workflow_reference_count: number;
+  }> | null;
+  const result = resultRows?.[0];
+
+  if (!result) {
+    throw new Error("Unable to delete field definition: unexpected RPC response.");
+  }
+
+  return {
+    deleted: result.deleted,
+    recordValueCount: result.record_value_count,
+    relationValueCount: result.relation_value_count,
+    workflowReferenceCount: result.workflow_reference_count,
   };
 }
 

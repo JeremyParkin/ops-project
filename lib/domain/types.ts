@@ -33,6 +33,7 @@ export type FieldDefinition = {
   relatedEntityTypeId?: string;
   required: boolean;
   position: number;
+  archivedAt?: IsoUtcTimestamp;
   createdAt: IsoUtcTimestamp;
   updatedAt: IsoUtcTimestamp;
 };

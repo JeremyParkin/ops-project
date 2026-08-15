@@ -1,4 +1,9 @@
-import { updateFieldDefinition } from "@/app/actions";
+import {
+  archiveField,
+  deleteField,
+  restoreField,
+  updateFieldDefinition,
+} from "@/app/actions";
 import { FieldEditForm } from "@/app/components/field-edit-form";
 import type { FieldDefinition } from "@/lib/domain/types";
 
@@ -7,6 +12,7 @@ type FieldManagementListProps = {
   entityTypeId: string;
   fields: FieldDefinition[];
   entityNameById: Record<string, string>;
+  workflowReferenceCountByFieldId: Record<string, number>;
 };
 
 export function FieldManagementList({
@@ -14,6 +20,7 @@ export function FieldManagementList({
   entityTypeId,
   fields,
   entityNameById,
+  workflowReferenceCountByFieldId,
 }: FieldManagementListProps) {
   const orderedFields = [...fields].sort((left, right) => {
     return left.position - right.position;
@@ -32,6 +39,21 @@ export function FieldManagementList({
             entityTypeId,
             fieldDefinitionId: field.id,
           });
+          const archiveFieldAction = archiveField.bind(null, {
+            workspaceId,
+            entityTypeId,
+            fieldDefinitionId: field.id,
+          });
+          const restoreFieldAction = restoreField.bind(null, {
+            workspaceId,
+            entityTypeId,
+            fieldDefinitionId: field.id,
+          });
+          const deleteFieldAction = deleteField.bind(null, {
+            workspaceId,
+            entityTypeId,
+            fieldDefinitionId: field.id,
+          });
 
           return (
             <div key={field.id} className="py-4 first:pt-0 last:pb-0">
@@ -43,6 +65,12 @@ export function FieldManagementList({
                     : undefined
                 }
                 updateFieldDefinitionAction={updateFieldAction}
+                archiveFieldAction={archiveFieldAction}
+                restoreFieldAction={restoreFieldAction}
+                deleteFieldAction={deleteFieldAction}
+                workflowReferenceCount={
+                  workflowReferenceCountByFieldId[field.id] ?? 0
+                }
               />
             </div>
           );
