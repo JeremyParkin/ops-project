@@ -1,0 +1,177 @@
+import type {
+  EntityRecord,
+  FieldDefinition,
+  FieldValue,
+} from "./types";
+
+export type RecordFormState = {
+  success: boolean;
+  message: string;
+  errors: Record<string, string>;
+  values: Record<string, string>;
+};
+
+export const initialRecordFormState: RecordFormState = {
+  success: false,
+  message: "",
+  errors: {},
+  values: {},
+};
+
+type ValidationResult =
+  | {
+      success: true;
+      values: EntityRecord["values"];
+      submittedValues: Record<string, string>;
+    }
+  | {
+      success: false;
+      errors: Record<string, string>;
+      submittedValues: Record<string, string>;
+    };
+
+type RelationValueValidator = (
+  field: FieldDefinition,
+  value: string,
+) => Promise<boolean>;
+
+function getSubmittedValue(formData: FormData, field: FieldDefinition) {
+  const values = formData.getAll(field.key);
+  const value = values.at(-1);
+
+  if (value === undefined) {
+    return "";
+  }
+
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+function isValidDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+
+  return !Number.isNaN(date.valueOf()) && date.toISOString().startsWith(value);
+}
+
+function parseFieldValue(
+  field: FieldDefinition,
+  rawValue: string,
+): { value: FieldValue } | { error: string } {
+  if (rawValue === "") {
+    if (field.required) {
+      return { error: `${field.name} is required.` };
+    }
+
+    return { value: null };
+  }
+
+  switch (field.type) {
+    case "text":
+      return { value: rawValue };
+    case "number": {
+      const parsedValue = Number(rawValue);
+
+      if (Number.isNaN(parsedValue)) {
+        return { error: `${field.name} must be a number.` };
+      }
+
+      return { value: parsedValue };
+    }
+    case "date":
+      if (!isValidDate(rawValue)) {
+        return { error: `${field.name} must be a valid date.` };
+      }
+
+      return { value: rawValue };
+    case "boolean":
+      if (rawValue === "true" || rawValue === "on" || rawValue === "1") {
+        return { value: true };
+      }
+
+      if (rawValue === "false" || rawValue === "off" || rawValue === "0") {
+        return { value: false };
+      }
+
+      return { error: `${field.name} must be true or false.` };
+    case "relation":
+      if (!field.relatedEntityTypeId) {
+        return { error: `${field.name} is missing relation metadata.` };
+      }
+
+      if (!isUuid(rawValue)) {
+        return { error: `${field.name} must reference a valid record.` };
+      }
+
+      return { value: rawValue };
+  }
+}
+
+export async function validateRecordFormData(
+  fields: FieldDefinition[],
+  formData: FormData,
+  validateRelationValue?: RelationValueValidator,
+): Promise<ValidationResult> {
+  const fieldKeys = new Set(fields.map((field) => field.key));
+  const errors: Record<string, string> = {};
+  const recordValues: EntityRecord["values"] = {};
+  const submittedValues: Record<string, string> = {};
+
+  for (const key of formData.keys()) {
+    if (!key.startsWith("$ACTION_") && !fieldKeys.has(key)) {
+      errors._form = "The submission included an unknown field.";
+    }
+  }
+
+  for (const field of fields) {
+    const rawValue = getSubmittedValue(formData, field);
+    submittedValues[field.key] = rawValue;
+
+    const parsedValue = parseFieldValue(field, rawValue);
+
+    if ("error" in parsedValue) {
+      errors[field.key] = parsedValue.error;
+    } else {
+      if (
+        field.type === "relation" &&
+        parsedValue.value !== null &&
+        typeof parsedValue.value === "string" &&
+        validateRelationValue
+      ) {
+        const isValidRelation = await validateRelationValue(
+          field,
+          parsedValue.value,
+        );
+
+        if (!isValidRelation) {
+          errors[field.key] = `${field.name} must reference an existing record.`;
+          continue;
+        }
+      }
+
+      recordValues[field.key] = parsedValue.value;
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return {
+      success: false,
+      errors,
+      submittedValues,
+    };
+  }
+
+  return {
+    success: true,
+    values: recordValues,
+    submittedValues,
+  };
+}
