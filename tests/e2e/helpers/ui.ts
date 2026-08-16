@@ -96,7 +96,7 @@ export async function selectReactOption(
               (optionElement) => optionElement.label === selectedOption.label,
             )?.value;
 
-    if (!value) {
+    if (value === undefined) {
       throw new Error("Unable to find select option.");
     }
 

@@ -39,8 +39,11 @@ export type WorkflowFixture = {
 };
 
 export type RecordUpdatedFixture = {
+  client: TestEntity;
   ticket: TestEntity;
   activity: TestEntity;
+  firstClientRecordId: string;
+  secondClientRecordId: string;
 };
 
 type SupabaseClient = ReturnType<typeof createSupabaseTestClient>;
@@ -340,20 +343,63 @@ export async function createRecordUpdatedFixture(
   run: TestRun,
 ): Promise<RecordUpdatedFixture> {
   const supabase = createSupabaseTestClient();
+  const client = await createEntity(supabase, run, "Client", [
+    { slug: "name", name: "Name", type: "text", required: true },
+  ]);
   const ticket = await createEntity(supabase, run, "Ticket", [
     { slug: "title", name: "Title", type: "text", required: true },
     { slug: "status", name: "Status", type: "text" },
     { slug: "notes", name: "Notes", type: "text" },
+    {
+      slug: "client",
+      name: "Client",
+      type: "relation",
+      relatedEntityTypeId: client.id,
+    },
   ]);
   const activity = await createEntity(supabase, run, "Activity", [
     { slug: "summary", name: "Summary", type: "text", required: true },
     { slug: "status", name: "Status", type: "text" },
+    {
+      slug: "client",
+      name: "Client",
+      type: "relation",
+      relatedEntityTypeId: client.id,
+    },
   ]);
+  const firstClientRecordId = await createEntityRecord({
+    entity: client,
+    valuesBySlug: {
+      name: `${run.label} Alpha Client`,
+    },
+  });
+  const secondClientRecordId = await createEntityRecord({
+    entity: client,
+    valuesBySlug: {
+      name: `${run.label} Beta Client`,
+    },
+  });
 
   return {
+    client,
     ticket,
     activity,
+    firstClientRecordId,
+    secondClientRecordId,
   };
+}
+
+export async function archiveTestField(field: TestField) {
+  const supabase = createSupabaseTestClient();
+
+  await throwOnError(
+    await supabase
+      .from("field_definitions")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("id", field.id),
+    `archive E2E field ${field.name}`,
+  );
 }
 
 export async function listUncleanedE2eData(run: TestRun) {
