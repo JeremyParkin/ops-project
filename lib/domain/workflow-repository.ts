@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
   WorkflowActionConfig,
+  WorkflowActionType,
   WorkflowDefinition,
   WorkflowExecutionLog,
   WorkflowExecutionStatus,
@@ -14,8 +15,8 @@ type WorkflowRow = {
   enabled: boolean;
   trigger_type: WorkflowTriggerType;
   trigger_entity_type_id: string;
-  action_type: "create_record";
-  action_target_entity_type_id: string;
+  action_type: WorkflowActionType;
+  action_target_entity_type_id: string | null;
   action_config: WorkflowActionConfig;
   created_at: string;
   updated_at: string;
@@ -29,7 +30,10 @@ type WorkflowExecutionLogRow = {
   trigger_record_id: string;
   status: WorkflowExecutionStatus;
   error_message: string | null;
+  result_message: string | null;
   created_record_id: string | null;
+  action_entity_type_id: string | null;
+  action_record_id: string | null;
   started_at: string;
   completed_at: string;
 };
@@ -40,7 +44,8 @@ type CreateWorkflowInput = {
   enabled?: boolean;
   triggerType: WorkflowTriggerType;
   triggerEntityTypeId: string;
-  actionTargetEntityTypeId: string;
+  actionType: WorkflowActionType;
+  actionTargetEntityTypeId?: string;
   actionConfig: WorkflowActionConfig;
 };
 
@@ -56,7 +61,10 @@ type CreateWorkflowExecutionLogInput = {
   triggerRecordId: string;
   status: WorkflowExecutionStatus;
   errorMessage?: string;
+  resultMessage?: string;
   createdRecordId?: string;
+  actionEntityTypeId?: string;
+  actionRecordId?: string;
   startedAt: string;
   completedAt: string;
 };
@@ -70,7 +78,7 @@ function mapWorkflow(row: WorkflowRow): WorkflowDefinition {
     triggerType: row.trigger_type,
     triggerEntityTypeId: row.trigger_entity_type_id,
     actionType: row.action_type,
-    actionTargetEntityTypeId: row.action_target_entity_type_id,
+    actionTargetEntityTypeId: row.action_target_entity_type_id ?? undefined,
     actionConfig: row.action_config,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -88,7 +96,10 @@ function mapWorkflowExecutionLog(
     triggerRecordId: row.trigger_record_id,
     status: row.status,
     errorMessage: row.error_message ?? undefined,
+    resultMessage: row.result_message ?? undefined,
     createdRecordId: row.created_record_id ?? undefined,
+    actionEntityTypeId: row.action_entity_type_id ?? undefined,
+    actionRecordId: row.action_record_id ?? undefined,
     startedAt: row.started_at,
     completedAt: row.completed_at,
   };
@@ -206,6 +217,7 @@ export async function listEnabledWorkflowsForTrigger({
     .eq("trigger_entity_type_id", triggerEntityTypeId)
     .eq("enabled", true)
     .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
     .returns<WorkflowRow[]>();
 
   if (error) {
@@ -235,6 +247,7 @@ export async function createWorkflowDefinition({
   enabled = true,
   triggerType,
   triggerEntityTypeId,
+  actionType,
   actionTargetEntityTypeId,
   actionConfig,
 }: CreateWorkflowInput) {
@@ -247,8 +260,8 @@ export async function createWorkflowDefinition({
       enabled,
       trigger_type: triggerType,
       trigger_entity_type_id: triggerEntityTypeId,
-      action_type: "create_record",
-      action_target_entity_type_id: actionTargetEntityTypeId,
+      action_type: actionType,
+      action_target_entity_type_id: actionTargetEntityTypeId ?? null,
       action_config: actionConfig,
     })
     .select("id")
@@ -266,7 +279,9 @@ export async function updateWorkflowDefinition({
   workflowId,
   name,
   enabled,
+  triggerType,
   triggerEntityTypeId,
+  actionType,
   actionTargetEntityTypeId,
   actionConfig,
 }: UpdateWorkflowInput) {
@@ -276,8 +291,10 @@ export async function updateWorkflowDefinition({
     .update({
       name,
       enabled,
+      trigger_type: triggerType,
       trigger_entity_type_id: triggerEntityTypeId,
-      action_target_entity_type_id: actionTargetEntityTypeId,
+      action_type: actionType,
+      action_target_entity_type_id: actionTargetEntityTypeId ?? null,
       action_config: actionConfig,
       updated_at: new Date().toISOString(),
     })
@@ -357,7 +374,10 @@ export async function createWorkflowExecutionLog({
   triggerRecordId,
   status,
   errorMessage,
+  resultMessage,
   createdRecordId,
+  actionEntityTypeId,
+  actionRecordId,
   startedAt,
   completedAt,
 }: CreateWorkflowExecutionLogInput) {
@@ -369,7 +389,10 @@ export async function createWorkflowExecutionLog({
     trigger_record_id: triggerRecordId,
     status,
     error_message: errorMessage ?? null,
+    result_message: resultMessage ?? null,
     created_record_id: createdRecordId ?? null,
+    action_entity_type_id: actionEntityTypeId ?? null,
+    action_record_id: actionRecordId ?? null,
     started_at: startedAt,
     completed_at: completedAt,
   });

@@ -18,6 +18,7 @@ import {
 } from "./workflow-template";
 import type {
   WorkflowActionConfig,
+  WorkflowActionType,
   WorkflowCondition,
   WorkflowConditionOperator,
   WorkflowDefinition,
@@ -25,7 +26,13 @@ import type {
 } from "./workflow-types";
 
 export type WorkflowMappingFormValue = {
-  type: "unset" | "constant" | "source_field" | "template";
+  type:
+    | "unset"
+    | "leave_unchanged"
+    | "clear"
+    | "constant"
+    | "source_field"
+    | "template";
   constantValue: string;
   sourceFieldDefinitionId: string;
   template: string;
@@ -48,6 +55,7 @@ export type WorkflowFormState = {
     enabled: boolean;
     triggerType: WorkflowTriggerType;
     triggerEntityTypeId: string;
+    actionType: WorkflowActionType;
     actionTargetEntityTypeId: string;
     watchedFieldDefinitionIds: string[];
     conditions: WorkflowConditionFormValue[];
@@ -60,7 +68,19 @@ export type EntityFieldContext = {
   fields: FieldDefinition[];
 };
 
-const mappingTypes = new Set(["unset", "constant", "source_field", "template"]);
+const createMappingTypes = new Set([
+  "unset",
+  "constant",
+  "source_field",
+  "template",
+]);
+const updateMappingTypes = new Set([
+  "leave_unchanged",
+  "clear",
+  "constant",
+  "source_field",
+  "template",
+]);
 
 export const initialWorkflowFormState: WorkflowFormState = {
   success: false,
@@ -72,6 +92,7 @@ export const initialWorkflowFormState: WorkflowFormState = {
     enabled: true,
     triggerType: "record_created",
     triggerEntityTypeId: "",
+    actionType: "create_record",
     actionTargetEntityTypeId: "",
     watchedFieldDefinitionIds: [],
     conditions: [],
@@ -211,7 +232,8 @@ export async function validateWorkflowFormData({
         enabled: boolean;
         triggerType: WorkflowTriggerType;
         triggerEntityTypeId: string;
-        actionTargetEntityTypeId: string;
+        actionType: WorkflowActionType;
+        actionTargetEntityTypeId?: string;
         actionConfig: WorkflowActionConfig;
       };
       state: WorkflowFormState;
@@ -235,10 +257,19 @@ export async function validateWorkflowFormData({
   const rawTriggerType = getString(formData, "workflowTriggerType");
   const triggerType: WorkflowTriggerType =
     rawTriggerType === "record_updated" ? "record_updated" : "record_created";
+  const rawActionType = getString(formData, "workflowActionType");
+  const actionType: WorkflowActionType =
+    rawActionType === "update_record" ? "update_record" : "create_record";
   const triggerEntityTypeId = getString(formData, "triggerEntityTypeId");
-  const actionTargetEntityTypeId = getString(formData, "actionTargetEntityTypeId");
+  const actionTargetEntityTypeId =
+    actionType === "create_record"
+      ? getString(formData, "actionTargetEntityTypeId")
+      : "";
   const triggerContext = entityContextById.get(triggerEntityTypeId);
-  const targetContext = entityContextById.get(actionTargetEntityTypeId);
+  const targetContext =
+    actionType === "create_record"
+      ? entityContextById.get(actionTargetEntityTypeId)
+      : triggerContext;
   const errors: Record<string, string> = {};
   const conditionRows = getConditionRows(formData);
   const mappings: WorkflowFormState["values"]["mappings"] = {};
@@ -251,7 +282,7 @@ export async function validateWorkflowFormData({
     errors.triggerEntityTypeId = "Choose an active trigger entity.";
   }
 
-  if (!targetContext) {
+  if (actionType === "create_record" && !targetContext) {
     errors.actionTargetEntityTypeId = "Choose an active target entity.";
   }
 
@@ -388,9 +419,17 @@ export async function validateWorkflowFormData({
       }
 
       const rawMappingType = getString(formData, `mappingType:${targetField.id}`);
-      const mappingType = mappingTypes.has(rawMappingType)
+      const validMappingTypes =
+        actionType === "update_record" ? updateMappingTypes : createMappingTypes;
+      const defaultMappingType =
+        actionType === "update_record"
+          ? "leave_unchanged"
+          : targetField.required
+            ? "constant"
+            : "unset";
+      const mappingType = validMappingTypes.has(rawMappingType)
         ? (rawMappingType as WorkflowMappingFormValue["type"])
-        : "unset";
+        : defaultMappingType;
       const constantValue = getString(
         formData,
         `constantValue:${targetField.id}`,
@@ -415,6 +454,12 @@ export async function validateWorkflowFormData({
       }
 
       if (mappingType === "unset") {
+        if (actionType === "update_record") {
+          errors[`mappingType:${targetField.id}`] =
+            `${targetField.name} cannot use Unset for an update action. Choose Leave unchanged or Clear value.`;
+          continue;
+        }
+
         if (targetField.required) {
           errors[`mappingType:${targetField.id}`] =
             `${targetField.name} is required and cannot be unset.`;
@@ -426,6 +471,40 @@ export async function validateWorkflowFormData({
             type: "unset",
           },
         });
+        continue;
+      }
+
+      if (mappingType === "leave_unchanged") {
+        if (actionType !== "update_record") {
+          errors[`mappingType:${targetField.id}`] =
+            `${targetField.name} cannot use Leave unchanged for a create action.`;
+          continue;
+        }
+
+        configMappings.push({
+          targetFieldDefinitionId: targetField.id,
+          source: {
+            type: "leave_unchanged",
+          },
+        });
+        continue;
+      }
+
+      if (mappingType === "clear") {
+        if (actionType !== "update_record") {
+          errors[`mappingType:${targetField.id}`] =
+            `${targetField.name} cannot use Clear value for a create action.`;
+        } else if (targetField.required) {
+          errors[`mappingType:${targetField.id}`] =
+            `${targetField.name} is required and cannot be cleared.`;
+        } else {
+          configMappings.push({
+            targetFieldDefinitionId: targetField.id,
+            source: {
+              type: "clear",
+            },
+          });
+        }
         continue;
       }
 
@@ -527,6 +606,7 @@ export async function validateWorkflowFormData({
       enabled,
       triggerType,
       triggerEntityTypeId,
+      actionType,
       actionTargetEntityTypeId,
       watchedFieldDefinitionIds,
       conditions: conditionRows,
@@ -551,7 +631,9 @@ export async function validateWorkflowFormData({
       enabled,
       triggerType,
       triggerEntityTypeId,
-      actionTargetEntityTypeId,
+      actionType,
+      actionTargetEntityTypeId:
+        actionType === "create_record" ? actionTargetEntityTypeId : undefined,
       actionConfig: {
         triggerConfig:
           triggerType === "record_updated"
@@ -588,7 +670,8 @@ export function createWorkflowFormStateFromDefinition({
       enabled: workflow.enabled,
       triggerType: workflow.triggerType,
       triggerEntityTypeId: workflow.triggerEntityTypeId,
-      actionTargetEntityTypeId: workflow.actionTargetEntityTypeId,
+      actionType: workflow.actionType,
+      actionTargetEntityTypeId: workflow.actionTargetEntityTypeId ?? "",
       watchedFieldDefinitionIds:
         workflow.triggerType === "record_updated"
           ? workflow.actionConfig.triggerConfig?.watchedFieldDefinitionIds ?? []
@@ -611,6 +694,30 @@ export function createWorkflowFormStateFromDefinition({
               mapping.targetFieldDefinitionId,
               {
                 type: "unset",
+                constantValue: "",
+                sourceFieldDefinitionId: "",
+                template: "",
+              },
+            ];
+          }
+
+          if (mapping.source.type === "leave_unchanged") {
+            return [
+              mapping.targetFieldDefinitionId,
+              {
+                type: "leave_unchanged",
+                constantValue: "",
+                sourceFieldDefinitionId: "",
+                template: "",
+              },
+            ];
+          }
+
+          if (mapping.source.type === "clear") {
+            return [
+              mapping.targetFieldDefinitionId,
+              {
+                type: "clear",
                 constantValue: "",
                 sourceFieldDefinitionId: "",
                 template: "",
@@ -752,6 +859,15 @@ export async function buildTargetValuesFromWorkflowConfig({
         resolveRelationLabel,
       });
       continue;
+    }
+
+    if (
+      mapping.source.type === "leave_unchanged" ||
+      mapping.source.type === "clear"
+    ) {
+      throw new Error(
+        "Workflow update-only mappings cannot be used to create records.",
+      );
     }
 
     const sourceField = sourceFieldById.get(

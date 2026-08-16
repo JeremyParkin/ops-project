@@ -1125,6 +1125,7 @@ export async function createWorkflow(
       enabled: validation.workflow.enabled,
       triggerType: validation.workflow.triggerType,
       triggerEntityTypeId: validation.workflow.triggerEntityTypeId,
+      actionType: validation.workflow.actionType,
       actionTargetEntityTypeId: validation.workflow.actionTargetEntityTypeId,
       actionConfig: validation.workflow.actionConfig,
     });
@@ -1193,6 +1194,7 @@ export async function updateWorkflow(
       enabled: validation.workflow.enabled,
       triggerType: validation.workflow.triggerType,
       triggerEntityTypeId: validation.workflow.triggerEntityTypeId,
+      actionType: validation.workflow.actionType,
       actionTargetEntityTypeId: validation.workflow.actionTargetEntityTypeId,
       actionConfig: validation.workflow.actionConfig,
     });

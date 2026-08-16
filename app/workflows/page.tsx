@@ -92,14 +92,22 @@ export default async function WorkflowsPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      Record created in{" "}
+                      {workflow.triggerType === "record_updated"
+                        ? "Record updated in"
+                        : "Record created in"}{" "}
                       {entityNameById.get(workflow.triggerEntityTypeId) ??
                         "Unknown entity"}
                     </td>
                     <td className="px-4 py-3">
-                      Create record in{" "}
-                      {entityNameById.get(workflow.actionTargetEntityTypeId) ??
-                        "Unknown entity"}
+                      {workflow.actionType === "update_record"
+                        ? "Update triggering record"
+                        : `Create record in ${
+                            workflow.actionTargetEntityTypeId
+                              ? entityNameById.get(
+                                  workflow.actionTargetEntityTypeId,
+                                ) ?? "Unknown entity"
+                              : "Unknown entity"
+                          }`}
                     </td>
                     <td className="px-4 py-3">
                       {workflow.enabled ? "Enabled" : "Disabled"}
@@ -167,7 +175,12 @@ export default async function WorkflowsPage() {
                     <td className="px-4 py-3">{log.status}</td>
                     <td className="px-4 py-3">
                       {log.errorMessage ??
-                        (log.createdRecordId ? "Record created" : "Completed")}
+                        log.resultMessage ??
+                        (log.createdRecordId
+                          ? "Record created"
+                          : log.actionRecordId
+                            ? "Record updated"
+                            : "Completed")}
                     </td>
                     <td className="px-4 py-3">{log.startedAt}</td>
                   </tr>

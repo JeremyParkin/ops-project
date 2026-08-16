@@ -1,7 +1,13 @@
-import type { EntityType, FieldDefinition, FieldValue, IsoUtcTimestamp } from "./types";
+import type {
+  EntityRecord,
+  EntityType,
+  FieldDefinition,
+  FieldValue,
+  IsoUtcTimestamp,
+} from "./types";
 
 export type WorkflowTriggerType = "record_created" | "record_updated";
-export type WorkflowActionType = "create_record";
+export type WorkflowActionType = "create_record" | "update_record";
 export type WorkflowExecutionStatus = "succeeded" | "failed" | "skipped";
 export type WorkflowConditionOperator =
   | "equals"
@@ -48,6 +54,18 @@ export type WorkflowFieldMapping =
         type: "template";
         template: string;
       };
+    }
+  | {
+      targetFieldDefinitionId: FieldDefinition["id"];
+      source: {
+        type: "leave_unchanged";
+      };
+    }
+  | {
+      targetFieldDefinitionId: FieldDefinition["id"];
+      source: {
+        type: "clear";
+      };
     };
 
 export type WorkflowActionConfig = {
@@ -66,7 +84,7 @@ export type WorkflowDefinition = {
   triggerType: WorkflowTriggerType;
   triggerEntityTypeId: EntityType["id"];
   actionType: WorkflowActionType;
-  actionTargetEntityTypeId: EntityType["id"];
+  actionTargetEntityTypeId?: EntityType["id"];
   actionConfig: WorkflowActionConfig;
   createdAt: IsoUtcTimestamp;
   updatedAt: IsoUtcTimestamp;
@@ -80,7 +98,10 @@ export type WorkflowExecutionLog = {
   triggerRecordId: string;
   status: WorkflowExecutionStatus;
   errorMessage?: string;
+  resultMessage?: string;
   createdRecordId?: string;
+  actionEntityTypeId?: EntityType["id"];
+  actionRecordId?: EntityRecord["id"];
   startedAt: IsoUtcTimestamp;
   completedAt: IsoUtcTimestamp;
 };

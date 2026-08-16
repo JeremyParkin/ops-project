@@ -11,6 +11,7 @@ import { initialWorkflowFormState } from "@/lib/domain/workflow-validation";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
 import type { RelationRecordOption } from "@/lib/domain/record-repository";
 import type {
+  WorkflowActionType,
   WorkflowConditionOperator,
   WorkflowTriggerType,
 } from "@/lib/domain/workflow-types";
@@ -37,7 +38,13 @@ type WorkflowDefinitionFormFieldsProps = WorkflowDefinitionFormProps & {
 };
 
 type LocalMapping = {
-  type: "unset" | "constant" | "source_field" | "template";
+  type:
+    | "unset"
+    | "leave_unchanged"
+    | "clear"
+    | "constant"
+    | "source_field"
+    | "template";
   constantValue: string;
   sourceFieldDefinitionId: string;
   template: string;
@@ -98,9 +105,17 @@ function areFieldsCompatible(
   return sourceField.relatedEntityTypeId === targetField.relatedEntityTypeId;
 }
 
-function getDefaultMapping(field: FieldDefinition): LocalMapping {
+function getDefaultMapping(
+  field: FieldDefinition,
+  actionType: WorkflowActionType,
+): LocalMapping {
   return {
-    type: field.required ? "constant" : "unset",
+    type:
+      actionType === "update_record"
+        ? "leave_unchanged"
+        : field.required
+          ? "constant"
+          : "unset",
     constantValue: "",
     sourceFieldDefinitionId: "",
     template: "",
@@ -110,11 +125,12 @@ function getDefaultMapping(field: FieldDefinition): LocalMapping {
 function createMappingsForTarget(
   fields: FieldDefinition[],
   savedMappings: WorkflowFormState["values"]["mappings"],
+  actionType: WorkflowActionType,
 ) {
   return Object.fromEntries(
     fields.map((field) => [
       field.id,
-      savedMappings[field.id] ?? getDefaultMapping(field),
+      savedMappings[field.id] ?? getDefaultMapping(field, actionType),
     ]),
   ) as Record<string, LocalMapping>;
 }
@@ -149,16 +165,19 @@ function cleanMappingsForTrigger({
   mappings,
   targetFields,
   triggerFields,
+  actionType,
 }: {
   mappings: Record<string, LocalMapping>;
   targetFields: FieldDefinition[];
   triggerFields: FieldDefinition[];
+  actionType: WorkflowActionType;
 }) {
   const triggerFieldById = new Map(triggerFields.map((field) => [field.id, field]));
 
   return Object.fromEntries(
     targetFields.map((targetField) => {
-      const mapping = mappings[targetField.id] ?? getDefaultMapping(targetField);
+      const mapping =
+        mappings[targetField.id] ?? getDefaultMapping(targetField, actionType);
 
       if (mapping.type !== "source_field") {
         if (mapping.type === "template") {
@@ -389,11 +408,15 @@ function WorkflowDefinitionFormFields({
   );
   const initialTriggerEntityTypeId =
     state.values.triggerEntityTypeId || entityContexts[0]?.entityType.id || "";
+  const initialActionType = state.values.actionType;
   const initialTargetEntityTypeId =
     state.values.actionTargetEntityTypeId ||
     entityContexts[0]?.entityType.id ||
     "";
-  const initialTargetContext = contextById.get(initialTargetEntityTypeId);
+  const initialTargetContext =
+    initialActionType === "update_record"
+      ? contextById.get(initialTriggerEntityTypeId)
+      : contextById.get(initialTargetEntityTypeId);
   const initialTargetFields = initialTargetContext
     ? getRenderedTargetFields({
         fields: initialTargetContext.fields,
@@ -405,6 +428,8 @@ function WorkflowDefinitionFormFields({
   const [triggerType, setTriggerType] = useState<WorkflowTriggerType>(
     state.values.triggerType,
   );
+  const [actionType, setActionType] =
+    useState<WorkflowActionType>(initialActionType);
   const [triggerEntityTypeId, setTriggerEntityTypeId] = useState(
     initialTriggerEntityTypeId,
   );
@@ -418,13 +443,17 @@ function WorkflowDefinitionFormFields({
     createMappingsForTarget(
       initialTargetFields,
       state.values.mappings,
+      initialActionType,
     ),
   );
   const [conditions, setConditions] = useState<LocalCondition[]>(
     state.values.conditions,
   );
   const triggerContext = contextById.get(triggerEntityTypeId);
-  const targetContext = contextById.get(targetEntityTypeId);
+  const targetContext =
+    actionType === "update_record"
+      ? triggerContext
+      : contextById.get(targetEntityTypeId);
   const entityNameById = Object.fromEntries(
     entityContexts.map((context) => [
       context.entityType.id,
@@ -450,7 +479,7 @@ function WorkflowDefinitionFormFields({
       ...current,
       [targetFieldId]: updater(
         current[targetFieldId] ?? {
-          type: "unset",
+          type: actionType === "update_record" ? "leave_unchanged" : "unset",
           constantValue: "",
           sourceFieldDefinitionId: "",
           template: "",
@@ -479,12 +508,39 @@ function WorkflowDefinitionFormFields({
       return;
     }
 
-    setMappings((current) =>
-      cleanMappingsForTrigger({
-        mappings: current,
-        targetFields: targetContext.fields,
-        triggerFields: nextTriggerContext.fields,
-      }),
+    if (actionType === "update_record") {
+      setMappings(
+        createMappingsForTarget(
+          getActiveFields(nextTriggerContext.fields),
+          {},
+          actionType,
+        ),
+      );
+    } else {
+      setMappings((current) =>
+        cleanMappingsForTrigger({
+          mappings: current,
+          targetFields: targetContext.fields,
+          triggerFields: nextTriggerContext.fields,
+          actionType,
+        }),
+      );
+    }
+  }
+
+  function handleActionTypeChange(value: WorkflowActionType) {
+    setActionType(value);
+    const nextTargetContext =
+      value === "update_record"
+        ? triggerContext
+        : contextById.get(targetEntityTypeId);
+
+    setMappings(
+      createMappingsForTarget(
+        getActiveFields(nextTargetContext?.fields ?? []),
+        {},
+        value,
+      ),
     );
   }
 
@@ -537,7 +593,11 @@ function WorkflowDefinitionFormFields({
     const nextTargetContext = contextById.get(value);
 
     setMappings(
-      createMappingsForTarget(getActiveFields(nextTargetContext?.fields ?? []), {}),
+      createMappingsForTarget(
+        getActiveFields(nextTargetContext?.fields ?? []),
+        {},
+        actionType,
+      ),
     );
   }
 
@@ -589,7 +649,8 @@ function WorkflowDefinitionFormFields({
             : `Target field ${field.name} is archived.`,
         ),
       ...renderedTargetFields.flatMap((targetField) => {
-        const mapping = mappings[targetField.id] ?? getDefaultMapping(targetField);
+        const mapping =
+          mappings[targetField.id] ?? getDefaultMapping(targetField, actionType);
 
         if (!triggerContext) {
           return [];
@@ -628,7 +689,7 @@ function WorkflowDefinitionFormFields({
 
   return (
     <>
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <div>
           <label
             htmlFor="workflowName"
@@ -701,6 +762,30 @@ function WorkflowDefinitionFormFields({
 
         <div>
           <label
+            htmlFor="workflowActionType"
+            className="block text-sm font-medium text-slate-800"
+          >
+            Action
+          </label>
+          <select
+            id="workflowActionType"
+            name="workflowActionType"
+            value={actionType}
+            onChange={(event) =>
+              handleActionTypeChange(
+                event.currentTarget.value as WorkflowActionType,
+              )
+            }
+            className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+          >
+            <option value="create_record">Create Record</option>
+            <option value="update_record">Update Triggering Record</option>
+          </select>
+        </div>
+
+        {actionType === "create_record" ? (
+          <div>
+          <label
             htmlFor="actionTargetEntityTypeId"
             className="block text-sm font-medium text-slate-800"
           >
@@ -722,7 +807,8 @@ function WorkflowDefinitionFormFields({
             ))}
           </select>
           <FieldError message={state.errors.actionTargetEntityTypeId} />
-        </div>
+          </div>
+        ) : null}
       </div>
 
       <input name="workflowEnabled" type="hidden" value="false" />
@@ -931,12 +1017,12 @@ function WorkflowDefinitionFormFields({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold text-slate-950">
-          Set Fields
+          {actionType === "update_record" ? "Update Fields" : "Set Fields"}
         </h2>
         <div className="flex flex-col gap-3">
           {renderedTargetFields.map((targetField) => {
             const mapping =
-              mappings[targetField.id] ?? getDefaultMapping(targetField);
+              mappings[targetField.id] ?? getDefaultMapping(targetField, actionType);
             const compatibleSourceFields =
               triggerContext
                 ? getSelectableFields({
@@ -999,7 +1085,14 @@ function WorkflowDefinitionFormFields({
                     }}
                     className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
                   >
-                    {!targetField.required ? (
+                    {actionType === "update_record" ? (
+                      <>
+                        <option value="leave_unchanged">Leave unchanged</option>
+                        {!targetField.required ? (
+                          <option value="clear">Clear value</option>
+                        ) : null}
+                      </>
+                    ) : !targetField.required ? (
                       <option value="unset">Unset</option>
                     ) : null}
                     <option value="constant">Constant</option>
