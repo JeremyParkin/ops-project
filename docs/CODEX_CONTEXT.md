@@ -63,7 +63,7 @@ The canonical TypeScript domain types are in `lib/domain/types.ts`.
 
 `Workspace` is the top-level tenant boundary. The app currently uses one hard-coded demo workspace ID in `lib/domain/demo-ids.ts`, but repository calls keep `workspaceId` explicit.
 
-`EntityType` represents a user-defined kind of record. It has `id`, `workspaceId`, `name`, `slug`, optional `description`, optional `archivedAt`, and ISO 8601 UTC `createdAt`/`updatedAt` strings. Entity IDs are stable; names and slugs are user-facing metadata.
+`EntityType` represents a user-defined kind of record. It has `id`, `workspaceId`, `name`, `slug`, optional `description`, optional `displayFieldDefinitionId`, optional `archivedAt`, and ISO 8601 UTC `createdAt`/`updatedAt` strings. Entity IDs are stable; names, slugs, and display-field configuration are user-facing metadata.
 
 `FieldDefinition` represents a field on an entity. Supported field types are:
 
@@ -79,7 +79,9 @@ Each field has an immutable `key`, unique within the workspace. Record JSON valu
 
 `FieldValue` is `string | number | boolean | null`. Dates are stored as `YYYY-MM-DD` strings. All timestamp fields are ISO 8601 UTC strings.
 
-Relation display labels are generic: use the first text field by position on the target record, falling back to a shortened record ID. Archived target records can still display with an `(Archived)` suffix where needed.
+Record display labels are centralized in `lib/domain/record-repository.ts`: use a configured active text display field when present, otherwise the first active text field by position, otherwise a shortened record ID. If the configured display-field value is empty, labels fall back directly to the shortened record ID. Archived target records can still display with an `(Archived)` suffix where needed.
+
+`EntityView` represents a saved table view for one entity. Saved views live in `entity_views` with `name`, `position`, `isDefault`, JSONB filters/sorts/column field IDs, and ISO timestamps. They configure table presentation only; they do not copy schema or records.
 
 ## Data Integrity And Lifecycle Rules
 
@@ -113,8 +115,8 @@ Fields:
 - `field_definitions.archived_at` implements archive/restore.
 - Normal metadata reads exclude archived fields by default. Use `includeArchivedFields: true` only for management, workflow repair/execution validation, dependency inspection, and safe preservation paths.
 - Archived fields disappear from ordinary record forms, tables, and new workflow configuration.
-- Existing workflows referencing archived fields remain intact but invalid until corrected.
-- Hard deletion is safe-only. It is blocked if primitive record JSON contains the field key anywhere, if relation rows exist for the field, or if workflow JSON config references the field.
+- Existing workflows and saved views referencing archived fields remain intact but invalid or stale until corrected.
+- Hard deletion is safe-only. It is blocked if primitive record JSON contains the field key anywhere, if relation rows exist for the field, if workflow JSON config references the field, if the field is configured as an entity display field, or if saved table-view config references the field.
 - Primitive deletion dependency detection treats `values ? field_key` as a dependency even if the stored value is null/empty; no automatic cleanup is performed.
 
 Required field safety:
@@ -122,6 +124,24 @@ Required field safety:
 - Adding a required field to an entity with existing records is rejected.
 - Changing optional -> required is handled by RPC validation; every existing record must already have a valid non-null value. Relation fields require a relation row for every record. Violations reject the change with a count.
 - Required -> optional is always allowed.
+
+Saved views:
+
+- Every entity has an implicit All Records view.
+- Saved views support AND-only filters, typed operators, ordered visible columns, and deterministic sorting with record ID tie-breaks.
+- Text contains/not-contains matching is case-insensitive.
+- Date values must be valid `YYYY-MM-DD` strings.
+- At most one saved view per entity can be the default view.
+- Stale column/sort references are surfaced as warnings; stale filter references fail closed.
+- Deleting a view never deletes records.
+
+Record details and reverse relationships:
+
+- Stable detail route: `/entities/[entityTypeId]/records/[recordId]`.
+- Detail pages show active fields in schema order, human-readable primitive formatting, outgoing relation links, lifecycle actions, and derived incoming relationships.
+- Archived records remain directly viewable, show archived state, and can be restored or safely deleted.
+- Incoming/reverse relationships are derived from existing relation rows and metadata. They are not stored separately.
+- Reverse relationship groups exclude archived source records, archived relation fields, and archived source entities.
 
 ## Workflow System
 
@@ -200,7 +220,7 @@ Execution logs:
 
 Migrations live in `supabase/migrations/` and are currently applied manually through the Supabase SQL Editor. The latest migration is:
 
-- `0012_update_record_workflows.sql`
+- `0017_saved_table_views.sql`
 
 Major tables:
 
@@ -209,6 +229,7 @@ Major tables:
 - `field_definitions`
 - `entity_records`
 - `entity_record_relation_values`
+- `entity_views`
 - `workflows`
 - `workflow_execution_logs`
 
@@ -219,13 +240,15 @@ Important RPCs/functions:
 - `create_entity_record_with_relations` atomically creates primitive JSONB values and relation rows.
 - `update_entity_record_with_relations` atomically updates primitive values and covered relation fields; omitted relation fields are untouched, covered optional relations can be deliberately cleared.
 - `update_field_definition` renames fields and changes required status with transactional required-field validation.
+- `set_entity_display_field` sets or clears the configured display field, enforcing active same-entity text fields.
+- `set_entity_default_view` sets or clears the default saved table view without a circular entity/view FK.
 - `delete_entity_record_if_unreferenced` blocks hard deletion when incoming references exist.
 - `delete_entity_type_if_safe` blocks hard deletion for populated or structurally referenced entities.
-- `delete_field_definition_if_safe` blocks hard deletion for primitive JSON values, relation rows, or workflow JSON references.
+- `delete_field_definition_if_safe` blocks hard deletion for primitive JSON values, relation rows, workflow JSON references, display-field configuration, or saved table-view configuration.
 
 Important structural constraints include workspace-scoped uniqueness/foreign keys, relation contract constraints, field position > 0, relation target metadata requirements, workflow trigger/action check constraints, and indexes for common workspace/entity/trigger lookups.
 
-Workflow references inside `action_config` JSONB are not protected by relational FKs. Safe field deletion inspects current JSONB references transactionally, but concurrent workflow creation during field deletion remains a future hardening concern for multi-user/authenticated operation.
+Workflow and saved-view references inside JSONB are not protected by relational FKs. Safe field deletion inspects current JSONB references transactionally, but concurrent reference creation during field deletion remains a future hardening concern for multi-user/authenticated operation.
 
 ## Application Structure
 
@@ -233,15 +256,18 @@ Important directories/files:
 
 - `app/` contains Next.js routes, Server Components, and Server Actions.
 - `app/actions.ts` is the main server-action layer for entity, field, record, lifecycle, and workflow mutations.
-- `app/entities/[entityTypeId]/page.tsx` is the main entity page: metadata, records, record create form, table, field management, entity settings/lifecycle.
+- `app/entities/[entityTypeId]/page.tsx` is the main entity page: metadata, saved views, records, record create form, table, field management, entity settings/lifecycle.
+- `app/entities/[entityTypeId]/records/[recordId]/page.tsx` is the record detail page with outgoing and incoming relationship display.
 - `app/entities/[entityTypeId]/records/[recordId]/edit/page.tsx` handles metadata-driven record editing.
 - `app/entities/new/page.tsx` handles entity creation.
 - `app/workflows/page.tsx`, `app/workflows/new/page.tsx`, and `app/workflows/[workflowId]/edit/page.tsx` handle workflow listing, creation, editing, toggling, deletion, and log display.
-- `app/components/record-create-form.tsx`, `record-edit-form.tsx`, and `entity-records-table.tsx` are generic metadata-driven record UI.
+- `app/components/record-create-form.tsx`, `record-edit-form.tsx`, `record-detail-view.tsx`, and `entity-records-table.tsx` are generic metadata-driven record UI.
+- `app/components/entity-views-panel.tsx` manages saved table views.
 - `app/components/workflow-create-form.tsx` is the reusable workflow definition form for create/edit.
 - `app/components/field-*` and `entity-*` components handle metadata management.
 - `lib/domain/types.ts` and `workflow-types.ts` define domain shapes.
-- `lib/domain/metadata-repository.ts`, `record-repository.ts`, and `workflow-repository.ts` encapsulate Supabase access.
+- `lib/domain/metadata-repository.ts`, `record-repository.ts`, `view-repository.ts`, and `workflow-repository.ts` encapsulate Supabase access.
+- `lib/domain/view-types.ts`, `view-engine.ts`, and `view-validation.ts` own saved-view behavior.
 - `lib/domain/record-validation.ts`, `entity-definition-validation.ts`, `field-definition-validation.ts`, `field-edit-validation.ts`, and `workflow-validation.ts` own authoritative validation/parsing.
 - `lib/domain/workflow-engine.ts`, `workflow-conditions.ts`, `workflow-change-detection.ts`, `workflow-template.ts`, and `workflow-field-labels.ts` own workflow behavior.
 - `lib/supabase/server.ts` creates the server-only Supabase client.
@@ -258,6 +284,11 @@ Current spec files:
 - `workflows.spec.ts`
 - `record-updated-workflows.spec.ts`
 - `update-record-workflows.spec.ts`
+- `required-field-rpc-safety.spec.ts`
+- `required-field-update-rpc-safety.spec.ts`
+- `display-field.spec.ts`
+- `views.spec.ts`
+- `record-detail.spec.ts`
 
 Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
 
@@ -271,7 +302,7 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current E2E count after the update-record workflow milestone: 20 tests passing.
+Current E2E count after the Record Detail + Reverse Relationships milestone: 61 tests passing.
 
 ## Intentional Limitations
 
@@ -283,8 +314,11 @@ Current E2E count after the update-record workflow milestone: 20 tests passing.
 - No relation target changes after field creation.
 - No field/entity delete flows that rewrite dependent data.
 - No many-to-many relationships.
-- No reverse relation UI.
-- No relation traversal in workflows/templates/conditions.
+- No reverse relation editing; reverse relationships are read-only derived lists.
+- No relation traversal in workflows/templates/conditions or saved views.
+- No custom record layouts/page builder.
+- No comments, attachments, activity feed, or audit UI.
+- No Kanban/calendar/gallery saved-view modes.
 - No workflow recursion/chaining.
 - No multiple actions per workflow.
 - No schedules, queues, background workers, integrations, or webhooks.
@@ -318,19 +352,22 @@ Complete major capabilities:
 - Entity lifecycle management: rename, archive/restore, safe deletion.
 - Field lifecycle management: add, edit safe properties, archive/restore, safe deletion.
 - Relation fields with dedicated relational persistence and generic labels.
+- Configurable entity display fields.
+- Saved table views with filters, sorts, visible columns, and default view selection.
+- Record detail pages with outgoing links and derived reverse relationship visibility.
 - Workflow management: create/edit/enable/disable/delete.
 - Workflow triggers for record created and record updated.
 - Workflow actions for create record and update triggering record.
 - Conditions, watched fields, constants, source-field mappings, text templates, relation mappings, deterministic execution, isolated failures, no recursion, and execution logs.
-- Automated Playwright E2E harness covering representative entity, relation, workflow, record-updated, and update-record behavior.
+- Automated Playwright E2E harness covering representative entity, relation, display-field, saved-view, record-detail, workflow, record-updated, and update-record behavior.
 
 Sensible next areas, without committing to architecture yet:
 
 - Authentication and a real multi-workspace security model with RLS.
 - Better workflow observability/history and possibly durable background execution.
-- Record/detail pages and richer navigation for linked records.
+- Richer record detail capabilities such as layouts, comments, attachments, and activity.
 - Field/entity editing beyond currently safe properties.
-- Configurable primary display fields.
+- Richer saved views such as additional operators or alternate presentation modes.
 - More workflow actions or conditions.
 - Local/separate Supabase test environment before CI.
 - Eventually, AI-assisted configuration of deterministic entity/field/workflow definitions.

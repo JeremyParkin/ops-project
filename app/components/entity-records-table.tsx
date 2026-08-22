@@ -12,10 +12,12 @@ import type {
   FieldValue,
 } from "@/lib/domain/types";
 import type { RelationLabelsByFieldKey } from "@/lib/domain/record-repository";
+import { getRecordIdentityField } from "@/lib/domain/record-repository";
 
 type EntityRecordsTableProps = {
   entityType: EntityType;
   fields: FieldDefinition[];
+  identityFields?: FieldDefinition[];
   records: EntityRecord[];
   relationLabelsByFieldKey?: RelationLabelsByFieldKey;
   recordEditPathBase?: string;
@@ -75,11 +77,20 @@ function formatTableCell(
 export function EntityRecordsTable({
   entityType,
   fields,
+  identityFields = fields,
   records,
   relationLabelsByFieldKey = {},
   recordEditPathBase,
   recordActionContext,
 }: EntityRecordsTableProps) {
+  const identityField = getRecordIdentityField({
+    entityType,
+    fields: identityFields,
+  });
+  const identityFieldIsVisible = fields.some(
+    (field) => field.id === identityField?.id,
+  );
+
   return (
     <section className="mx-auto w-full max-w-6xl">
       <div className="mb-6">
@@ -129,19 +140,40 @@ export function EntityRecordsTable({
                   key={record.id}
                   className={record.archivedAt ? "bg-slate-50 text-slate-500" : ""}
                 >
-                  {fields.map((field) => (
-                    <td key={field.id} className="px-4 py-3">
-                      {formatTableCell(
-                        field,
-                        record.values[field.key],
-                        relationLabelsByFieldKey,
-                      )}
-                    </td>
-                  ))}
+                  {fields.map((field) => {
+                    const cell = formatTableCell(
+                      field,
+                      record.values[field.key],
+                      relationLabelsByFieldKey,
+                    );
+
+                    return (
+                      <td key={field.id} className="px-4 py-3">
+                        {field.id === identityField?.id && recordEditPathBase ? (
+                          <Link
+                            href={`${recordEditPathBase}/${record.id}`}
+                            className="font-medium text-slate-950 underline-offset-4 hover:underline"
+                          >
+                            {cell}
+                          </Link>
+                        ) : (
+                          cell
+                        )}
+                      </td>
+                    );
+                  })}
                   {recordEditPathBase ? (
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-3">
+                          {!identityFieldIsVisible ? (
+                            <Link
+                              href={`${recordEditPathBase}/${record.id}`}
+                              className="text-sm font-medium text-slate-950 underline-offset-4 hover:underline"
+                            >
+                              Open
+                            </Link>
+                          ) : null}
                           <Link
                             href={`${recordEditPathBase}/${record.id}/edit`}
                             className="text-sm font-medium text-slate-950 underline-offset-4 hover:underline"

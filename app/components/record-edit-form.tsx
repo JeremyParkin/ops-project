@@ -19,6 +19,7 @@ type RecordEditFormProps = {
     state: RecordFormState,
     formData: FormData,
   ) => Promise<RecordFormState>;
+  returnTo?: "detail";
 };
 
 function createInitialEditState(
@@ -65,6 +66,7 @@ export function RecordEditForm({
   relationOptionsByFieldKey = {},
   entityNameById = {},
   updateRecordAction,
+  returnTo,
 }: RecordEditFormProps) {
   const [state, formAction, pending] = useActionState(
     updateRecordAction,
@@ -94,6 +96,7 @@ export function RecordEditForm({
       </div>
 
       <form action={formAction} className="grid gap-4 md:grid-cols-2">
+        {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
         {orderedFields.map((field) => {
           const fieldId = `edit-record-field-${field.key}`;
           const fieldValue = getFieldValue(state, field);

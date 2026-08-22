@@ -311,6 +311,7 @@ export async function archiveRecord(
   }
 
   revalidatePath(`/entities/${context.entityTypeId}`);
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
 
   return {
     success: true,
@@ -346,6 +347,7 @@ export async function restoreRecord(
   }
 
   revalidatePath(`/entities/${context.entityTypeId}`);
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
 
   return {
     success: true,
@@ -421,6 +423,20 @@ export async function deleteRecord(
     success: true,
     message: "Record deleted.",
   };
+}
+
+export async function deleteRecordFromDetail(
+  context: UpdateRecordContext,
+  previousState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  const result = await deleteRecord(context, previousState, formData);
+
+  if (!result.success) {
+    return result;
+  }
+
+  redirect(`/entities/${context.entityTypeId}`);
 }
 
 export async function updateRecord(
@@ -520,6 +536,12 @@ export async function updateRecord(
   }
 
   revalidatePath(`/entities/${entityType.id}`);
+  revalidatePath(`/entities/${entityType.id}/records/${context.recordId}`);
+
+  if (formData.get("returnTo") === "detail") {
+    redirect(`/entities/${entityType.id}/records/${context.recordId}`);
+  }
+
   redirect(`/entities/${entityType.id}`);
 }
 

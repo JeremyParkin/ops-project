@@ -310,6 +310,7 @@ export default async function EntityPage({
         <EntityRecordsTable
           entityType={entityType}
           fields={evaluatedView.visibleFields}
+          identityFields={fields}
           records={evaluatedView.records}
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
           recordEditPathBase={

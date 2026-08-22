@@ -12,6 +12,22 @@ type EntityRecordRow = {
   updated_at: string;
 };
 
+type FieldDefinitionRow = {
+  id: string;
+  workspace_id: string;
+  entity_type_id: string;
+  key: string;
+  name: string;
+  slug: string;
+  type: FieldDefinition["type"];
+  related_entity_type_id: string | null;
+  required: boolean;
+  position: number;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type ListEntityRecordsInput = {
   workspaceId: string;
   entityTypeId: EntityType["id"];
@@ -53,12 +69,37 @@ export type RecordActionState = {
   message: string;
 };
 
+export type IncomingRelationGroup = {
+  sourceEntityType: EntityType;
+  sourceFields: FieldDefinition[];
+  relationField: FieldDefinition;
+  records: EntityRecord[];
+};
+
 function mapEntityRecord(row: EntityRecordRow): EntityRecord {
   return {
     id: row.id,
     workspaceId: row.workspace_id,
     entityTypeId: row.entity_type_id,
     values: row.values,
+    archivedAt: row.archived_at ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapFieldDefinition(row: FieldDefinitionRow): FieldDefinition {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    entityTypeId: row.entity_type_id,
+    key: row.key,
+    name: row.name,
+    slug: row.slug,
+    type: row.type,
+    relatedEntityTypeId: row.related_entity_type_id ?? undefined,
+    required: row.required,
+    position: row.position,
     archivedAt: row.archived_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -91,6 +132,16 @@ function getConfiguredDisplayField(
   );
 }
 
+export function getRecordIdentityField({
+  entityType,
+  fields,
+}: {
+  entityType: EntityType;
+  fields: FieldDefinition[];
+}) {
+  return getConfiguredDisplayField(entityType, fields) ?? getFallbackDisplayField(fields);
+}
+
 export function getRecordLabel({
   entityType,
   fields,
@@ -100,8 +151,7 @@ export function getRecordLabel({
   fields: FieldDefinition[];
   record: EntityRecord;
 }) {
-  const configuredDisplayField = getConfiguredDisplayField(entityType, fields);
-  const labelField = configuredDisplayField ?? getFallbackDisplayField(fields);
+  const labelField = getRecordIdentityField({ entityType, fields });
 
   if (!labelField) {
     return shortenRecordId(record.id);
@@ -601,6 +651,167 @@ export async function getIncomingReferenceSummary({
       count,
     })),
   };
+}
+
+export async function listIncomingRelationsForRecord({
+  workspaceId,
+  targetEntityTypeId,
+  targetRecordId,
+}: {
+  workspaceId: string;
+  targetEntityTypeId: string;
+  targetRecordId: string;
+}): Promise<IncomingRelationGroup[]> {
+  const supabase = createServerSupabaseClient();
+  const { data: relationFields, error: fieldError } = await supabase
+    .from("field_definitions")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .eq("type", "relation")
+    .eq("related_entity_type_id", targetEntityTypeId)
+    .is("archived_at", null)
+    .returns<FieldDefinitionRow[]>();
+
+  if (fieldError) {
+    throw new Error(`Unable to load incoming relation fields: ${fieldError.message}`);
+  }
+
+  if (relationFields.length === 0) {
+    return [];
+  }
+
+  const { data: relationRows, error: relationError } = await supabase
+    .from("entity_record_relation_values")
+    .select("source_entity_type_id, source_record_id, field_definition_id")
+    .eq("workspace_id", workspaceId)
+    .eq("target_entity_type_id", targetEntityTypeId)
+    .eq("target_record_id", targetRecordId)
+    .returns<
+      Array<{
+        source_entity_type_id: string;
+        source_record_id: string;
+        field_definition_id: string;
+      }>
+    >();
+
+  if (relationError) {
+    throw new Error(`Unable to load incoming relations: ${relationError.message}`);
+  }
+
+  if (relationRows.length === 0) {
+    return [];
+  }
+
+  const relationFieldById = new Map(
+    relationFields.map((fieldRow) => [
+      fieldRow.id,
+      mapFieldDefinition(fieldRow),
+    ]),
+  );
+  const relationRowsBySourceEntityId = new Map<
+    string,
+    Array<{
+      sourceRecordId: string;
+      fieldDefinitionId: string;
+    }>
+  >();
+
+  relationRows.forEach((row) => {
+    if (!relationFieldById.has(row.field_definition_id)) {
+      return;
+    }
+
+    const rows = relationRowsBySourceEntityId.get(row.source_entity_type_id) ?? [];
+    rows.push({
+      sourceRecordId: row.source_record_id,
+      fieldDefinitionId: row.field_definition_id,
+    });
+    relationRowsBySourceEntityId.set(row.source_entity_type_id, rows);
+  });
+
+  const groups: IncomingRelationGroup[] = [];
+
+  await Promise.all(
+    [...relationRowsBySourceEntityId].map(async ([sourceEntityTypeId, rows]) => {
+      const { entityType: sourceEntityType, fields: sourceFields } =
+        await getEntityContext({
+          workspaceId,
+          entityTypeId: sourceEntityTypeId,
+        });
+
+      if (sourceEntityType.archivedAt) {
+        return;
+      }
+
+      const sourceRecordIds = [...new Set(rows.map((row) => row.sourceRecordId))];
+      const sourceRecords = await listEntityRecords({
+        workspaceId,
+        entityTypeId: sourceEntityTypeId,
+        fields: sourceFields,
+      });
+      const sourceRecordById = new Map(
+        sourceRecords
+          .filter((record) => sourceRecordIds.includes(record.id))
+          .map((record) => [record.id, record]),
+      );
+      const recordsByRelationFieldId = new Map<string, EntityRecord[]>();
+
+      rows.forEach((row) => {
+        const record = sourceRecordById.get(row.sourceRecordId);
+
+        if (!record) {
+          return;
+        }
+
+        const records = recordsByRelationFieldId.get(row.fieldDefinitionId) ?? [];
+        records.push(record);
+        recordsByRelationFieldId.set(row.fieldDefinitionId, records);
+      });
+
+      recordsByRelationFieldId.forEach((records, fieldDefinitionId) => {
+        const relationField = relationFieldById.get(fieldDefinitionId);
+
+        if (!relationField || records.length === 0) {
+          return;
+        }
+
+        groups.push({
+          sourceEntityType,
+          sourceFields,
+          relationField,
+          records: [...records].sort((left, right) =>
+            getRecordLabel({
+              entityType: sourceEntityType,
+              fields: sourceFields,
+              record: left,
+            }).localeCompare(
+              getRecordLabel({
+                entityType: sourceEntityType,
+                fields: sourceFields,
+                record: right,
+              }),
+              undefined,
+              { sensitivity: "base", numeric: true },
+            ),
+          ),
+        });
+      });
+    }),
+  );
+
+  return groups.sort((left, right) => {
+    const entityCompare = left.sourceEntityType.name.localeCompare(
+      right.sourceEntityType.name,
+      undefined,
+      { sensitivity: "base", numeric: true },
+    );
+
+    if (entityCompare !== 0) {
+      return entityCompare;
+    }
+
+    return left.relationField.position - right.relationField.position;
+  });
 }
 
 export async function deleteEntityRecord({

@@ -136,7 +136,11 @@ export async function validateRecordFormData(
   const submittedValues: Record<string, string> = {};
 
   for (const key of formData.keys()) {
-    if (!key.startsWith("$ACTION_") && !fieldKeys.has(key)) {
+    if (
+      !key.startsWith("$ACTION_") &&
+      key !== "returnTo" &&
+      !fieldKeys.has(key)
+    ) {
       errors._form = "The submission included an unknown field.";
     }
   }
