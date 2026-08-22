@@ -46,6 +46,13 @@ export type RecordUpdatedFixture = {
   secondClientRecordId: string;
 };
 
+export type RelatedRecordWorkflowFixture = {
+  client: TestEntity;
+  deliverable: TestEntity;
+  firstClientRecordId: string;
+  secondClientRecordId: string;
+};
+
 type SupabaseClient = ReturnType<typeof createSupabaseTestClient>;
 
 export function createTestRun(): TestRun {
@@ -403,6 +410,37 @@ export async function createRecordUpdatedFixture(
     firstClientRecordId,
     secondClientRecordId,
   };
+}
+
+export async function createRelatedRecordWorkflowFixture(
+  run: TestRun,
+): Promise<RelatedRecordWorkflowFixture> {
+  const supabase = createSupabaseTestClient();
+  const client = await createEntity(supabase, run, "Client", [
+    { slug: "name", name: "Name", type: "text", required: true },
+    { slug: "last_status", name: "Last Deliverable Status", type: "text" },
+    { slug: "notes", name: "Notes", type: "text" },
+  ]);
+  const deliverable = await createEntity(supabase, run, "Deliverable", [
+    { slug: "name", name: "Name", type: "text", required: true },
+    { slug: "status", name: "Status", type: "text" },
+    {
+      slug: "client",
+      name: "Client",
+      type: "relation",
+      relatedEntityTypeId: client.id,
+    },
+  ]);
+  const firstClientRecordId = await createEntityRecord({
+    entity: client,
+    valuesBySlug: { name: `${run.label} Acme`, notes: "Original" },
+  });
+  const secondClientRecordId = await createEntityRecord({
+    entity: client,
+    valuesBySlug: { name: `${run.label} Contoso` },
+  });
+
+  return { client, deliverable, firstClientRecordId, secondClientRecordId };
 }
 
 export async function archiveTestField(field: TestField) {

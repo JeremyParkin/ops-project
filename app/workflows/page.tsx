@@ -101,6 +101,8 @@ export default async function WorkflowsPage() {
                     <td className="px-4 py-3">
                       {workflow.actionType === "update_record"
                         ? "Update triggering record"
+                        : workflow.actionType === "update_related_record"
+                          ? "Update related record"
                         : `Create record in ${
                             workflow.actionTargetEntityTypeId
                               ? entityNameById.get(

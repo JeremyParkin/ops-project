@@ -181,29 +181,42 @@ async function createRelationLabelResolver(workspaceId: string) {
   };
 }
 
-async function executeUpdateRecordAction({
+class RelatedTargetResolvedError extends Error {
+  constructor(
+    cause: unknown,
+    readonly actionEntityTypeId: string,
+    readonly actionRecordId: string,
+  ) {
+    super(getErrorMessage(cause));
+  }
+}
+
+async function executeRecordUpdate({
   workspaceId,
   sourceContext,
-  triggerRecord,
+  sourceRecord,
+  targetContext,
+  targetRecord,
   workflow,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
-  triggerRecord: EntityRecord;
+  sourceRecord: EntityRecord;
+  targetContext: Awaited<ReturnType<typeof getEntityContext>>;
+  targetRecord: EntityRecord;
   workflow: WorkflowDefinition;
 }) {
-  const latestRecord = await getEntityRecord({
-    workspaceId,
-    entityTypeId: sourceContext.entityType.id,
-    recordId: triggerRecord.id,
-    fields: sourceContext.fields,
-  });
-  const fieldById = new Map(sourceContext.fields.map((field) => [field.id, field]));
-  const proposedValues: EntityRecord["values"] = { ...latestRecord.values };
-  const touchedFields: typeof sourceContext.fields = [];
+  const sourceFieldById = new Map(
+    sourceContext.fields.map((field) => [field.id, field]),
+  );
+  const targetFieldById = new Map(
+    targetContext.fields.map((field) => [field.id, field]),
+  );
+  const proposedValues: EntityRecord["values"] = { ...targetRecord.values };
+  const touchedFields: typeof targetContext.fields = [];
 
   for (const mapping of workflow.actionConfig.fieldMappings) {
-    const targetField = fieldById.get(mapping.targetFieldDefinitionId);
+    const targetField = targetFieldById.get(mapping.targetFieldDefinitionId);
 
     if (!targetField) {
       throw new Error("Workflow references a target field that no longer exists.");
@@ -242,7 +255,7 @@ async function executeUpdateRecordAction({
     }
 
     if (mapping.source.type === "source_field") {
-      const sourceField = fieldById.get(mapping.source.sourceFieldDefinitionId);
+      const sourceField = sourceFieldById.get(mapping.source.sourceFieldDefinitionId);
 
       if (!sourceField) {
         throw new Error("Workflow references a source field that no longer exists.");
@@ -260,7 +273,7 @@ async function executeUpdateRecordAction({
         );
       }
 
-      proposedValues[targetField.key] = latestRecord.values[sourceField.key] ?? null;
+      proposedValues[targetField.key] = sourceRecord.values[sourceField.key] ?? null;
       continue;
     }
 
@@ -270,8 +283,8 @@ async function executeUpdateRecordAction({
       },
       sourceEntityType: sourceContext.entityType,
       sourceFields: sourceContext.fields,
-      targetFields: sourceContext.fields,
-      sourceRecord: latestRecord,
+      targetFields: targetContext.fields,
+      sourceRecord,
       resolveRelationLabel: await createRelationLabelResolver(workspaceId),
     });
 
@@ -279,13 +292,13 @@ async function executeUpdateRecordAction({
   }
 
   const changedFields = touchedFields.filter(
-    (field) => !valuesEqual(latestRecord.values[field.key], proposedValues[field.key]),
+    (field) => !valuesEqual(targetRecord.values[field.key], proposedValues[field.key]),
   );
 
   if (changedFields.length === 0) {
     return {
-      actionRecordId: latestRecord.id,
-      actionEntityTypeId: sourceContext.entityType.id,
+      actionRecordId: targetRecord.id,
+      actionEntityTypeId: targetContext.entityType.id,
       changed: false,
     };
   }
@@ -317,17 +330,118 @@ async function executeUpdateRecordAction({
 
   await updateEntityRecord({
     workspaceId,
-    entityTypeId: sourceContext.entityType.id,
-    recordId: latestRecord.id,
-    fields: sourceContext.fields,
+    entityTypeId: targetContext.entityType.id,
+    recordId: targetRecord.id,
+    fields: targetContext.fields,
     values: proposedValues,
   });
 
   return {
-    actionRecordId: latestRecord.id,
-    actionEntityTypeId: sourceContext.entityType.id,
+    actionRecordId: targetRecord.id,
+    actionEntityTypeId: targetContext.entityType.id,
     changed: true,
   };
+}
+
+async function executeUpdateRecordAction({
+  workspaceId,
+  sourceContext,
+  triggerRecord,
+  workflow,
+}: {
+  workspaceId: string;
+  sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
+  triggerRecord: EntityRecord;
+  workflow: WorkflowDefinition;
+}) {
+  const latestRecord = await getEntityRecord({
+    workspaceId,
+    entityTypeId: sourceContext.entityType.id,
+    recordId: triggerRecord.id,
+    fields: sourceContext.fields,
+  });
+
+  return executeRecordUpdate({
+    workspaceId,
+    sourceContext,
+    sourceRecord: latestRecord,
+    targetContext: sourceContext,
+    targetRecord: latestRecord,
+    workflow,
+  });
+}
+
+async function executeUpdateRelatedRecordAction({
+  workspaceId,
+  sourceContext,
+  triggerRecord,
+  workflow,
+}: {
+  workspaceId: string;
+  sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
+  triggerRecord: EntityRecord;
+  workflow: WorkflowDefinition;
+}) {
+  const latestTriggerRecord = await getEntityRecord({
+    workspaceId,
+    entityTypeId: sourceContext.entityType.id,
+    recordId: triggerRecord.id,
+    fields: sourceContext.fields,
+  });
+  const relatedField = sourceContext.fields.find(
+    (field) => field.id === workflow.actionConfig.relatedFieldDefinitionId,
+  );
+
+  if (!relatedField || relatedField.type !== "relation" || !relatedField.relatedEntityTypeId) {
+    throw new Error("Workflow related record field is invalid.");
+  }
+
+  if (relatedField.archivedAt) {
+    throw new Error(`Workflow references archived related field ${relatedField.name}.`);
+  }
+
+  const relatedRecordId = latestTriggerRecord.values[relatedField.key];
+
+  if (typeof relatedRecordId !== "string" || !relatedRecordId) {
+    throw new Error(`Related record field ${relatedField.name} has no record.`);
+  }
+
+  const targetContext = await getEntityContext({
+    workspaceId,
+    entityTypeId: relatedField.relatedEntityTypeId,
+    includeArchivedFields: true,
+  });
+  const targetRecord = await getEntityRecord({
+    workspaceId,
+    entityTypeId: targetContext.entityType.id,
+    recordId: relatedRecordId,
+    fields: targetContext.fields,
+  });
+
+  try {
+    if (targetContext.entityType.archivedAt) {
+      throw new Error("Workflow related target entity is archived.");
+    }
+
+    if (targetRecord.archivedAt) {
+      throw new Error("Workflow related target record is archived.");
+    }
+
+    return await executeRecordUpdate({
+      workspaceId,
+      sourceContext,
+      sourceRecord: latestTriggerRecord,
+      targetContext,
+      targetRecord,
+      workflow,
+    });
+  } catch (error) {
+    throw new RelatedTargetResolvedError(
+      error,
+      targetContext.entityType.id,
+      targetRecord.id,
+    );
+  }
 }
 
 async function validateAndEvaluateConditions({
@@ -444,7 +558,14 @@ export async function executeRecordCreatedWorkflows({
               triggerRecord,
               workflow,
             })
-          : await executeCreateRecordAction({
+          : workflow.actionType === "update_related_record"
+            ? await executeUpdateRelatedRecordAction({
+                workspaceId,
+                sourceContext,
+                triggerRecord,
+                workflow,
+              })
+            : await executeCreateRecordAction({
               workspaceId,
               sourceContext,
               triggerRecord,
@@ -468,6 +589,10 @@ export async function executeRecordCreatedWorkflows({
       summary.succeeded += 1;
       summary.targetEntityTypeIds.push(actionEntityTypeId);
     } catch (error) {
+      if (error instanceof RelatedTargetResolvedError) {
+        actionEntityTypeId = error.actionEntityTypeId;
+        actionRecordId = error.actionRecordId;
+      }
       errorMessage = getErrorMessage(error);
       summary.failed += 1;
     }
@@ -616,7 +741,8 @@ export async function executeRecordUpdatedWorkflows({
         // watched-field detection and conditions do not get re-evaluated after
         // earlier workflow actions. Matching workflows still execute in
         // deterministic order, and update_record actions reload the latest
-        // authoritative record before resolving their mappings.
+        // authoritative record before resolving their mappings. Related-record
+        // actions likewise follow the latest direct relation value.
         const actionResult =
           workflow.actionType === "update_record"
             ? await executeUpdateRecordAction({
@@ -625,7 +751,14 @@ export async function executeRecordUpdatedWorkflows({
                 triggerRecord,
                 workflow,
               })
-            : await executeCreateRecordAction({
+            : workflow.actionType === "update_related_record"
+              ? await executeUpdateRelatedRecordAction({
+                  workspaceId,
+                  sourceContext,
+                  triggerRecord,
+                  workflow,
+                })
+              : await executeCreateRecordAction({
                 workspaceId,
                 sourceContext,
                 triggerRecord,
@@ -652,6 +785,10 @@ export async function executeRecordUpdatedWorkflows({
         summary.targetEntityTypeIds.push(actionEntityTypeId);
       }
     } catch (error) {
+      if (error instanceof RelatedTargetResolvedError) {
+        actionEntityTypeId = error.actionEntityTypeId;
+        actionRecordId = error.actionRecordId;
+      }
       status = "failed";
       errorMessage = getErrorMessage(error);
       summary.failed += 1;

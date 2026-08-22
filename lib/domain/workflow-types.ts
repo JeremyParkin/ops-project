@@ -7,7 +7,10 @@ import type {
 } from "./types";
 
 export type WorkflowTriggerType = "record_created" | "record_updated";
-export type WorkflowActionType = "create_record" | "update_record";
+export type WorkflowActionType =
+  | "create_record"
+  | "update_record"
+  | "update_related_record";
 export type WorkflowExecutionStatus = "succeeded" | "failed" | "skipped";
 export type WorkflowConditionOperator =
   | "equals"
@@ -69,6 +72,7 @@ export type WorkflowFieldMapping =
     };
 
 export type WorkflowActionConfig = {
+  relatedFieldDefinitionId?: FieldDefinition["id"];
   triggerConfig?: {
     watchedFieldDefinitionIds?: FieldDefinition["id"][];
   };

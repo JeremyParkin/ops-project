@@ -117,6 +117,10 @@ export function workflowReferencesField(
     return true;
   }
 
+  if (workflow.actionConfig.relatedFieldDefinitionId === fieldDefinitionId) {
+    return true;
+  }
+
   if (
     (workflow.actionConfig.conditions ?? []).some(
       (condition) => condition.sourceFieldDefinitionId === fieldDefinitionId,

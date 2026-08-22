@@ -57,6 +57,7 @@ export type WorkflowFormState = {
     triggerEntityTypeId: string;
     actionType: WorkflowActionType;
     actionTargetEntityTypeId: string;
+    relatedFieldDefinitionId: string;
     watchedFieldDefinitionIds: string[];
     conditions: WorkflowConditionFormValue[];
     mappings: Record<string, WorkflowMappingFormValue>;
@@ -94,6 +95,7 @@ export const initialWorkflowFormState: WorkflowFormState = {
     triggerEntityTypeId: "",
     actionType: "create_record",
     actionTargetEntityTypeId: "",
+    relatedFieldDefinitionId: "",
     watchedFieldDefinitionIds: [],
     conditions: [],
     mappings: {},
@@ -259,17 +261,28 @@ export async function validateWorkflowFormData({
     rawTriggerType === "record_updated" ? "record_updated" : "record_created";
   const rawActionType = getString(formData, "workflowActionType");
   const actionType: WorkflowActionType =
-    rawActionType === "update_record" ? "update_record" : "create_record";
+    rawActionType === "update_record" || rawActionType === "update_related_record"
+      ? rawActionType
+      : "create_record";
   const triggerEntityTypeId = getString(formData, "triggerEntityTypeId");
   const actionTargetEntityTypeId =
     actionType === "create_record"
       ? getString(formData, "actionTargetEntityTypeId")
       : "";
+  const relatedFieldDefinitionId = getString(
+    formData,
+    "relatedFieldDefinitionId",
+  );
   const triggerContext = entityContextById.get(triggerEntityTypeId);
+  const relatedField = triggerContext?.fields.find(
+    (field) => field.id === relatedFieldDefinitionId,
+  );
   const targetContext =
     actionType === "create_record"
       ? entityContextById.get(actionTargetEntityTypeId)
-      : triggerContext;
+      : actionType === "update_related_record" && relatedField?.relatedEntityTypeId
+        ? entityContextById.get(relatedField.relatedEntityTypeId)
+        : triggerContext;
   const errors: Record<string, string> = {};
   const conditionRows = getConditionRows(formData);
   const mappings: WorkflowFormState["values"]["mappings"] = {};
@@ -284,6 +297,18 @@ export async function validateWorkflowFormData({
 
   if (actionType === "create_record" && !targetContext) {
     errors.actionTargetEntityTypeId = "Choose an active target entity.";
+  }
+
+  if (actionType === "update_related_record") {
+    if (!relatedField || relatedField.entityTypeId !== triggerEntityTypeId) {
+      errors.relatedFieldDefinitionId = "Choose a relation field on the trigger entity.";
+    } else if (relatedField.archivedAt) {
+      errors.relatedFieldDefinitionId = getArchivedFieldError(relatedField);
+    } else if (relatedField.type !== "relation" || !relatedField.relatedEntityTypeId) {
+      errors.relatedFieldDefinitionId = "Choose a relation field on the trigger entity.";
+    } else if (!targetContext) {
+      errors.relatedFieldDefinitionId = "The related entity must be active.";
+    }
   }
 
   const configMappings: WorkflowActionConfig["fieldMappings"] = [];
@@ -420,9 +445,11 @@ export async function validateWorkflowFormData({
 
       const rawMappingType = getString(formData, `mappingType:${targetField.id}`);
       const validMappingTypes =
-        actionType === "update_record" ? updateMappingTypes : createMappingTypes;
+        actionType === "update_record" || actionType === "update_related_record"
+          ? updateMappingTypes
+          : createMappingTypes;
       const defaultMappingType =
-        actionType === "update_record"
+        actionType === "update_record" || actionType === "update_related_record"
           ? "leave_unchanged"
           : targetField.required
             ? "constant"
@@ -454,7 +481,7 @@ export async function validateWorkflowFormData({
       }
 
       if (mappingType === "unset") {
-        if (actionType === "update_record") {
+        if (actionType === "update_record" || actionType === "update_related_record") {
           errors[`mappingType:${targetField.id}`] =
             `${targetField.name} cannot use Unset for an update action. Choose Leave unchanged or Clear value.`;
           continue;
@@ -475,7 +502,7 @@ export async function validateWorkflowFormData({
       }
 
       if (mappingType === "leave_unchanged") {
-        if (actionType !== "update_record") {
+        if (actionType !== "update_record" && actionType !== "update_related_record") {
           errors[`mappingType:${targetField.id}`] =
             `${targetField.name} cannot use Leave unchanged for a create action.`;
           continue;
@@ -491,7 +518,7 @@ export async function validateWorkflowFormData({
       }
 
       if (mappingType === "clear") {
-        if (actionType !== "update_record") {
+        if (actionType !== "update_record" && actionType !== "update_related_record") {
           errors[`mappingType:${targetField.id}`] =
             `${targetField.name} cannot use Clear value for a create action.`;
         } else if (targetField.required) {
@@ -594,6 +621,13 @@ export async function validateWorkflowFormData({
         });
       }
     }
+
+    if (
+      actionType === "update_related_record" &&
+      configMappings.every((mapping) => mapping.source.type === "leave_unchanged")
+    ) {
+      errors._form = "Configure at least one field to update.";
+    }
   }
 
   const state: WorkflowFormState = {
@@ -608,6 +642,7 @@ export async function validateWorkflowFormData({
       triggerEntityTypeId,
       actionType,
       actionTargetEntityTypeId,
+      relatedFieldDefinitionId,
       watchedFieldDefinitionIds,
       conditions: conditionRows,
       mappings,
@@ -635,6 +670,10 @@ export async function validateWorkflowFormData({
       actionTargetEntityTypeId:
         actionType === "create_record" ? actionTargetEntityTypeId : undefined,
       actionConfig: {
+        relatedFieldDefinitionId:
+          actionType === "update_related_record"
+            ? relatedFieldDefinitionId
+            : undefined,
         triggerConfig:
           triggerType === "record_updated"
             ? {
@@ -672,6 +711,8 @@ export function createWorkflowFormStateFromDefinition({
       triggerEntityTypeId: workflow.triggerEntityTypeId,
       actionType: workflow.actionType,
       actionTargetEntityTypeId: workflow.actionTargetEntityTypeId ?? "",
+      relatedFieldDefinitionId:
+        workflow.actionConfig.relatedFieldDefinitionId ?? "",
       watchedFieldDefinitionIds:
         workflow.triggerType === "record_updated"
           ? workflow.actionConfig.triggerConfig?.watchedFieldDefinitionIds ?? []

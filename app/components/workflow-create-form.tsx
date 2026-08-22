@@ -111,7 +111,7 @@ function getDefaultMapping(
 ): LocalMapping {
   return {
     type:
-      actionType === "update_record"
+      actionType === "update_record" || actionType === "update_related_record"
         ? "leave_unchanged"
         : field.required
           ? "constant"
@@ -413,9 +413,16 @@ function WorkflowDefinitionFormFields({
     state.values.actionTargetEntityTypeId ||
     entityContexts[0]?.entityType.id ||
     "";
+  const initialRelatedFieldDefinitionId = state.values.relatedFieldDefinitionId;
+  const initialTriggerContext = contextById.get(initialTriggerEntityTypeId);
+  const initialRelatedField = initialTriggerContext?.fields.find(
+    (field) => field.id === initialRelatedFieldDefinitionId,
+  );
   const initialTargetContext =
     initialActionType === "update_record"
       ? contextById.get(initialTriggerEntityTypeId)
+      : initialActionType === "update_related_record"
+        ? contextById.get(initialRelatedField?.relatedEntityTypeId ?? "")
       : contextById.get(initialTargetEntityTypeId);
   const initialTargetFields = initialTargetContext
     ? getRenderedTargetFields({
@@ -439,6 +446,9 @@ function WorkflowDefinitionFormFields({
   const [targetEntityTypeId, setTargetEntityTypeId] = useState(
     initialTargetEntityTypeId,
   );
+  const [relatedFieldDefinitionId, setRelatedFieldDefinitionId] = useState(
+    initialRelatedFieldDefinitionId,
+  );
   const [mappings, setMappings] = useState<Record<string, LocalMapping>>(
     createMappingsForTarget(
       initialTargetFields,
@@ -453,6 +463,12 @@ function WorkflowDefinitionFormFields({
   const targetContext =
     actionType === "update_record"
       ? triggerContext
+      : actionType === "update_related_record"
+        ? contextById.get(
+            triggerContext?.fields.find(
+              (field) => field.id === relatedFieldDefinitionId,
+            )?.relatedEntityTypeId ?? "",
+          )
       : contextById.get(targetEntityTypeId);
   const entityNameById = Object.fromEntries(
     entityContexts.map((context) => [
@@ -479,7 +495,10 @@ function WorkflowDefinitionFormFields({
       ...current,
       [targetFieldId]: updater(
         current[targetFieldId] ?? {
-          type: actionType === "update_record" ? "leave_unchanged" : "unset",
+          type:
+            actionType === "update_record" || actionType === "update_related_record"
+              ? "leave_unchanged"
+              : "unset",
           constantValue: "",
           sourceFieldDefinitionId: "",
           template: "",
@@ -516,6 +535,9 @@ function WorkflowDefinitionFormFields({
           actionType,
         ),
       );
+    } else if (actionType === "update_related_record") {
+      setRelatedFieldDefinitionId("");
+      setMappings({});
     } else {
       setMappings((current) =>
         cleanMappingsForTrigger({
@@ -533,6 +555,8 @@ function WorkflowDefinitionFormFields({
     const nextTargetContext =
       value === "update_record"
         ? triggerContext
+        : value === "update_related_record"
+          ? undefined
         : contextById.get(targetEntityTypeId);
 
     setMappings(
@@ -540,6 +564,22 @@ function WorkflowDefinitionFormFields({
         getActiveFields(nextTargetContext?.fields ?? []),
         {},
         value,
+      ),
+    );
+  }
+
+  function handleRelatedFieldChange(value: string) {
+    setRelatedFieldDefinitionId(value);
+    const relatedField = triggerContext?.fields.find((field) => field.id === value);
+    const nextTargetContext = contextById.get(
+      relatedField?.relatedEntityTypeId ?? "",
+    );
+
+    setMappings(
+      createMappingsForTarget(
+        getActiveFields(nextTargetContext?.fields ?? []),
+        {},
+        actionType,
       ),
     );
   }
@@ -606,6 +646,10 @@ function WorkflowDefinitionFormFields({
       (field) =>
         !field.archivedAt || watchedFieldDefinitionIds.includes(field.id),
     ) ?? [];
+  const relatedFields = getSelectableFields({
+    fields: triggerContext?.fields ?? [],
+    selectedFieldId: relatedFieldDefinitionId,
+  }).filter((field) => field.type === "relation");
   const renderedTargetFields = targetContext
     ? getRenderedTargetFields({
         fields: targetContext.fields,
@@ -626,6 +670,14 @@ function WorkflowDefinitionFormFields({
               (field) =>
                 `Watched field ${getSourceFieldLabel(field)} is archived.`,
             )
+        : []),
+      ...(actionType === "update_related_record"
+        ? relatedFields
+            .filter(
+              (field) =>
+                field.id === relatedFieldDefinitionId && Boolean(field.archivedAt),
+            )
+            .map((field) => `Related field ${getSourceFieldLabel(field)} is archived.`)
         : []),
       ...conditions
         .map((condition) =>
@@ -780,6 +832,7 @@ function WorkflowDefinitionFormFields({
           >
             <option value="create_record">Create Record</option>
             <option value="update_record">Update Triggering Record</option>
+            <option value="update_related_record">Update Related Record</option>
           </select>
         </div>
 
@@ -807,6 +860,37 @@ function WorkflowDefinitionFormFields({
             ))}
           </select>
           <FieldError message={state.errors.actionTargetEntityTypeId} />
+          </div>
+        ) : null}
+        {actionType === "update_related_record" ? (
+          <div>
+            <label
+              htmlFor="relatedFieldDefinitionId"
+              className="block text-sm font-medium text-slate-800"
+            >
+              Related Record Field
+            </label>
+            <select
+              id="relatedFieldDefinitionId"
+              name="relatedFieldDefinitionId"
+              value={relatedFieldDefinitionId}
+              onChange={(event) => handleRelatedFieldChange(event.currentTarget.value)}
+              className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+            >
+              <option value="">Choose relation field</option>
+              {relatedFields.map((field) => (
+                <option key={field.id} value={field.id}>
+                  {getSourceFieldLabel(field)}
+                  {field.archivedAt ? " (Archived)" : ""}
+                </option>
+              ))}
+            </select>
+            <FieldError message={state.errors.relatedFieldDefinitionId} />
+            {targetContext ? (
+              <p className="mt-1 text-sm text-slate-500">
+                Updates one related {targetContext.entityType.name} record.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -1017,7 +1101,9 @@ function WorkflowDefinitionFormFields({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold text-slate-950">
-          {actionType === "update_record" ? "Update Fields" : "Set Fields"}
+          {actionType === "update_record" || actionType === "update_related_record"
+            ? "Update Fields"
+            : "Set Fields"}
         </h2>
         <div className="flex flex-col gap-3">
           {renderedTargetFields.map((targetField) => {
@@ -1085,7 +1171,7 @@ function WorkflowDefinitionFormFields({
                     }}
                     className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
                   >
-                    {actionType === "update_record" ? (
+                    {actionType === "update_record" || actionType === "update_related_record" ? (
                       <>
                         <option value="leave_unchanged">Leave unchanged</option>
                         {!targetField.required ? (

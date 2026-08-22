@@ -156,8 +156,9 @@ Implemented action types:
 
 - `create_record`
 - `update_record`
+- `update_related_record`
 
-Workflows are stored in `workflows` with `trigger_type`, `trigger_entity_type_id`, `action_type`, nullable `action_target_entity_type_id`, and JSONB `action_config`. `create_record` requires an action target entity. `update_record` targets the triggering record and has no action target entity.
+Workflows are stored in `workflows` with `trigger_type`, `trigger_entity_type_id`, `action_type`, nullable `action_target_entity_type_id`, and JSONB `action_config`. `create_record` requires an action target entity. `update_record` targets the triggering record, while `update_related_record` targets the current record reached through `action_config.relatedFieldDefinitionId`; both have no action target entity ID.
 
 Conditions:
 
@@ -179,7 +180,7 @@ Record-updated watched fields:
 Field mappings:
 
 - `unset` is available for optional target fields in `create_record`.
-- `leave_unchanged` and `clear` are available for `update_record`.
+- `leave_unchanged` and `clear` are available for `update_record` and `update_related_record`.
 - `constant` stores a type-appropriate literal.
 - `source_field` copies a direct field from the trigger record.
 - `template` is available for text targets only.
@@ -207,6 +208,8 @@ Execution semantics:
 - `update_record` actions reload the latest authoritative triggering record before resolving mappings/templates and applying changes, so sequential update actions see earlier action effects.
 - `update_record` modifies only explicitly configured fields, preserving unrelated active and archived primitive values and unrelated relation rows.
 - A valid no-op `update_record` logs `succeeded` with result message “No changes required.” and does not perform an unnecessary DB update or bump `entity_records.updated_at`.
+- `update_related_record` follows exactly one active direct relation field on the latest triggering record, then reloads and updates that one related record using the same mapping, compatibility, validation, atomic RPC, no-op, and no-recursion rules as `update_record`.
+- `update_related_record` configurations require at least one mapping other than `leave_unchanged`. Missing relations, archived selected relation fields, archived target entities/records, and archived mapped fields fail execution. If a related target is resolved before a later failure, its entity/record IDs are retained in the execution log.
 
 Execution logs:
 
@@ -220,7 +223,7 @@ Execution logs:
 
 Migrations live in `supabase/migrations/` and are currently applied manually through the Supabase SQL Editor. The latest migration is:
 
-- `0017_saved_table_views.sql`
+- `0018_update_related_record_workflows.sql`
 
 Major tables:
 
@@ -244,7 +247,7 @@ Important RPCs/functions:
 - `set_entity_default_view` sets or clears the default saved table view without a circular entity/view FK.
 - `delete_entity_record_if_unreferenced` blocks hard deletion when incoming references exist.
 - `delete_entity_type_if_safe` blocks hard deletion for populated or structurally referenced entities.
-- `delete_field_definition_if_safe` blocks hard deletion for primitive JSON values, relation rows, workflow JSON references, display-field configuration, or saved table-view configuration.
+- `delete_field_definition_if_safe` blocks hard deletion for primitive JSON values, relation rows, workflow JSON references including selected related-record fields, display-field configuration, or saved table-view configuration.
 
 Important structural constraints include workspace-scoped uniqueness/foreign keys, relation contract constraints, field position > 0, relation target metadata requirements, workflow trigger/action check constraints, and indexes for common workspace/entity/trigger lookups.
 
@@ -289,6 +292,8 @@ Current spec files:
 - `display-field.spec.ts`
 - `views.spec.ts`
 - `record-detail.spec.ts`
+- `update-related-record-workflows.spec.ts`
+- `archived-relation-edit.spec.ts`
 
 Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
 
@@ -302,7 +307,7 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current E2E count after the Record Detail + Reverse Relationships milestone: 61 tests passing.
+Current E2E count after the `update_related_record` milestone: 67 tests passing.
 
 ## Intentional Limitations
 
@@ -316,6 +321,7 @@ Current E2E count after the Record Detail + Reverse Relationships milestone: 61 
 - No many-to-many relationships.
 - No reverse relation editing; reverse relationships are read-only derived lists.
 - No relation traversal in workflows/templates/conditions or saved views.
+- `update_related_record` is limited to one direct relation and one related target record; no arbitrary lookup, reverse traversal, multi-hop traversal, or multi-record update exists.
 - No custom record layouts/page builder.
 - No comments, attachments, activity feed, or audit UI.
 - No Kanban/calendar/gallery saved-view modes.
@@ -357,9 +363,9 @@ Complete major capabilities:
 - Record detail pages with outgoing links and derived reverse relationship visibility.
 - Workflow management: create/edit/enable/disable/delete.
 - Workflow triggers for record created and record updated.
-- Workflow actions for create record and update triggering record.
+- Workflow actions for create record, update triggering record, and update one record reached through a direct triggering-record relation.
 - Conditions, watched fields, constants, source-field mappings, text templates, relation mappings, deterministic execution, isolated failures, no recursion, and execution logs.
-- Automated Playwright E2E harness covering representative entity, relation, display-field, saved-view, record-detail, workflow, record-updated, and update-record behavior.
+- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, workflow, record-updated, update-record, and update-related-record behavior.
 
 Sensible next areas, without committing to architecture yet:
 
