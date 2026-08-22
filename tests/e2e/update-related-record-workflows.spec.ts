@@ -202,6 +202,18 @@ async function executeDirectRelatedRecordWorkflow({
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
+    previousRecord: {
+      id: sourceRecordId,
+      workspaceId: DEMO_WORKSPACE_ID,
+      entityTypeId: fixture.deliverable.id,
+      values: {
+        [fixture.deliverable.fields.name.key]: `${workflowName} Source (previous)`,
+        [fixture.deliverable.fields.status.key]: "Complete",
+        [fixture.deliverable.fields.client.key]: fixture.firstClientRecordId,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
     changedFieldDefinitionIds: [fixture.deliverable.fields.name.id],
   });
 

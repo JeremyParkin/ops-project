@@ -2,8 +2,10 @@
 
 import { useActionState, useMemo, useState } from "react";
 import {
+  conditionOperatorNeedsPreviousValue,
   conditionOperatorNeedsValue,
   getConditionOperatorsForFieldType,
+  isTransitionConditionOperator,
 } from "@/lib/domain/workflow-conditions";
 import { getWorkflowFieldLabel } from "@/lib/domain/workflow-field-labels";
 import type { WorkflowFormState } from "@/lib/domain/workflow-validation";
@@ -55,6 +57,7 @@ type LocalCondition = {
   sourceFieldDefinitionId: string;
   operator: WorkflowConditionOperator;
   value: string;
+  previousValue: string;
 };
 
 const fieldTypeLabel = {
@@ -76,6 +79,10 @@ const conditionOperatorLabel: Record<WorkflowConditionOperator, string> = {
   after: "After",
   is_set: "Is Set",
   is_not_set: "Is Not Set",
+  changed: "Changed",
+  changed_from: "Changed From",
+  changed_to: "Changed To",
+  changed_from_to: "Changed From/To",
 };
 
 function FieldError({ message }: { message?: string }) {
@@ -278,7 +285,6 @@ function ConstantInput({
 
 function ConditionValueInput({
   field,
-  operator,
   value,
   name,
   options,
@@ -286,17 +292,12 @@ function ConditionValueInput({
   onChange,
 }: {
   field: FieldDefinition;
-  operator: WorkflowConditionOperator;
   value: string;
   name: string;
   options: RelationRecordOption[];
   error?: string;
   onChange: (value: string) => void;
 }) {
-  if (!conditionOperatorNeedsValue(operator)) {
-    return null;
-  }
-
   if (field.type === "boolean") {
     return (
       <>
@@ -593,11 +594,21 @@ function WorkflowDefinitionFormFields({
         id: `condition-${Date.now()}-${current.length}`,
         sourceFieldDefinitionId: firstField?.id ?? "",
         operator: firstField
-          ? getConditionOperatorsForFieldType(firstField.type)[0]
+          ? getConditionOperatorsForFieldType(firstField.type, triggerType)[0]
           : "equals",
         value: "",
+        previousValue: "",
       },
     ]);
+  }
+
+  function ensureWatchedIfTransition(
+    fieldId: string,
+    operator: WorkflowConditionOperator,
+  ) {
+    if (fieldId && isTransitionConditionOperator(operator)) {
+      toggleWatchedField(fieldId, true);
+    }
   }
 
   function updateCondition(
@@ -982,7 +993,7 @@ function WorkflowDefinitionFormFields({
                   })
                 : [];
               const operatorOptions = selectedField
-                ? getConditionOperatorsForFieldType(selectedField.type)
+                ? getConditionOperatorsForFieldType(selectedField.type, triggerType)
                 : [];
               const operator = operatorOptions.includes(condition.operator)
                 ? condition.operator
@@ -1006,15 +1017,21 @@ function WorkflowDefinitionFormFields({
                         const nextField = triggerContext?.fields.find(
                           (field) => field.id === value,
                         );
+                        const nextOperator = nextField
+                          ? getConditionOperatorsForFieldType(
+                              nextField.type,
+                              triggerType,
+                            )[0]
+                          : "equals";
 
                         updateCondition(condition.id, (current) => ({
                           ...current,
                           sourceFieldDefinitionId: value,
-                          operator: nextField
-                            ? getConditionOperatorsForFieldType(nextField.type)[0]
-                            : "equals",
+                          operator: nextOperator,
                           value: "",
+                          previousValue: "",
                         }));
+                        ensureWatchedIfTransition(value, nextOperator);
                       }}
                       className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
                     >
@@ -1043,7 +1060,14 @@ function WorkflowDefinitionFormFields({
                           value: conditionOperatorNeedsValue(value)
                             ? current.value
                             : "",
+                          previousValue: conditionOperatorNeedsPreviousValue(value)
+                            ? current.previousValue
+                            : "",
                         }));
+                        ensureWatchedIfTransition(
+                          condition.sourceFieldDefinitionId,
+                          value,
+                        );
                       }}
                       className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
                     >
@@ -1053,33 +1077,65 @@ function WorkflowDefinitionFormFields({
                         </option>
                       ))}
                     </select>
+                    <FieldError
+                      message={state.errors[`conditionOperator:${condition.id}`]}
+                    />
                   </div>
 
                   <div>
                     {selectedField ? (
-                      <>
-                        <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                          Value
-                        </label>
-                        <ConditionValueInput
-                          field={selectedField}
-                          operator={operator}
-                          value={condition.value}
-                          name={`conditionValue:${condition.id}`}
-                          options={
-                            triggerContext?.relationOptionsByFieldId[
-                              selectedField.id
-                            ] ?? []
-                          }
-                          error={state.errors[`conditionValue:${condition.id}`]}
-                          onChange={(value) =>
-                            updateCondition(condition.id, (current) => ({
-                              ...current,
-                              value,
-                            }))
-                          }
-                        />
-                      </>
+                      <div className="flex flex-col gap-2">
+                        {conditionOperatorNeedsPreviousValue(operator) ? (
+                          <div>
+                            <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                              {operator === "changed_from_to" ? "From" : "Value"}
+                            </label>
+                            <ConditionValueInput
+                              field={selectedField}
+                              value={condition.previousValue}
+                              name={`conditionPreviousValue:${condition.id}`}
+                              options={
+                                triggerContext?.relationOptionsByFieldId[
+                                  selectedField.id
+                                ] ?? []
+                              }
+                              error={
+                                state.errors[`conditionPreviousValue:${condition.id}`]
+                              }
+                              onChange={(value) =>
+                                updateCondition(condition.id, (current) => ({
+                                  ...current,
+                                  previousValue: value,
+                                }))
+                              }
+                            />
+                          </div>
+                        ) : null}
+                        {conditionOperatorNeedsValue(operator) ? (
+                          <div>
+                            <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                              {operator === "changed_from_to" ? "To" : "Value"}
+                            </label>
+                            <ConditionValueInput
+                              field={selectedField}
+                              value={condition.value}
+                              name={`conditionValue:${condition.id}`}
+                              options={
+                                triggerContext?.relationOptionsByFieldId[
+                                  selectedField.id
+                                ] ?? []
+                              }
+                              error={state.errors[`conditionValue:${condition.id}`]}
+                              onChange={(value) =>
+                                updateCondition(condition.id, (current) => ({
+                                  ...current,
+                                  value,
+                                }))
+                              }
+                            />
+                          </div>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
 

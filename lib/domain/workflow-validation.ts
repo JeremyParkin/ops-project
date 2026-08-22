@@ -6,10 +6,13 @@ import type {
   FieldValue,
 } from "./types";
 import {
+  conditionOperatorNeedsPreviousValue,
   conditionOperatorNeedsValue,
   getConditionOperatorsForFieldType,
+  isTransitionConditionOperator,
   parseConditionValue,
 } from "./workflow-conditions";
+import { valuesAreEqual } from "./workflow-change-detection";
 import {
   canonicalTemplateToFriendly,
   friendlyTemplateToCanonical,
@@ -43,6 +46,7 @@ export type WorkflowConditionFormValue = {
   sourceFieldDefinitionId: string;
   operator: WorkflowConditionOperator;
   value: string;
+  previousValue: string;
 };
 
 export type WorkflowFormState = {
@@ -131,6 +135,7 @@ function getConditionRows(formData: FormData) {
           `conditionOperator:${id}`,
         ) as WorkflowConditionOperator,
         value: getString(formData, `conditionValue:${id}`),
+        previousValue: getString(formData, `conditionPreviousValue:${id}`),
       };
     });
 }
@@ -386,6 +391,8 @@ export async function validateWorkflowFormData({
       }
     }
 
+    const watchedFieldIdSet = new Set(watchedFieldDefinitionIds);
+
     for (const condition of conditionRows) {
       const sourceField = sourceFieldById.get(condition.sourceFieldDefinitionId);
 
@@ -401,13 +408,26 @@ export async function validateWorkflowFormData({
         continue;
       }
 
-      const validOperators = getConditionOperatorsForFieldType(sourceField.type);
+      const validOperators = getConditionOperatorsForFieldType(
+        sourceField.type,
+        triggerType,
+      );
       const operator = validOperators.includes(condition.operator)
         ? condition.operator
         : validOperators[0];
+
+      if (
+        isTransitionConditionOperator(operator) &&
+        !watchedFieldIdSet.has(sourceField.id)
+      ) {
+        errors[`conditionOperator:${condition.id}`] =
+          `${sourceField.name} must be a watched field to use a changed condition on it.`;
+        continue;
+      }
+
       const parsedValue = parseConditionValue({
         field: sourceField,
-        operator,
+        needsValue: conditionOperatorNeedsValue(operator),
         rawValue: condition.value,
       });
 
@@ -427,10 +447,44 @@ export async function validateWorkflowFormData({
         continue;
       }
 
+      const parsedPreviousValue = parseConditionValue({
+        field: sourceField,
+        needsValue: conditionOperatorNeedsPreviousValue(operator),
+        rawValue: condition.previousValue,
+      });
+
+      if ("error" in parsedPreviousValue) {
+        errors[`conditionPreviousValue:${condition.id}`] = parsedPreviousValue.error;
+        continue;
+      }
+
+      if (
+        sourceField.type === "relation" &&
+        conditionOperatorNeedsPreviousValue(operator) &&
+        typeof parsedPreviousValue.value === "string" &&
+        !(await validateConstantRelationValue(sourceField, parsedPreviousValue.value))
+      ) {
+        errors[`conditionPreviousValue:${condition.id}`] =
+          `${sourceField.name} must reference an active record.`;
+        continue;
+      }
+
+      if (
+        operator === "changed_from_to" &&
+        valuesAreEqual(parsedPreviousValue.value, parsedValue.value)
+      ) {
+        errors[`conditionValue:${condition.id}`] =
+          `${sourceField.name} changed-from-to condition needs different From and To values.`;
+        continue;
+      }
+
       configConditions.push({
         sourceFieldDefinitionId: sourceField.id,
         operator,
         ...("value" in parsedValue ? { value: parsedValue.value } : {}),
+        ...("value" in parsedPreviousValue
+          ? { previousValue: parsedPreviousValue.value }
+          : {}),
       });
     }
 
@@ -726,6 +780,10 @@ export function createWorkflowFormStateFromDefinition({
             condition.value === null || condition.value === undefined
               ? ""
               : String(condition.value),
+          previousValue:
+            condition.previousValue === null || condition.previousValue === undefined
+              ? ""
+              : String(condition.previousValue),
         }),
       ),
       mappings: Object.fromEntries(

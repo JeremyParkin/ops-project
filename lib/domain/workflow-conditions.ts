@@ -1,7 +1,9 @@
 import type { EntityRecord, FieldDefinition, FieldType, FieldValue } from "./types";
+import { valuesAreEqual } from "./workflow-change-detection";
 import type {
   WorkflowCondition,
   WorkflowConditionOperator,
+  WorkflowTriggerType,
 } from "./workflow-types";
 
 const operatorsByFieldType: Record<FieldType, WorkflowConditionOperator[]> = {
@@ -21,6 +23,23 @@ const operatorsByFieldType: Record<FieldType, WorkflowConditionOperator[]> = {
   relation: ["equals", "not_equals", "is_set", "is_not_set"],
 };
 
+// Transition operators compare the previous persisted value (from the
+// original user edit event) against the current one. They only make sense
+// for record_updated workflows, which are the only ones with a "previous".
+const transitionOperators: WorkflowConditionOperator[] = [
+  "changed",
+  "changed_from",
+  "changed_to",
+  "changed_from_to",
+];
+const transitionOperatorSet = new Set(transitionOperators);
+
+export function isTransitionConditionOperator(
+  operator: WorkflowConditionOperator,
+) {
+  return transitionOperatorSet.has(operator);
+}
+
 const valueOperators = new Set<WorkflowConditionOperator>([
   "equals",
   "not_equals",
@@ -30,6 +49,13 @@ const valueOperators = new Set<WorkflowConditionOperator>([
   "less_than_or_equal",
   "before",
   "after",
+  "changed_to",
+  "changed_from_to",
+]);
+
+const previousValueOperators = new Set<WorkflowConditionOperator>([
+  "changed_from",
+  "changed_from_to",
 ]);
 
 function isValidDate(value: string) {
@@ -42,14 +68,25 @@ function isValidDate(value: string) {
   return !Number.isNaN(date.valueOf()) && date.toISOString().startsWith(value);
 }
 
-export function getConditionOperatorsForFieldType(type: FieldType) {
-  return operatorsByFieldType[type];
+export function getConditionOperatorsForFieldType(
+  type: FieldType,
+  triggerType: WorkflowTriggerType,
+) {
+  return triggerType === "record_updated"
+    ? [...operatorsByFieldType[type], ...transitionOperators]
+    : operatorsByFieldType[type];
 }
 
 export function conditionOperatorNeedsValue(
   operator: WorkflowConditionOperator,
 ) {
   return valueOperators.has(operator);
+}
+
+export function conditionOperatorNeedsPreviousValue(
+  operator: WorkflowConditionOperator,
+) {
+  return previousValueOperators.has(operator);
 }
 
 export function isValueSet(value: FieldValue | undefined) {
@@ -66,14 +103,14 @@ export function isValueSet(value: FieldValue | undefined) {
 
 export function parseConditionValue({
   field,
-  operator,
+  needsValue,
   rawValue,
 }: {
   field: FieldDefinition;
-  operator: WorkflowConditionOperator;
+  needsValue: boolean;
   rawValue: string;
 }): { value?: FieldValue } | { error: string } {
-  if (!conditionOperatorNeedsValue(operator)) {
+  if (!needsValue) {
     return {};
   }
 
@@ -113,19 +150,59 @@ export function parseConditionValue({
   }
 }
 
+async function validateConditionOperand({
+  field,
+  rawValue,
+  validateRelationValue,
+}: {
+  field: FieldDefinition;
+  rawValue: FieldValue | undefined;
+  validateRelationValue: (
+    field: FieldDefinition,
+    recordId: string,
+  ) => Promise<boolean>;
+}): Promise<{ value?: FieldValue } | { error: string }> {
+  const parsedValue = parseConditionValue({
+    field,
+    needsValue: true,
+    rawValue: rawValue === null || rawValue === undefined ? "" : String(rawValue),
+  });
+
+  if ("error" in parsedValue) {
+    return parsedValue;
+  }
+
+  if (
+    field.type === "relation" &&
+    typeof parsedValue.value === "string" &&
+    !(await validateRelationValue(field, parsedValue.value))
+  ) {
+    return {
+      error: `${field.name} condition references a record that is missing or archived.`,
+    };
+  }
+
+  return parsedValue;
+}
+
 export async function validateWorkflowConditions({
   conditions,
   sourceFields,
+  triggerType,
+  watchedFieldDefinitionIds,
   validateRelationValue,
 }: {
   conditions: WorkflowCondition[];
   sourceFields: FieldDefinition[];
+  triggerType: WorkflowTriggerType;
+  watchedFieldDefinitionIds: string[];
   validateRelationValue: (
     field: FieldDefinition,
     recordId: string,
   ) => Promise<boolean>;
 }) {
   const fieldById = new Map(sourceFields.map((field) => [field.id, field]));
+  const watchedFieldIdSet = new Set(watchedFieldDefinitionIds);
 
   for (const condition of conditions) {
     const field = fieldById.get(condition.sourceFieldDefinitionId);
@@ -144,7 +221,7 @@ export async function validateWorkflowConditions({
       };
     }
 
-    const validOperators = getConditionOperatorsForFieldType(field.type);
+    const validOperators = getConditionOperatorsForFieldType(field.type, triggerType);
 
     if (!validOperators.includes(condition.operator)) {
       return {
@@ -153,34 +230,53 @@ export async function validateWorkflowConditions({
       };
     }
 
-    if (!conditionOperatorNeedsValue(condition.operator)) {
-      continue;
-    }
-
-    const parsedValue = parseConditionValue({
-      field,
-      operator: condition.operator,
-      rawValue:
-        condition.value === null || condition.value === undefined
-          ? ""
-          : String(condition.value),
-    });
-
-    if ("error" in parsedValue) {
-      return {
-        success: false as const,
-        error: parsedValue.error,
-      };
-    }
-
     if (
-      field.type === "relation" &&
-      typeof parsedValue.value === "string" &&
-      !(await validateRelationValue(field, parsedValue.value))
+      isTransitionConditionOperator(condition.operator) &&
+      !watchedFieldIdSet.has(field.id)
     ) {
       return {
         success: false as const,
-        error: `${field.name} condition references a record that is missing or archived.`,
+        error: `${field.name} must be a watched field to use a changed condition on it.`,
+      };
+    }
+
+    if (conditionOperatorNeedsValue(condition.operator)) {
+      const parsedValue = await validateConditionOperand({
+        field,
+        rawValue: condition.value,
+        validateRelationValue,
+      });
+
+      if ("error" in parsedValue) {
+        return {
+          success: false as const,
+          error: parsedValue.error,
+        };
+      }
+    }
+
+    if (conditionOperatorNeedsPreviousValue(condition.operator)) {
+      const parsedPreviousValue = await validateConditionOperand({
+        field,
+        rawValue: condition.previousValue,
+        validateRelationValue,
+      });
+
+      if ("error" in parsedPreviousValue) {
+        return {
+          success: false as const,
+          error: parsedPreviousValue.error,
+        };
+      }
+    }
+
+    if (
+      condition.operator === "changed_from_to" &&
+      valuesAreEqual(condition.previousValue, condition.value)
+    ) {
+      return {
+        success: false as const,
+        error: `${field.name} changed-from-to condition needs different From and To values.`,
       };
     }
   }
@@ -248,14 +344,62 @@ function compareValues({
   }
 }
 
+function evaluateTransitionCondition({
+  operator,
+  previousValue,
+  currentValue,
+  conditionValue,
+  conditionPreviousValue,
+}: {
+  operator: WorkflowConditionOperator;
+  previousValue: FieldValue | undefined;
+  currentValue: FieldValue | undefined;
+  conditionValue: FieldValue | undefined;
+  conditionPreviousValue: FieldValue | undefined;
+}) {
+  const hasChanged = !valuesAreEqual(previousValue, currentValue);
+
+  switch (operator) {
+    case "changed":
+      return hasChanged;
+    case "changed_from":
+      return (
+        conditionPreviousValue !== undefined &&
+        conditionPreviousValue !== null &&
+        valuesAreEqual(previousValue, conditionPreviousValue) &&
+        hasChanged
+      );
+    case "changed_to":
+      return (
+        conditionValue !== undefined &&
+        conditionValue !== null &&
+        valuesAreEqual(currentValue, conditionValue) &&
+        hasChanged
+      );
+    case "changed_from_to":
+      return (
+        conditionPreviousValue !== undefined &&
+        conditionPreviousValue !== null &&
+        conditionValue !== undefined &&
+        conditionValue !== null &&
+        valuesAreEqual(previousValue, conditionPreviousValue) &&
+        valuesAreEqual(currentValue, conditionValue)
+      );
+    default:
+      return false;
+  }
+}
+
 export function evaluateWorkflowConditions({
   conditions,
   sourceFields,
   sourceRecord,
+  previousRecord,
 }: {
   conditions: WorkflowCondition[];
   sourceFields: FieldDefinition[];
   sourceRecord: EntityRecord;
+  previousRecord?: EntityRecord;
 }) {
   const fieldById = new Map(sourceFields.map((field) => [field.id, field]));
 
@@ -267,6 +411,21 @@ export function evaluateWorkflowConditions({
     }
 
     const sourceValue = sourceRecord.values[field.key];
+
+    if (isTransitionConditionOperator(condition.operator)) {
+      if (!previousRecord) {
+        return false;
+      }
+
+      return evaluateTransitionCondition({
+        operator: condition.operator,
+        previousValue: previousRecord.values[field.key],
+        currentValue: sourceValue,
+        conditionValue: condition.value,
+        conditionPreviousValue: condition.previousValue,
+      });
+    }
+
     const sourceValueIsSet = isValueSet(sourceValue);
 
     if (condition.operator === "is_set") {

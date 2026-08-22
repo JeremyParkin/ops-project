@@ -177,7 +177,7 @@ Conditions:
 - Stored in `action_config.conditions`.
 - Empty conditions means always run.
 - Conditions are AND-only.
-- Supported operators include equality/inequality, numeric comparisons, date before/after, and `is_set`/`is_not_set`.
+- Supported operators include equality/inequality, numeric comparisons, date before/after, `is_set`/`is_not_set`, and (record_updated only) `changed`, `changed_from`, `changed_to`, `changed_from_to`.
 - At execution time, all condition configuration is fully validated before evaluation. Broken config logs `failed`; non-matching valid conditions log `skipped` with “Workflow conditions did not match.”
 - Conditions evaluate against the triggering record snapshot for that workflow event.
 
@@ -188,6 +188,17 @@ Record-updated watched fields:
 - ANY watched field changing qualifies.
 - Invalid or archived watched fields log `failed`.
 - If watched fields did not change, execution logs `skipped` with “Watched fields did not change.”
+
+Transition-aware conditions (`changed`, `changed_from`, `changed_to`, `changed_from_to`):
+
+- `record_updated` only; `record_created` workflows never expose or accept them (rejected server-side even if crafted directly, not just hidden in the editor).
+- Compare the field's previous persisted value against its current persisted value from the same original user-edit event that `app/actions.ts`'s `updateRecord` already loads to compute watched-field changes. No new persistence: previous values are never stored in `action_config` or execution logs, only carried in memory for that one execution.
+- `changed` needs no operand. `changed_to`/`changed_from` need one operand (`value`/`previousValue` respectively). `changed_from_to` needs both, and they must differ.
+- Every transition operator requires the field to have genuinely transitioned (`previous !== current`); `changed_to`/`changed_from_to` do not fire merely because the field already held the target value.
+- `0`, `false`, and `""` are real, distinct values, never treated as unset; only null/undefined collapse together (same equality rule already used for watched-field change detection, reused directly).
+- Relation operands compare record IDs; the editor shows human-readable labels via the same active-record dropdown used for relation equality conditions.
+- **Watched-field invariant:** a transition operator's `sourceFieldDefinitionId` must also be in `triggerConfig.watchedFieldDefinitionIds`, or the workflow cannot be saved (“`<field>` must be a watched field to use a changed condition on it.”). This is enforced in the one shared `validateWorkflowConditions` function used at both save time and execution time, so execution never relies on editor behavior alone. The editor auto-checks a field as watched when a transition operator is selected for it, but does not prevent unchecking a still-referenced watched field afterward — that combination fails save validation with a clear inline message instead.
+- v1 limitation: from/to operands must be concrete typed values; there is no “unset” sentinel. A transition from/to an unset value cannot be expressed directly. Combining `changed` with `is_set`/`is_not_set` approximates it but is not equivalent (it does not guarantee the *previous* value was specifically unset).
 
 Field mappings:
 
@@ -312,6 +323,8 @@ Current spec files:
 - `related-create-records.spec.ts`
 - `workspace-navigation.spec.ts`
 - `workspace-search.spec.ts`
+- `dark-mode-contrast.spec.ts`
+- `record-updated-transition-conditions.spec.ts`
 
 Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
 
@@ -325,7 +338,7 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current E2E count after the Workspace Record Search milestone: 75 tests passing.
+Current E2E count after the Changed-From/Changed-To Transition Conditions milestone: 86 tests passing.
 
 ## Intentional Limitations
 
@@ -346,6 +359,7 @@ Current E2E count after the Workspace Record Search milestone: 75 tests passing.
 - No fuzzy/vector search, pagination, advanced filters, or search for workflows, views, or settings.
 - No workflow recursion/chaining.
 - No multiple actions per workflow.
+- No "unset" sentinel for changed_from/changed_to/changed_from_to transition operands; they require concrete typed values.
 - No schedules, queues, background workers, integrations, or webhooks.
 - No AI configuration UI yet.
 - No configurable delete/archive policies.
@@ -424,7 +438,9 @@ Complete major capabilities:
 - Workflow triggers for record created and record updated.
 - Workflow actions for create record, update triggering record, and update one record reached through a direct triggering-record relation.
 - Conditions, watched fields, constants, source-field mappings, text templates, relation mappings, deterministic execution, isolated failures, no recursion, and execution logs.
-- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, update-record, and update-related-record behavior.
+- Transition-aware record_updated conditions (`changed`, `changed_from`, `changed_to`, `changed_from_to`) evaluated against the previous/current values from the original user-edit event, with a save-time-and-execution-time-enforced invariant that a transition condition's field must also be watched.
+- A consistent light UI theme: the app shell is pinned to its light palette regardless of OS/browser dark-mode preference, matching the hardcoded light-card design used throughout, so text never renders on a mismatched background.
+- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, record-updated transition conditions, update-record, update-related-record, and dark-mode-contrast behavior.
 
 Sensible next areas, without committing to architecture yet:
 
@@ -433,6 +449,6 @@ Sensible next areas, without committing to architecture yet:
 - Richer record detail capabilities such as layouts, comments, attachments, and activity.
 - Field/entity editing beyond currently safe properties.
 - Richer saved views such as additional operators or alternate presentation modes.
-- More workflow actions or conditions.
+- More workflow actions or conditions; an "unset" sentinel for transition-condition operands.
 - Local/separate Supabase test environment before CI.
 - Eventually, AI-assisted configuration of deterministic entity/field/workflow definitions.

@@ -22,12 +22,21 @@ export type WorkflowConditionOperator =
   | "before"
   | "after"
   | "is_set"
-  | "is_not_set";
+  | "is_not_set"
+  | "changed"
+  | "changed_from"
+  | "changed_to"
+  | "changed_from_to";
 
 export type WorkflowCondition = {
   sourceFieldDefinitionId: FieldDefinition["id"];
   operator: WorkflowConditionOperator;
+  // The current/next persisted value. Used by every non-transition operator,
+  // and by changed_to / changed_from_to as the "to" comparison value.
   value?: FieldValue;
+  // The previous persisted value, from the original user edit event.
+  // Only meaningful for changed_from and changed_from_to (the "from" value).
+  previousValue?: FieldValue;
 };
 
 export type WorkflowFieldMapping =

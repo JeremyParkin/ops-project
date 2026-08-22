@@ -22,7 +22,7 @@ import {
   areFieldsCompatible,
   buildTargetValuesFromWorkflowConfig,
 } from "./workflow-validation";
-import type { WorkflowDefinition } from "./workflow-types";
+import type { WorkflowDefinition, WorkflowTriggerType } from "./workflow-types";
 
 export type WorkflowExecutionSummary = {
   succeeded: number;
@@ -456,17 +456,25 @@ async function validateAndEvaluateConditions({
   workspaceId,
   sourceFields,
   triggerRecord,
+  previousRecord,
+  triggerType,
+  watchedFieldDefinitionIds,
   workflow,
 }: {
   workspaceId: string;
   sourceFields: Awaited<ReturnType<typeof getEntityContext>>["fields"];
   triggerRecord: EntityRecord;
+  previousRecord?: EntityRecord;
+  triggerType: WorkflowTriggerType;
+  watchedFieldDefinitionIds: string[];
   workflow: WorkflowDefinition;
 }) {
   const conditions = workflow.actionConfig.conditions ?? [];
   const conditionValidation = await validateWorkflowConditions({
     conditions,
     sourceFields,
+    triggerType,
+    watchedFieldDefinitionIds,
     validateRelationValue: async (field, value) => {
       if (!field.relatedEntityTypeId) {
         return false;
@@ -488,6 +496,7 @@ async function validateAndEvaluateConditions({
     conditions,
     sourceFields,
     sourceRecord: triggerRecord,
+    previousRecord,
   });
 }
 
@@ -538,6 +547,8 @@ export async function executeRecordCreatedWorkflows({
           workspaceId,
           sourceFields: sourceContext.fields,
           triggerRecord,
+          triggerType: "record_created",
+          watchedFieldDefinitionIds: [],
           workflow,
         }))
       ) {
@@ -679,11 +690,13 @@ export async function executeRecordUpdatedWorkflows({
   workspaceId,
   triggerEntityTypeId,
   triggerRecord,
+  previousRecord,
   changedFieldDefinitionIds,
 }: {
   workspaceId: string;
   triggerEntityTypeId: string;
   triggerRecord: EntityRecord;
+  previousRecord: EntityRecord;
   changedFieldDefinitionIds: string[];
 }): Promise<WorkflowExecutionSummary> {
   const sourceContext = await getEntityContext({
@@ -739,6 +752,9 @@ export async function executeRecordUpdatedWorkflows({
           workspaceId,
           sourceFields: sourceContext.fields,
           triggerRecord,
+          previousRecord,
+          triggerType: "record_updated",
+          watchedFieldDefinitionIds,
           workflow,
         }))
       ) {

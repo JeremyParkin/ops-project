@@ -4,7 +4,9 @@ function canonicalValue(value: FieldValue | undefined) {
   return value === null || value === undefined ? undefined : value;
 }
 
-function valuesAreEqual(
+// Null and undefined both mean "unset" and compare equal; every other value
+// (including 0, false, and "") is a real, distinct value.
+export function valuesAreEqual(
   left: FieldValue | undefined,
   right: FieldValue | undefined,
 ) {

@@ -537,6 +537,7 @@ export async function updateRecord(
       workspaceId: entityType.workspaceId,
       triggerEntityTypeId: entityType.id,
       triggerRecord: nextRecord,
+      previousRecord,
       changedFieldDefinitionIds,
     });
 
