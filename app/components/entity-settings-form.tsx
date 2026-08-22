@@ -7,11 +7,12 @@ import type {
 import {
   createInitialEntityMetadataFormState,
 } from "@/lib/domain/entity-metadata-validation";
-import type { EntityType } from "@/lib/domain/types";
+import type { EntityType, FieldDefinition } from "@/lib/domain/types";
 import type { EntityTypeActionState } from "@/app/actions";
 
 type EntitySettingsFormProps = {
   entityType: EntityType;
+  fields: FieldDefinition[];
   updateEntityMetadataAction: (
     state: EntityMetadataFormState,
     formData: FormData,
@@ -49,6 +50,7 @@ function FieldError({ message }: { message?: string }) {
 
 export function EntitySettingsForm({
   entityType,
+  fields,
   updateEntityMetadataAction,
   archiveEntityAction,
   restoreEntityAction,
@@ -60,6 +62,7 @@ export function EntitySettingsForm({
     createInitialEntityMetadataFormState({
       name: entityType.name,
       description: entityType.description ?? "",
+      displayFieldDefinitionId: entityType.displayFieldDefinitionId ?? "",
     }),
   );
   const [archiveState, archiveAction, archivePending] = useActionState(
@@ -80,6 +83,12 @@ export function EntitySettingsForm({
     deleteState.message ? deleteState.success : restoreState.message
       ? restoreState.success
       : archiveState.success;
+  const displayFieldOptions = fields
+    .filter((field) => field.type === "text" && !field.archivedAt)
+    .map((field) => ({
+      field,
+      label: `${field.name} (field ${field.position})`,
+    }));
 
   return (
     <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
@@ -134,6 +143,35 @@ export function EntitySettingsForm({
             defaultValue={metadataState.values.description}
             className="mt-1 block h-10 w-full border border-slate-300 px-3 text-sm text-slate-950 outline-none focus:border-slate-950 disabled:bg-slate-100 disabled:text-slate-500"
           />
+        </div>
+
+        <div>
+          <label
+            htmlFor="entitySettingsDisplayField"
+            className="block text-sm font-medium text-slate-800"
+          >
+            Display field
+          </label>
+          <select
+            id="entitySettingsDisplayField"
+            name="displayFieldDefinitionId"
+            disabled={isArchived}
+            defaultValue={metadataState.values.displayFieldDefinitionId}
+            className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950 disabled:bg-slate-100 disabled:text-slate-500"
+          >
+            <option value="">No display field</option>
+            {displayFieldOptions.map(({ field, label }) => (
+              <option key={field.id} value={field.id}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-sm text-slate-600">
+            Used to identify records in relations, links, and other parts of the
+            app. No display field selected means record labels fall back to the
+            first active text field.
+          </p>
+          <FieldError message={metadataState.errors.displayFieldDefinitionId} />
         </div>
 
         {!isArchived ? (

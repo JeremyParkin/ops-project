@@ -93,6 +93,7 @@ async function executeCreateRecordAction({
         fields: relationContext.fields,
       });
       const label = getRelationOptionLabel(
+        relationContext.entityType,
         relationContext.fields,
         relationRecord,
       );
@@ -169,7 +170,11 @@ async function createRelationLabelResolver(workspaceId: string) {
       recordId,
       fields: relationContext.fields,
     });
-    const label = getRelationOptionLabel(relationContext.fields, relationRecord);
+    const label = getRelationOptionLabel(
+      relationContext.entityType,
+      relationContext.fields,
+      relationRecord,
+    );
 
     relationLabelCache.set(cacheKey, label);
     return label;

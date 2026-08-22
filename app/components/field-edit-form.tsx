@@ -26,6 +26,7 @@ type FieldEditFormProps = {
     formData: FormData,
   ) => Promise<FieldLifecycleActionState>;
   workflowReferenceCount: number;
+  viewReferenceCount: number;
 };
 
 const fieldTypeLabel = {
@@ -56,6 +57,7 @@ export function FieldEditForm({
   restoreFieldAction,
   deleteFieldAction,
   workflowReferenceCount,
+  viewReferenceCount,
 }: FieldEditFormProps) {
   const [state, formAction, pending] = useActionState(
     updateFieldDefinitionAction,
@@ -228,16 +230,24 @@ export function FieldEditForm({
       <form
         action={archiveAction}
         onSubmit={(event) => {
-          if (workflowReferenceCount === 0) {
+          if (workflowReferenceCount === 0 && viewReferenceCount === 0) {
             return;
           }
 
           const workflowText =
             workflowReferenceCount === 1 ? "1 workflow" : `${workflowReferenceCount} workflows`;
+          const viewText =
+            viewReferenceCount === 1 ? "1 saved view" : `${viewReferenceCount} saved views`;
+          const references = [
+            workflowReferenceCount > 0 ? workflowText : "",
+            viewReferenceCount > 0 ? viewText : "",
+          ]
+            .filter(Boolean)
+            .join(" and ");
 
           if (
             !window.confirm(
-              `This field is used by ${workflowText}. Archiving it will cause those workflows to fail until they are updated. Archive anyway?`,
+              `This field is used by ${references}. Archiving it will make those configurations invalid until repaired. Archive anyway?`,
             )
           ) {
             event.preventDefault();

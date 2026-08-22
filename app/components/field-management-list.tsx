@@ -13,6 +13,7 @@ type FieldManagementListProps = {
   fields: FieldDefinition[];
   entityNameById: Record<string, string>;
   workflowReferenceCountByFieldId: Record<string, number>;
+  viewReferenceCountByFieldId?: Record<string, number>;
 };
 
 export function FieldManagementList({
@@ -21,6 +22,7 @@ export function FieldManagementList({
   fields,
   entityNameById,
   workflowReferenceCountByFieldId,
+  viewReferenceCountByFieldId = {},
 }: FieldManagementListProps) {
   const orderedFields = [...fields].sort((left, right) => {
     return left.position - right.position;
@@ -71,6 +73,7 @@ export function FieldManagementList({
                 workflowReferenceCount={
                   workflowReferenceCountByFieldId[field.id] ?? 0
                 }
+                viewReferenceCount={viewReferenceCountByFieldId[field.id] ?? 0}
               />
             </div>
           );

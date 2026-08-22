@@ -69,10 +69,39 @@ function shortenRecordId(recordId: string) {
   return `${recordId.slice(0, 8)}...`;
 }
 
-export function getRecordLabel(fields: FieldDefinition[], record: EntityRecord) {
-  const labelField = [...fields]
-    .filter((field) => field.type === "text")
+function getFallbackDisplayField(fields: FieldDefinition[]) {
+  return [...fields]
+    .filter((field) => field.type === "text" && !field.archivedAt)
     .sort((left, right) => left.position - right.position)[0];
+}
+
+function getConfiguredDisplayField(
+  entityType: EntityType,
+  fields: FieldDefinition[],
+) {
+  if (!entityType.displayFieldDefinitionId) {
+    return undefined;
+  }
+
+  return fields.find(
+    (field) =>
+      field.id === entityType.displayFieldDefinitionId &&
+      field.type === "text" &&
+      !field.archivedAt,
+  );
+}
+
+export function getRecordLabel({
+  entityType,
+  fields,
+  record,
+}: {
+  entityType: EntityType;
+  fields: FieldDefinition[];
+  record: EntityRecord;
+}) {
+  const configuredDisplayField = getConfiguredDisplayField(entityType, fields);
+  const labelField = configuredDisplayField ?? getFallbackDisplayField(fields);
 
   if (!labelField) {
     return shortenRecordId(record.id);
@@ -86,10 +115,11 @@ export function getRecordLabel(fields: FieldDefinition[], record: EntityRecord) 
 }
 
 export function getRelationOptionLabel(
+  entityType: EntityType,
   fields: FieldDefinition[],
   record: EntityRecord,
 ) {
-  const label = getRecordLabel(fields, record);
+  const label = getRecordLabel({ entityType, fields, record });
 
   return record.archivedAt ? `${label} (Archived)` : label;
 }
@@ -360,6 +390,7 @@ export async function getRelationLookups({
   const targetData = new Map<
     string,
     {
+      entityType: EntityType;
       fields: FieldDefinition[];
       records: EntityRecord[];
     }
@@ -367,7 +398,8 @@ export async function getRelationLookups({
 
   await Promise.all(
     targetEntityTypeIds.map(async (targetEntityTypeId) => {
-      const { fields: targetFields } = await getEntityContext({
+      const { entityType: targetEntityType, fields: targetFields } =
+        await getEntityContext({
         workspaceId,
         entityTypeId: targetEntityTypeId,
       });
@@ -379,6 +411,7 @@ export async function getRelationLookups({
       });
 
       targetData.set(targetEntityTypeId, {
+        entityType: targetEntityType,
         fields: targetFields,
         records: targetRecords,
       });
@@ -403,10 +436,10 @@ export async function getRelationLookups({
 
     const records = data?.records ?? [];
     const activeOptions =
-      records.filter((record) => !record.archivedAt).map((record) => {
+        records.filter((record) => !record.archivedAt).map((record) => {
         return {
           value: record.id,
-          label: getRelationOptionLabel(data.fields, record),
+          label: getRelationOptionLabel(data.entityType, data.fields, record),
         };
       });
     const currentValue = currentRecord?.values[field.key];
@@ -421,7 +454,11 @@ export async function getRelationLookups({
             ...activeOptions,
             {
               value: currentRecordOption.id,
-              label: getRelationOptionLabel(data.fields, currentRecordOption),
+              label: getRelationOptionLabel(
+                data.entityType,
+                data.fields,
+                currentRecordOption,
+              ),
             },
           ]
         : activeOptions;
@@ -430,7 +467,7 @@ export async function getRelationLookups({
     labelsByFieldKey[field.key] = Object.fromEntries(
       records.map((record) => [
         record.id,
-        getRelationOptionLabel(data.fields, record),
+        getRelationOptionLabel(data.entityType, data.fields, record),
       ]),
     );
   });

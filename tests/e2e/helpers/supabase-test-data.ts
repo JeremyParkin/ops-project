@@ -170,6 +170,22 @@ async function cleanupEntitiesById(supabase: SupabaseClient, entityTypeIds: stri
   );
   await throwOnError(
     await supabase
+      .from("entity_types")
+      .update({ display_field_definition_id: null })
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .in("id", entityTypeIds),
+    "clear E2E display field references",
+  );
+  await throwOnError(
+    await supabase
+      .from("entity_views")
+      .delete()
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .in("entity_type_id", entityTypeIds),
+    "clean up E2E saved views",
+  );
+  await throwOnError(
+    await supabase
       .from("field_definitions")
       .delete()
       .eq("workspace_id", DEMO_WORKSPACE_ID)
@@ -194,7 +210,7 @@ async function cleanupEntitiesById(supabase: SupabaseClient, entityTypeIds: stri
   );
 }
 
-async function createEntity(
+export async function createEntity(
   supabase: SupabaseClient,
   run: TestRun,
   nameSuffix: string,

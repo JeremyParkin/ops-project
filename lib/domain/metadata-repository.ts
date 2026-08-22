@@ -8,6 +8,7 @@ type EntityTypeRow = {
   name: string;
   slug: string;
   description: string | null;
+  display_field_definition_id: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -86,6 +87,7 @@ function mapEntityType(row: EntityTypeRow): EntityType {
     name: row.name,
     slug: row.slug,
     description: row.description ?? undefined,
+    displayFieldDefinitionId: row.display_field_definition_id ?? undefined,
     archivedAt: row.archived_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -421,6 +423,8 @@ export async function deleteFieldDefinition({
     record_value_count: number;
     relation_value_count: number;
     workflow_reference_count: number;
+    display_field_reference_count?: number;
+    view_reference_count?: number;
   }> | null;
   const result = resultRows?.[0];
 
@@ -433,6 +437,8 @@ export async function deleteFieldDefinition({
     recordValueCount: result.record_value_count,
     relationValueCount: result.relation_value_count,
     workflowReferenceCount: result.workflow_reference_count,
+    displayFieldReferenceCount: result.display_field_reference_count ?? 0,
+    viewReferenceCount: result.view_reference_count ?? 0,
   };
 }
 
@@ -470,6 +476,33 @@ export async function updateEntityTypeMetadata({
   }
 
   return mapEntityType(data);
+}
+
+export async function setEntityDisplayField({
+  workspaceId,
+  entityTypeId,
+  displayFieldDefinitionId,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+  displayFieldDefinitionId?: string;
+}) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("set_entity_display_field", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_field_definition_id: displayFieldDefinitionId || null,
+  });
+
+  if (error) {
+    throw new Error(`Unable to update display field: ${error.message}`);
+  }
+
+  if (typeof data !== "string") {
+    throw new Error("Unable to update display field: unexpected RPC response.");
+  }
+
+  return data;
 }
 
 export async function archiveEntityType({

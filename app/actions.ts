@@ -47,6 +47,7 @@ import {
   listEntityTypes,
   restoreFieldDefinition,
   restoreEntityType,
+  setEntityDisplayField,
   updateEntityTypeMetadata,
   updateFieldDefinition as updateFieldDefinitionInRepository,
 } from "@/lib/domain/metadata-repository";
@@ -69,6 +70,16 @@ import {
   setWorkflowEnabled,
   updateWorkflowDefinition,
 } from "@/lib/domain/workflow-repository";
+import {
+  createEntityView,
+  deleteEntityView,
+  updateEntityView,
+} from "@/lib/domain/view-repository";
+import {
+  createInitialViewFormState,
+  type ViewFormState,
+  validateViewFormData,
+} from "@/lib/domain/view-validation";
 
 type CreateRecordContext = {
   workspaceId: string;
@@ -85,6 +96,10 @@ type UpdateFieldDefinitionContext = CreateRecordContext & {
   fieldDefinitionId: string;
 };
 
+type EntityViewContext = CreateRecordContext & {
+  viewId?: string;
+};
+
 export type EntityTypeActionState = {
   success: boolean;
   message: string;
@@ -96,6 +111,11 @@ export type WorkflowActionState = {
 };
 
 export type FieldLifecycleActionState = {
+  success: boolean;
+  message: string;
+};
+
+export type DeleteViewActionState = {
   success: boolean;
   message: string;
 };
@@ -637,7 +657,27 @@ export async function addFieldDefinition(
       relatedEntityTypeId: validation.field.relatedEntityTypeId,
       required: validation.field.required,
     });
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+
+    if (
+      validation.field.required &&
+      message.includes(
+        "Required fields can only be added before this entity has records",
+      )
+    ) {
+      return {
+        success: false,
+        message:
+          "Required fields can only be added before this entity has records.",
+        errors: {
+          fieldRequired:
+            "Add this field as optional, or add required fields before creating records.",
+        },
+        values: validation.field,
+      };
+    }
+
     return {
       success: false,
       message: "Unable to add the field. Please try again.",
@@ -758,6 +798,13 @@ export async function archiveField(
       };
     }
 
+    if (entityType.displayFieldDefinitionId === context.fieldDefinitionId) {
+      return {
+        success: false,
+        message: `This field is used as the display field for ${entityType.name}. Choose another display field before archiving it.`,
+      };
+    }
+
     await archiveFieldDefinition(context);
   } catch {
     return {
@@ -811,16 +858,34 @@ export async function restoreField(
   };
 }
 
+function formatFieldTypeLabel(type: string) {
+  return type === "relation"
+    ? "Relation"
+    : `${type[0].toUpperCase()}${type.slice(1)}`;
+}
+
 function formatFieldDeleteBlockMessage({
+  entityName,
+  field,
   recordValueCount,
   relationValueCount,
   workflowReferenceCount,
+  displayFieldReferenceCount,
+  viewReferenceCount,
 }: {
+  entityName: string;
+  field: Awaited<ReturnType<typeof getEntityContext>>["fields"][number];
   recordValueCount: number;
   relationValueCount: number;
   workflowReferenceCount: number;
+  displayFieldReferenceCount: number;
+  viewReferenceCount: number;
 }) {
   const reasons = [];
+
+  if (displayFieldReferenceCount > 0) {
+    reasons.push(`configured as the display field for ${entityName}`);
+  }
 
   if (recordValueCount > 0) {
     reasons.push(
@@ -846,9 +911,163 @@ function formatFieldDeleteBlockMessage({
     );
   }
 
-  return `Cannot delete this field because it is still used by ${reasons.join(
-    ", ",
-  )}.`;
+  if (viewReferenceCount > 0) {
+    reasons.push(
+      `${viewReferenceCount} saved view reference${
+        viewReferenceCount === 1 ? "" : "s"
+      }`,
+    );
+  }
+
+  return `Cannot delete ${entityName} → ${field.name} (${formatFieldTypeLabel(
+    field.type,
+  )}, field ${field.position}) because it is ${reasons.join(", ")}.`;
+}
+
+async function validateViewSubmission(context: EntityViewContext, formData: FormData) {
+  const [activeContext, managementContext] = await Promise.all([
+    getEntityContext(context),
+    getEntityContext({
+      ...context,
+      includeArchivedFields: true,
+    }),
+  ]);
+  const validation = await validateViewFormData({
+    activeFields: activeContext.fields,
+    allFields: managementContext.fields,
+    formData,
+    validateRelationValue: async (field, value) => {
+      if (!field.relatedEntityTypeId) {
+        return false;
+      }
+
+      return entityRecordExists({
+        workspaceId: context.workspaceId,
+        entityTypeId: field.relatedEntityTypeId,
+        recordId: value,
+        includeArchived: true,
+      });
+    },
+  });
+
+  return {
+    entityType: activeContext.entityType,
+    validation,
+  };
+}
+
+export async function createView(
+  context: EntityViewContext,
+  _previousState: ViewFormState,
+  formData: FormData,
+): Promise<ViewFormState> {
+  const { entityType, validation } = await validateViewSubmission(
+    context,
+    formData,
+  );
+
+  if (!validation.success) {
+    return validation;
+  }
+
+  try {
+    await createEntityView({
+      ...context,
+      ...validation.values,
+    });
+  } catch {
+    return {
+      ...validation,
+      success: false,
+      message: "Unable to create view. Please try again.",
+      errors: {
+        _form: "The database rejected the view.",
+      },
+    };
+  }
+
+  revalidatePath(`/entities/${entityType.id}`);
+
+  return {
+    ...createInitialViewFormState(validation.values),
+    success: true,
+    message: "View created.",
+  };
+}
+
+export async function updateView(
+  context: EntityViewContext,
+  _previousState: ViewFormState,
+  formData: FormData,
+): Promise<ViewFormState> {
+  const { entityType, validation } = await validateViewSubmission(
+    context,
+    formData,
+  );
+
+  if (!validation.success) {
+    return validation;
+  }
+
+  try {
+    await updateEntityView({
+      ...context,
+      ...validation.values,
+    });
+  } catch {
+    return {
+      ...validation,
+      success: false,
+      message: "Unable to update view. Please try again.",
+      errors: {
+        _form: "The database rejected the view.",
+      },
+    };
+  }
+
+  revalidatePath(`/entities/${entityType.id}`);
+
+  return {
+    ...createInitialViewFormState(validation.values),
+    success: true,
+    message: "View updated.",
+  };
+}
+
+export async function deleteView(
+  context: EntityViewContext,
+  previousState: DeleteViewActionState,
+  formData: FormData,
+): Promise<DeleteViewActionState> {
+  void previousState;
+  void formData;
+
+  if (!context.viewId) {
+    return {
+      success: false,
+      message: "Unable to delete view. Please try again.",
+    };
+  }
+
+  try {
+    await deleteEntityView({
+      workspaceId: context.workspaceId,
+      entityTypeId: context.entityTypeId,
+      viewId: context.viewId,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to delete view. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "View deleted.",
+  };
 }
 
 export async function deleteField(
@@ -887,7 +1106,11 @@ export async function deleteField(
     if (!result.deleted) {
       return {
         success: false,
-        message: formatFieldDeleteBlockMessage(result),
+        message: formatFieldDeleteBlockMessage({
+          entityName: entityType.name,
+          field,
+          ...result,
+        }),
       };
     }
   } catch {
@@ -916,7 +1139,7 @@ export async function updateEntityMetadata(
     return validation.state;
   }
 
-  const { entityType } = await getEntityContext(context);
+  const { entityType, fields } = await getEntityContext(context);
 
   if (entityType.archivedAt) {
     return {
@@ -929,12 +1152,37 @@ export async function updateEntityMetadata(
     };
   }
 
+  const displayFieldDefinitionId = validation.values.displayFieldDefinitionId;
+  const displayField = displayFieldDefinitionId
+    ? fields.find((field) => field.id === displayFieldDefinitionId)
+    : undefined;
+
+  if (
+    displayFieldDefinitionId &&
+    (!displayField || displayField.archivedAt || displayField.type !== "text")
+  ) {
+    return {
+      success: false,
+      message: "Please fix the highlighted fields.",
+      errors: {
+        displayFieldDefinitionId:
+          "Choose an active text field, or choose no display field.",
+      },
+      values: validation.values,
+    };
+  }
+
   try {
     await updateEntityTypeMetadata({
       workspaceId: context.workspaceId,
       entityTypeId: context.entityTypeId,
       name: validation.values.name,
       description: validation.values.description,
+    });
+    await setEntityDisplayField({
+      workspaceId: context.workspaceId,
+      entityTypeId: context.entityTypeId,
+      displayFieldDefinitionId,
     });
   } catch {
     return {

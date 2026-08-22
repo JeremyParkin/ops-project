@@ -16,6 +16,7 @@ export type EntityType = {
   name: string;
   slug: string;
   description?: string;
+  displayFieldDefinitionId?: string;
   archivedAt?: IsoUtcTimestamp;
   createdAt: IsoUtcTimestamp;
   updatedAt: IsoUtcTimestamp;

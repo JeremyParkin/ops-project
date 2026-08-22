@@ -5,12 +5,16 @@ import {
   archiveEntity,
   createRecord,
   deleteEntity,
+  createView,
   restoreEntity,
+  deleteView,
   updateEntityMetadata,
+  updateView,
 } from "@/app/actions";
 import { EntityNavigation } from "@/app/components/entity-navigation";
 import { EntityRecordsTable } from "@/app/components/entity-records-table";
 import { EntitySettingsForm } from "@/app/components/entity-settings-form";
+import { EntityViewsPanel } from "@/app/components/entity-views-panel";
 import { FieldCreateForm } from "@/app/components/field-create-form";
 import { FieldManagementList } from "@/app/components/field-management-list";
 import { RecordCreateForm } from "@/app/components/record-create-form";
@@ -23,6 +27,11 @@ import {
   getRelationLookups,
   listEntityRecords,
 } from "@/lib/domain/record-repository";
+import { evaluateEntityView } from "@/lib/domain/view-engine";
+import {
+  countViewReferencesByFieldId,
+  listEntityViews,
+} from "@/lib/domain/view-repository";
 import {
   countWorkflowReferencesByFieldId,
   listWorkflows,
@@ -62,7 +71,9 @@ async function loadEntityPageData({
       allEntityTypes,
       entityContext,
       fieldManagementContext,
+      allFieldContext,
       workflows,
+      views,
     ] = await Promise.all([
       listEntityTypes({
         workspaceId: DEMO_WORKSPACE_ID,
@@ -78,7 +89,12 @@ async function loadEntityPageData({
         ...context,
         includeArchivedFields: showArchivedFields,
       }),
+      getEntityContext({
+        ...context,
+        includeArchivedFields: true,
+      }),
       listWorkflows({ workspaceId: DEMO_WORKSPACE_ID }),
+      listEntityViews(context),
     ]);
     const [records, relationLookups] = await Promise.all([
       listEntityRecords({
@@ -99,10 +115,16 @@ async function loadEntityPageData({
       allEntityTypes,
       entityContext,
       fieldManagementContext,
+      allFields: allFieldContext.fields,
       workflowReferenceCountByFieldId: countWorkflowReferencesByFieldId({
         workflows,
         fieldDefinitionIds: fieldManagementContext.fields.map((field) => field.id),
       }),
+      viewReferenceCountByFieldId: countViewReferencesByFieldId({
+        views,
+        fieldDefinitionIds: fieldManagementContext.fields.map((field) => field.id),
+      }),
+      views,
       records,
       relationLookups,
     };
@@ -122,6 +144,7 @@ export default async function EntityPage({
     showArchived?: string;
     showArchivedEntities?: string;
     showArchivedFields?: string;
+    view?: string;
   }>;
 }) {
   const { entityTypeId } = await params;
@@ -129,6 +152,7 @@ export default async function EntityPage({
     showArchived: showArchivedParam,
     showArchivedEntities: showArchivedEntitiesParam,
     showArchivedFields: showArchivedFieldsParam,
+    view: viewParam,
   } = await searchParams;
   const showArchivedRecords = showArchivedParam === "true";
   const showArchivedEntities = showArchivedEntitiesParam === "true";
@@ -151,10 +175,25 @@ export default async function EntityPage({
     allEntityTypes,
     entityContext: { entityType, fields },
     fieldManagementContext,
+    allFields,
     workflowReferenceCountByFieldId,
+    viewReferenceCountByFieldId,
+    views,
     records,
     relationLookups,
   } = pageData;
+  const selectedView =
+    viewParam === "all"
+      ? undefined
+      : viewParam
+        ? views.find((view) => view.id === viewParam)
+        : views.find((view) => view.isDefault);
+  const evaluatedView = evaluateEntityView({
+    selectedView,
+    activeFields: fields,
+    allFields,
+    records,
+  });
   const isArchivedEntity = Boolean(entityType.archivedAt);
   const entityNameById = Object.fromEntries(
     allEntityTypes.map((listedEntityType) => [
@@ -164,6 +203,13 @@ export default async function EntityPage({
   );
   const createEntityRecord = createRecord.bind(null, context);
   const addEntityField = addFieldDefinition.bind(null, context);
+  const createEntityView = createView.bind(null, context);
+  const updateEntityView = selectedView
+    ? updateView.bind(null, { ...context, viewId: selectedView.id })
+    : undefined;
+  const deleteEntityView = selectedView
+    ? deleteView.bind(null, { ...context, viewId: selectedView.id })
+    : undefined;
   const updateEntity = updateEntityMetadata.bind(null, context);
   const archiveCurrentEntity = archiveEntity.bind(null, context);
   const restoreCurrentEntity = restoreEntity.bind(null, context);
@@ -203,6 +249,7 @@ export default async function EntityPage({
       <div className="flex min-w-0 flex-1 flex-col gap-8">
         <EntitySettingsForm
           entityType={entityType}
+          fields={fields}
           updateEntityMetadataAction={updateEntity}
           archiveEntityAction={archiveCurrentEntity}
           restoreEntityAction={restoreCurrentEntity}
@@ -220,6 +267,7 @@ export default async function EntityPage({
               fields={fieldManagementContext.fields}
               entityNameById={entityNameById}
               workflowReferenceCountByFieldId={workflowReferenceCountByFieldId}
+              viewReferenceCountByFieldId={viewReferenceCountByFieldId}
             />
             <div className="mx-auto -mt-6 w-full max-w-6xl">
               <Link
@@ -244,10 +292,25 @@ export default async function EntityPage({
             />
           </>
         ) : null}
+        {!isArchivedEntity ? (
+          <EntityViewsPanel
+            entityType={entityType}
+            views={views}
+            selectedView={selectedView}
+            activeFields={fields}
+            allFields={allFields}
+            relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            warnings={evaluatedView.warnings}
+            invalidFilter={evaluatedView.invalidFilter}
+            createViewAction={createEntityView}
+            updateViewAction={updateEntityView}
+            deleteViewAction={deleteEntityView}
+          />
+        ) : null}
         <EntityRecordsTable
           entityType={entityType}
-          fields={fields}
-          records={records}
+          fields={evaluatedView.visibleFields}
+          records={evaluatedView.records}
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
           recordEditPathBase={
             isArchivedEntity ? undefined : `/entities/${entityType.id}/records`

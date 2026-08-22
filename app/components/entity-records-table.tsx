@@ -80,10 +80,6 @@ export function EntityRecordsTable({
   recordEditPathBase,
   recordActionContext,
 }: EntityRecordsTableProps) {
-  const orderedFields = [...fields].sort((left, right) => {
-    return left.position - right.position;
-  });
-
   return (
     <section className="mx-auto w-full max-w-6xl">
       <div className="mb-6">
@@ -100,7 +96,7 @@ export function EntityRecordsTable({
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
-                {orderedFields.map((field) => (
+                {fields.map((field) => (
                   <th
                     key={field.id}
                     scope="col"
@@ -133,7 +129,7 @@ export function EntityRecordsTable({
                   key={record.id}
                   className={record.archivedAt ? "bg-slate-50 text-slate-500" : ""}
                 >
-                  {orderedFields.map((field) => (
+                  {fields.map((field) => (
                     <td key={field.id} className="px-4 py-3">
                       {formatTableCell(
                         field,

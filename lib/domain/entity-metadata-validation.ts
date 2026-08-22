@@ -5,12 +5,14 @@ export type EntityMetadataFormState = {
   values: {
     name: string;
     description: string;
+    displayFieldDefinitionId: string;
   };
 };
 
 export function createInitialEntityMetadataFormState({
   name,
   description,
+  displayFieldDefinitionId,
 }: EntityMetadataFormState["values"]): EntityMetadataFormState {
   return {
     success: false,
@@ -19,6 +21,7 @@ export function createInitialEntityMetadataFormState({
     values: {
       name,
       description,
+      displayFieldDefinitionId,
     },
   };
 }
@@ -41,6 +44,7 @@ export function validateEntityMetadataFormData(formData: FormData):
   const values = {
     name: getString(formData, "entityName"),
     description: getString(formData, "entityDescription"),
+    displayFieldDefinitionId: getString(formData, "displayFieldDefinitionId"),
   };
   const errors: Record<string, string> = {};
 
