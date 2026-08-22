@@ -228,7 +228,7 @@ export function EntitySettingsForm({
           onSubmit={(event) => {
             if (
               !window.confirm(
-                "Delete this entity permanently? This is only allowed when it has no records or relation fields pointing to it.",
+                "Delete this entity permanently? This is only allowed when it has no records, no relation fields pointing to it, and no workflow action that creates records in it.",
               )
             ) {
               event.preventDefault();

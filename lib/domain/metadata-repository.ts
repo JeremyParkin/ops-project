@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createFieldKey, createSlug, createUniqueSlug } from "./slug";
 import type { EntityType, FieldDefinition, FieldType } from "./types";
+import { listWorkflows } from "./workflow-repository";
 
 type EntityTypeRow = {
   id: string;
@@ -599,6 +600,27 @@ export async function getEntityTypeRelationFieldSummary({
   };
 }
 
+export async function getEntityTypeWorkflowTargetSummary({
+  workspaceId,
+  entityTypeId,
+}: EntityTypeLifecycleInput) {
+  const workflows = await listWorkflows({ workspaceId });
+  const references = workflows
+    .filter((workflow) =>
+      workflow.actions.some(
+        (action) =>
+          action.actionType === "create_record" &&
+          action.actionTargetEntityTypeId === entityTypeId,
+      ),
+    )
+    .map((workflow) => ({ workflowName: workflow.name }));
+
+  return {
+    total: references.length,
+    references,
+  };
+}
+
 export async function deleteEntityType({
   workspaceId,
   entityTypeId,
@@ -617,6 +639,7 @@ export async function deleteEntityType({
     deleted: boolean;
     record_count: number;
     relation_field_count: number;
+    workflow_target_count: number;
   }> | null;
   const result = resultRows?.[0];
 
@@ -628,5 +651,6 @@ export async function deleteEntityType({
     deleted: result.deleted,
     recordCount: result.record_count,
     relationFieldCount: result.relation_field_count,
+    workflowTargetCount: result.workflow_target_count,
   };
 }

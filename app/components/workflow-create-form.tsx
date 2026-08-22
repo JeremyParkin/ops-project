@@ -52,6 +52,14 @@ type LocalMapping = {
   template: string;
 };
 
+type LocalAction = {
+  id: string;
+  actionType: WorkflowActionType;
+  actionTargetEntityTypeId: string;
+  relatedFieldDefinitionId: string;
+  mappings: Record<string, LocalMapping>;
+};
+
 type LocalCondition = {
   id: string;
   sourceFieldDefinitionId: string;
@@ -131,7 +139,7 @@ function getDefaultMapping(
 
 function createMappingsForTarget(
   fields: FieldDefinition[],
-  savedMappings: WorkflowFormState["values"]["mappings"],
+  savedMappings: Record<string, LocalMapping>,
   actionType: WorkflowActionType,
 ) {
   return Object.fromEntries(
@@ -217,15 +225,27 @@ function cleanMappingsForTrigger({
   ) as Record<string, LocalMapping>;
 }
 
+function createDefaultAction(defaultEntityTypeId: string): LocalAction {
+  return {
+    id: `action-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    actionType: "create_record",
+    actionTargetEntityTypeId: defaultEntityTypeId,
+    relatedFieldDefinitionId: "",
+    mappings: {},
+  };
+}
+
 function ConstantInput({
   field,
   value,
+  name,
   options,
   error,
   onChange,
 }: {
   field: FieldDefinition;
   value: string;
+  name: string;
   options: RelationRecordOption[];
   error?: string;
   onChange: (value: string) => void;
@@ -234,7 +254,7 @@ function ConstantInput({
     return (
       <>
         <select
-          name={`constantValue:${field.id}`}
+          name={name}
           value={value}
           onChange={(event) => onChange(event.currentTarget.value)}
           className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
@@ -252,7 +272,7 @@ function ConstantInput({
     return (
       <>
         <select
-          name={`constantValue:${field.id}`}
+          name={name}
           value={value}
           onChange={(event) => onChange(event.currentTarget.value)}
           className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
@@ -272,7 +292,7 @@ function ConstantInput({
   return (
     <>
       <input
-        name={`constantValue:${field.id}`}
+        name={name}
         type={field.type === "number" ? "text" : field.type}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -409,68 +429,66 @@ function WorkflowDefinitionFormFields({
   );
   const initialTriggerEntityTypeId =
     state.values.triggerEntityTypeId || entityContexts[0]?.entityType.id || "";
-  const initialActionType = state.values.actionType;
-  const initialTargetEntityTypeId =
-    state.values.actionTargetEntityTypeId ||
-    entityContexts[0]?.entityType.id ||
-    "";
-  const initialRelatedFieldDefinitionId = state.values.relatedFieldDefinitionId;
   const initialTriggerContext = contextById.get(initialTriggerEntityTypeId);
-  const initialRelatedField = initialTriggerContext?.fields.find(
-    (field) => field.id === initialRelatedFieldDefinitionId,
-  );
-  const initialTargetContext =
-    initialActionType === "update_record"
-      ? contextById.get(initialTriggerEntityTypeId)
-      : initialActionType === "update_related_record"
-        ? contextById.get(initialRelatedField?.relatedEntityTypeId ?? "")
-      : contextById.get(initialTargetEntityTypeId);
-  const initialTargetFields = initialTargetContext
-    ? getRenderedTargetFields({
-        fields: initialTargetContext.fields,
-        mappings: state.values.mappings,
-      })
-    : [];
+  const defaultTargetEntityTypeId = entityContexts[0]?.entityType.id ?? "";
+
+  function resolveTargetContext(action: LocalAction, triggerCtx?: WorkflowEntityContext) {
+    if (action.actionType === "update_record") {
+      return triggerCtx;
+    }
+
+    if (action.actionType === "update_related_record") {
+      const relatedField = triggerCtx?.fields.find(
+        (field) => field.id === action.relatedFieldDefinitionId,
+      );
+
+      return contextById.get(relatedField?.relatedEntityTypeId ?? "");
+    }
+
+    return contextById.get(action.actionTargetEntityTypeId);
+  }
+
+  function buildInitialAction(formValue: WorkflowFormState["values"]["actions"][number]): LocalAction {
+    const local: LocalAction = {
+      id: formValue.id,
+      actionType: formValue.actionType,
+      actionTargetEntityTypeId:
+        formValue.actionTargetEntityTypeId || defaultTargetEntityTypeId,
+      relatedFieldDefinitionId: formValue.relatedFieldDefinitionId,
+      mappings: {},
+    };
+    const targetContext = resolveTargetContext(local, initialTriggerContext);
+    const renderedTargetFields = targetContext
+      ? getRenderedTargetFields({ fields: targetContext.fields, mappings: formValue.mappings })
+      : [];
+
+    local.mappings = createMappingsForTarget(
+      renderedTargetFields,
+      formValue.mappings,
+      local.actionType,
+    );
+
+    return local;
+  }
+
   const [workflowName, setWorkflowName] = useState(state.values.name);
   const [enabled, setEnabled] = useState(state.values.enabled);
   const [triggerType, setTriggerType] = useState<WorkflowTriggerType>(
     state.values.triggerType,
   );
-  const [actionType, setActionType] =
-    useState<WorkflowActionType>(initialActionType);
   const [triggerEntityTypeId, setTriggerEntityTypeId] = useState(
     initialTriggerEntityTypeId,
   );
   const [watchedFieldDefinitionIds, setWatchedFieldDefinitionIds] = useState<
     string[]
   >(state.values.watchedFieldDefinitionIds);
-  const [targetEntityTypeId, setTargetEntityTypeId] = useState(
-    initialTargetEntityTypeId,
-  );
-  const [relatedFieldDefinitionId, setRelatedFieldDefinitionId] = useState(
-    initialRelatedFieldDefinitionId,
-  );
-  const [mappings, setMappings] = useState<Record<string, LocalMapping>>(
-    createMappingsForTarget(
-      initialTargetFields,
-      state.values.mappings,
-      initialActionType,
-    ),
-  );
   const [conditions, setConditions] = useState<LocalCondition[]>(
     state.values.conditions,
   );
+  const [actions, setActions] = useState<LocalAction[]>(() =>
+    state.values.actions.map(buildInitialAction),
+  );
   const triggerContext = contextById.get(triggerEntityTypeId);
-  const targetContext =
-    actionType === "update_record"
-      ? triggerContext
-      : actionType === "update_related_record"
-        ? contextById.get(
-            triggerContext?.fields.find(
-              (field) => field.id === relatedFieldDefinitionId,
-            )?.relatedEntityTypeId ?? "",
-          )
-      : contextById.get(targetEntityTypeId);
   const entityNameById = Object.fromEntries(
     entityContexts.map((context) => [
       context.entityType.id,
@@ -488,32 +506,74 @@ function WorkflowDefinitionFormFields({
       : field.name;
   }
 
-  function updateMapping(
+  function updateAction(
+    actionId: string,
+    updater: (action: LocalAction) => LocalAction,
+  ) {
+    setActions((current) =>
+      current.map((action) => (action.id === actionId ? updater(action) : action)),
+    );
+  }
+
+  function addAction() {
+    setActions((current) => [...current, createDefaultAction(defaultTargetEntityTypeId)]);
+  }
+
+  function removeAction(actionId: string) {
+    setActions((current) =>
+      current.length <= 1 ? current : current.filter((action) => action.id !== actionId),
+    );
+  }
+
+  function moveAction(actionId: string, direction: "up" | "down") {
+    setActions((current) => {
+      const index = current.findIndex((action) => action.id === actionId);
+      const swapWith = direction === "up" ? index - 1 : index + 1;
+
+      if (index === -1 || swapWith < 0 || swapWith >= current.length) {
+        return current;
+      }
+
+      const next = [...current];
+
+      [next[index], next[swapWith]] = [next[swapWith], next[index]];
+
+      return next;
+    });
+  }
+
+  function updateActionMapping(
+    actionId: string,
     targetFieldId: string,
     updater: (mapping: LocalMapping) => LocalMapping,
   ) {
-    setMappings((current) => ({
-      ...current,
-      [targetFieldId]: updater(
-        current[targetFieldId] ?? {
-          type:
-            actionType === "update_record" || actionType === "update_related_record"
-              ? "leave_unchanged"
-              : "unset",
-          constantValue: "",
-          sourceFieldDefinitionId: "",
-          template: "",
-        },
-      ),
+    updateAction(actionId, (action) => ({
+      ...action,
+      mappings: {
+        ...action.mappings,
+        [targetFieldId]: updater(
+          action.mappings[targetFieldId] ?? {
+            type:
+              action.actionType === "update_record" ||
+              action.actionType === "update_related_record"
+                ? "leave_unchanged"
+                : "unset",
+            constantValue: "",
+            sourceFieldDefinitionId: "",
+            template: "",
+          },
+        ),
+      },
     }));
   }
 
-  function removeMapping(targetFieldId: string) {
-    setMappings((current) => {
-      const next = { ...current };
-      delete next[targetFieldId];
+  function removeActionMapping(actionId: string, targetFieldId: string) {
+    updateAction(actionId, (action) => {
+      const nextMappings = { ...action.mappings };
 
-      return next;
+      delete nextMappings[targetFieldId];
+
+      return { ...action, mappings: nextMappings };
     });
   }
 
@@ -524,65 +584,103 @@ function WorkflowDefinitionFormFields({
 
     const nextTriggerContext = contextById.get(value);
 
-    if (!nextTriggerContext || !targetContext) {
-      return;
-    }
+    setActions((current) =>
+      current.map((action) => {
+        if (action.actionType === "update_record") {
+          return {
+            ...action,
+            mappings: createMappingsForTarget(
+              getActiveFields(nextTriggerContext?.fields ?? []),
+              {},
+              action.actionType,
+            ),
+          };
+        }
 
-    if (actionType === "update_record") {
-      setMappings(
-        createMappingsForTarget(
-          getActiveFields(nextTriggerContext.fields),
+        if (action.actionType === "update_related_record") {
+          return {
+            ...action,
+            relatedFieldDefinitionId: "",
+            mappings: {},
+          };
+        }
+
+        const targetContext = contextById.get(action.actionTargetEntityTypeId);
+
+        if (!nextTriggerContext || !targetContext) {
+          return action;
+        }
+
+        return {
+          ...action,
+          mappings: cleanMappingsForTrigger({
+            mappings: action.mappings,
+            targetFields: targetContext.fields,
+            triggerFields: nextTriggerContext.fields,
+            actionType: action.actionType,
+          }),
+        };
+      }),
+    );
+  }
+
+  function handleActionTypeChange(actionId: string, value: WorkflowActionType) {
+    updateAction(actionId, (action) => {
+      const targetEntityTypeId =
+        action.actionTargetEntityTypeId || defaultTargetEntityTypeId;
+      const nextTargetContext =
+        value === "update_record"
+          ? triggerContext
+          : value === "update_related_record"
+            ? undefined
+            : contextById.get(targetEntityTypeId);
+
+      return {
+        ...action,
+        actionType: value,
+        actionTargetEntityTypeId: targetEntityTypeId,
+        mappings: createMappingsForTarget(
+          getActiveFields(nextTargetContext?.fields ?? []),
           {},
-          actionType,
+          value,
         ),
-      );
-    } else if (actionType === "update_related_record") {
-      setRelatedFieldDefinitionId("");
-      setMappings({});
-    } else {
-      setMappings((current) =>
-        cleanMappingsForTrigger({
-          mappings: current,
-          targetFields: targetContext.fields,
-          triggerFields: nextTriggerContext.fields,
-          actionType,
-        }),
-      );
-    }
+      };
+    });
   }
 
-  function handleActionTypeChange(value: WorkflowActionType) {
-    setActionType(value);
-    const nextTargetContext =
-      value === "update_record"
-        ? triggerContext
-        : value === "update_related_record"
-          ? undefined
-        : contextById.get(targetEntityTypeId);
+  function handleActionTargetEntityChange(actionId: string, value: string) {
+    updateAction(actionId, (action) => {
+      const nextTargetContext = contextById.get(value);
 
-    setMappings(
-      createMappingsForTarget(
-        getActiveFields(nextTargetContext?.fields ?? []),
-        {},
-        value,
-      ),
-    );
+      return {
+        ...action,
+        actionTargetEntityTypeId: value,
+        mappings: createMappingsForTarget(
+          getActiveFields(nextTargetContext?.fields ?? []),
+          {},
+          action.actionType,
+        ),
+      };
+    });
   }
 
-  function handleRelatedFieldChange(value: string) {
-    setRelatedFieldDefinitionId(value);
-    const relatedField = triggerContext?.fields.find((field) => field.id === value);
-    const nextTargetContext = contextById.get(
-      relatedField?.relatedEntityTypeId ?? "",
-    );
+  function handleActionRelatedFieldChange(actionId: string, value: string) {
+    updateAction(actionId, (action) => {
+      const relatedField = triggerContext?.fields.find((field) => field.id === value);
+      const nextTargetContext = contextById.get(
+        relatedField?.relatedEntityTypeId ?? "",
+      );
 
-    setMappings(
-      createMappingsForTarget(
-        getActiveFields(nextTargetContext?.fields ?? []),
-        {},
-        actionType,
-      ),
-    );
+      return {
+        ...action,
+        relatedFieldDefinitionId: value,
+        mappings: createMappingsForTarget(
+          getActiveFields(nextTargetContext?.fields ?? []),
+          {},
+          action.actionType,
+        ),
+      };
+    });
   }
 
   function addCondition() {
@@ -638,35 +736,12 @@ function WorkflowDefinitionFormFields({
     });
   }
 
-  function handleTargetEntityChange(value: string) {
-    setTargetEntityTypeId(value);
-
-    const nextTargetContext = contextById.get(value);
-
-    setMappings(
-      createMappingsForTarget(
-        getActiveFields(nextTargetContext?.fields ?? []),
-        {},
-        actionType,
-      ),
-    );
-  }
-
   const watchedFields =
     triggerContext?.fields.filter(
       (field) =>
         !field.archivedAt || watchedFieldDefinitionIds.includes(field.id),
     ) ?? [];
-  const relatedFields = getSelectableFields({
-    fields: triggerContext?.fields ?? [],
-    selectedFieldId: relatedFieldDefinitionId,
-  }).filter((field) => field.type === "relation");
-  const renderedTargetFields = targetContext
-    ? getRenderedTargetFields({
-        fields: targetContext.fields,
-        mappings,
-      })
-    : [];
+
   const archivedReferenceMessages = Array.from(
     new Set([
       ...(triggerType === "record_updated"
@@ -682,14 +757,6 @@ function WorkflowDefinitionFormFields({
                 `Watched field ${getSourceFieldLabel(field)} is archived.`,
             )
         : []),
-      ...(actionType === "update_related_record"
-        ? relatedFields
-            .filter(
-              (field) =>
-                field.id === relatedFieldDefinitionId && Boolean(field.archivedAt),
-            )
-            .map((field) => `Related field ${getSourceFieldLabel(field)} is archived.`)
-        : []),
       ...conditions
         .map((condition) =>
           triggerContext?.fields.find(
@@ -700,59 +767,92 @@ function WorkflowDefinitionFormFields({
         .map(
           (field) => `Condition field ${getSourceFieldLabel(field)} is archived.`,
         ),
-      ...renderedTargetFields
-        .filter((field) => field.archivedAt)
-        .map((field) =>
-          targetContext
-            ? `Target field ${getWorkflowFieldLabel({
-                entityType: targetContext.entityType,
-                field,
-                entityNameById,
-              })} is archived.`
-            : `Target field ${field.name} is archived.`,
-        ),
-      ...renderedTargetFields.flatMap((targetField) => {
-        const mapping =
-          mappings[targetField.id] ?? getDefaultMapping(targetField, actionType);
-
-        if (!triggerContext) {
-          return [];
-        }
-
-        if (mapping.type === "source_field") {
-          const sourceField = triggerContext.fields.find(
-            (field) => field.id === mapping.sourceFieldDefinitionId,
-          );
-
-          return sourceField?.archivedAt
-            ? [
-                `Source mapping ${getSourceFieldLabel(
-                  sourceField,
-                )} is archived.`,
-              ]
+      ...actions.flatMap((action, actionIndex) => {
+        const actionLabel = `Action ${actionIndex + 1}`;
+        const targetContext = resolveTargetContext(action, triggerContext);
+        const relatedFields =
+          action.actionType === "update_related_record"
+            ? getSelectableFields({
+                fields: triggerContext?.fields ?? [],
+                selectedFieldId: action.relatedFieldDefinitionId,
+              }).filter((field) => field.type === "relation")
             : [];
-        }
+        const renderedTargetFields = targetContext
+          ? getRenderedTargetFields({
+              fields: targetContext.fields,
+              mappings: action.mappings,
+            })
+          : [];
 
-        if (mapping.type !== "template") {
-          return [];
-        }
+        return [
+          ...relatedFields
+            .filter(
+              (field) =>
+                field.id === action.relatedFieldDefinitionId &&
+                Boolean(field.archivedAt),
+            )
+            .map(
+              (field) =>
+                `${actionLabel} related field ${getSourceFieldLabel(field)} is archived.`,
+            ),
+          ...renderedTargetFields
+            .filter((field) => field.archivedAt)
+            .map((field) =>
+              targetContext
+                ? `${actionLabel} target field ${getWorkflowFieldLabel({
+                    entityType: targetContext.entityType,
+                    field,
+                    entityNameById,
+                  })} is archived.`
+                : `${actionLabel} target field ${field.name} is archived.`,
+            ),
+          ...renderedTargetFields.flatMap((targetField) => {
+            const mapping =
+              action.mappings[targetField.id] ??
+              getDefaultMapping(targetField, action.actionType);
 
-        return triggerContext.fields
-          .filter((field) => field.archivedAt)
-          .filter((field) =>
-            mapping.template.includes(`{${getSourceFieldLabel(field)}}`),
-          )
-          .map(
-            (field) =>
-              `Template placeholder ${getSourceFieldLabel(field)} is archived.`,
-          );
+            if (!triggerContext) {
+              return [];
+            }
+
+            if (mapping.type === "source_field") {
+              const sourceField = triggerContext.fields.find(
+                (field) => field.id === mapping.sourceFieldDefinitionId,
+              );
+
+              return sourceField?.archivedAt
+                ? [
+                    `${actionLabel} source mapping ${getSourceFieldLabel(
+                      sourceField,
+                    )} is archived.`,
+                  ]
+                : [];
+            }
+
+            if (mapping.type !== "template") {
+              return [];
+            }
+
+            return triggerContext.fields
+              .filter((field) => field.archivedAt)
+              .filter((field) =>
+                mapping.template.includes(`{${getSourceFieldLabel(field)}}`),
+              )
+              .map(
+                (field) =>
+                  `${actionLabel} template placeholder ${getSourceFieldLabel(
+                    field,
+                  )} is archived.`,
+              );
+          }),
+        ];
       }),
     ]),
   );
 
   return (
     <>
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-3">
         <div>
           <label
             htmlFor="workflowName"
@@ -822,88 +922,6 @@ function WorkflowDefinitionFormFields({
           </select>
           <FieldError message={state.errors.triggerEntityTypeId} />
         </div>
-
-        <div>
-          <label
-            htmlFor="workflowActionType"
-            className="block text-sm font-medium text-slate-800"
-          >
-            Action
-          </label>
-          <select
-            id="workflowActionType"
-            name="workflowActionType"
-            value={actionType}
-            onChange={(event) =>
-              handleActionTypeChange(
-                event.currentTarget.value as WorkflowActionType,
-              )
-            }
-            className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
-          >
-            <option value="create_record">Create Record</option>
-            <option value="update_record">Update Triggering Record</option>
-            <option value="update_related_record">Update Related Record</option>
-          </select>
-        </div>
-
-        {actionType === "create_record" ? (
-          <div>
-          <label
-            htmlFor="actionTargetEntityTypeId"
-            className="block text-sm font-medium text-slate-800"
-          >
-            Then Create Record In
-          </label>
-          <select
-            id="actionTargetEntityTypeId"
-            name="actionTargetEntityTypeId"
-            value={targetEntityTypeId}
-            onChange={(event) =>
-              handleTargetEntityChange(event.currentTarget.value)
-            }
-            className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
-          >
-            {entityContexts.map((context) => (
-              <option key={context.entityType.id} value={context.entityType.id}>
-                {context.entityType.name}
-              </option>
-            ))}
-          </select>
-          <FieldError message={state.errors.actionTargetEntityTypeId} />
-          </div>
-        ) : null}
-        {actionType === "update_related_record" ? (
-          <div>
-            <label
-              htmlFor="relatedFieldDefinitionId"
-              className="block text-sm font-medium text-slate-800"
-            >
-              Related Record Field
-            </label>
-            <select
-              id="relatedFieldDefinitionId"
-              name="relatedFieldDefinitionId"
-              value={relatedFieldDefinitionId}
-              onChange={(event) => handleRelatedFieldChange(event.currentTarget.value)}
-              className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
-            >
-              <option value="">Choose relation field</option>
-              {relatedFields.map((field) => (
-                <option key={field.id} value={field.id}>
-                  {getSourceFieldLabel(field)}
-                  {field.archivedAt ? " (Archived)" : ""}
-                </option>
-              ))}
-            </select>
-            <FieldError message={state.errors.relatedFieldDefinitionId} />
-            {targetContext ? (
-              <p className="mt-1 text-sm text-slate-500">
-                Updates one related {targetContext.entityType.name} record.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
       </div>
 
       <input name="workflowEnabled" type="hidden" value="false" />
@@ -1156,202 +1174,407 @@ function WorkflowDefinitionFormFields({
       </div>
 
       <div>
-        <h2 className="mb-3 text-lg font-semibold text-slate-950">
-          {actionType === "update_record" || actionType === "update_related_record"
-            ? "Update Fields"
-            : "Set Fields"}
-        </h2>
-        <div className="flex flex-col gap-3">
-          {renderedTargetFields.map((targetField) => {
-            const mapping =
-              mappings[targetField.id] ?? getDefaultMapping(targetField, actionType);
-            const compatibleSourceFields =
-              triggerContext
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-950">Actions</h2>
+          <button
+            type="button"
+            onClick={addAction}
+            className="border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:border-slate-950 hover:text-slate-950"
+          >
+            Add Action
+          </button>
+        </div>
+        <div className="flex flex-col gap-4">
+          {actions.map((action, actionIndex) => {
+            const targetContext = resolveTargetContext(action, triggerContext);
+            const relatedFields =
+              action.actionType === "update_related_record"
                 ? getSelectableFields({
-                    fields: triggerContext.fields,
-                    selectedFieldId: mapping.sourceFieldDefinitionId,
-                  }).filter((sourceField) =>
-                    areFieldsCompatible(sourceField, targetField),
-                  )
+                    fields: triggerContext?.fields ?? [],
+                    selectedFieldId: action.relatedFieldDefinitionId,
+                  }).filter((field) => field.type === "relation")
                 : [];
+            const renderedTargetFields = targetContext
+              ? getRenderedTargetFields({
+                  fields: targetContext.fields,
+                  mappings: action.mappings,
+                })
+              : [];
 
             return (
               <div
-                key={targetField.id}
-                className="grid gap-3 border border-slate-200 p-4 md:grid-cols-[1fr_180px_1fr]"
+                key={action.id}
+                className="border border-slate-200 p-4"
               >
-                <input
-                  name="targetFieldDefinitionId"
-                  type="hidden"
-                  value={targetField.id}
-                />
-                <div>
-                  <p className="text-sm font-medium text-slate-950">
-                    {targetField.name}
-                    {targetField.required ? (
-                      <span className="ml-1 text-red-700" aria-hidden="true">
-                        *
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {fieldTypeLabel[targetField.type]}
-                    {targetField.archivedAt ? " · Archived" : ""}
-                  </p>
-                  {targetField.archivedAt ? (
+                <input name="actionId" type="hidden" value={action.id} />
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Action {actionIndex + 1}
+                  </h3>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => removeMapping(targetField.id)}
-                      className="mt-3 border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:border-red-700 hover:text-red-700"
+                      onClick={() => moveAction(action.id, "up")}
+                      disabled={actionIndex === 0}
+                      className="border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:border-slate-950 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      Remove archived mapping
+                      Move Up
                     </button>
-                  ) : null}
+                    <button
+                      type="button"
+                      onClick={() => moveAction(action.id, "down")}
+                      disabled={actionIndex === actions.length - 1}
+                      className="border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:border-slate-950 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Move Down
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeAction(action.id)}
+                      disabled={actions.length <= 1}
+                      className="border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:border-red-700 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Remove Action
+                    </button>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Mapping
-                  </label>
-                  <select
-                    name={`mappingType:${targetField.id}`}
-                    value={mapping.type}
-                    onChange={(event) => {
-                      const value = event.currentTarget
-                        .value as LocalMapping["type"];
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <label
+                      htmlFor={`actionType-${action.id}`}
+                      className="block text-sm font-medium text-slate-800"
+                    >
+                      Action
+                    </label>
+                    <select
+                      id={`actionType-${action.id}`}
+                      name={`actionType:${action.id}`}
+                      value={action.actionType}
+                      onChange={(event) =>
+                        handleActionTypeChange(
+                          action.id,
+                          event.currentTarget.value as WorkflowActionType,
+                        )
+                      }
+                      className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                    >
+                      <option value="create_record">Create Record</option>
+                      <option value="update_record">Update Triggering Record</option>
+                      <option value="update_related_record">
+                        Update Related Record
+                      </option>
+                    </select>
+                  </div>
 
-                      updateMapping(targetField.id, (current) => ({
-                        ...current,
-                        type: value,
-                      }));
-                    }}
-                    className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
-                  >
-                    {actionType === "update_record" || actionType === "update_related_record" ? (
-                      <>
-                        <option value="leave_unchanged">Leave unchanged</option>
-                        {!targetField.required ? (
-                          <option value="clear">Clear value</option>
-                        ) : null}
-                      </>
-                    ) : !targetField.required ? (
-                      <option value="unset">Unset</option>
-                    ) : null}
-                    <option value="constant">Constant</option>
-                    <option value="source_field">Source Field</option>
-                    {targetField.type === "text" ? (
-                      <option value="template">Template</option>
-                    ) : null}
-                  </select>
-                  <FieldError message={state.errors[`mappingType:${targetField.id}`]} />
-                </div>
-
-                <div>
-                  {mapping.type === "constant" ? (
-                    <>
-                      <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                        Constant Value
-                      </label>
-                      <ConstantInput
-                        field={targetField}
-                        value={mapping.constantValue}
-                        options={
-                          targetContext?.relationOptionsByFieldId[
-                            targetField.id
-                          ] ?? []
-                        }
-                        error={state.errors[`constantValue:${targetField.id}`]}
-                        onChange={(value) =>
-                          updateMapping(targetField.id, (current) => ({
-                            ...current,
-                            constantValue: value,
-                          }))
-                        }
-                      />
-                    </>
-                  ) : null}
-
-                  {mapping.type === "template" ? (
-                    <>
-                      <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                        Template
-                      </label>
-                      <textarea
-                        name={`templateValue:${targetField.id}`}
-                        value={mapping.template}
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-
-                          updateMapping(targetField.id, (current) => ({
-                            ...current,
-                            template: value,
-                          }));
-                        }}
-                        rows={3}
-                        className="mt-1 block w-full border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none focus:border-slate-950"
-                      />
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {getActiveFields(triggerContext?.fields ?? []).map(
-                          (sourceField) => {
-                            const label = getSourceFieldLabel(sourceField);
-                            const token = `{${label}}`;
-
-                            return (
-                              <button
-                                key={sourceField.id}
-                                type="button"
-                                onClick={() =>
-                                  updateMapping(targetField.id, (current) => ({
-                                    ...current,
-                                    template: `${current.template}${token}`,
-                                  }))
-                                }
-                                className="border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:border-slate-950 hover:text-slate-950"
-                              >
-                                {label}
-                              </button>
-                            );
-                          },
-                        )}
-                      </div>
-                      <FieldError message={state.errors[`templateValue:${targetField.id}`]} />
-                    </>
-                  ) : null}
-
-                  {mapping.type === "source_field" ? (
-                    <>
-                      <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                        Source Field
+                  {action.actionType === "create_record" ? (
+                    <div>
+                      <label
+                        htmlFor={`actionTargetEntityTypeId-${action.id}`}
+                        className="block text-sm font-medium text-slate-800"
+                      >
+                        Then Create Record In
                       </label>
                       <select
-                        name={`sourceFieldDefinitionId:${targetField.id}`}
-                        value={mapping.sourceFieldDefinitionId}
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-
-                          updateMapping(targetField.id, (current) => ({
-                            ...current,
-                            sourceFieldDefinitionId: value,
-                          }));
-                        }}
+                        id={`actionTargetEntityTypeId-${action.id}`}
+                        name={`actionTargetEntityTypeId:${action.id}`}
+                        value={action.actionTargetEntityTypeId}
+                        onChange={(event) =>
+                          handleActionTargetEntityChange(
+                            action.id,
+                            event.currentTarget.value,
+                          )
+                        }
                         className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
                       >
-                        <option value="">Choose source field</option>
-                        {compatibleSourceFields.map((sourceField) => (
-                          <option key={sourceField.id} value={sourceField.id}>
-                            {getSourceFieldLabel(sourceField)}
+                        {entityContexts.map((context) => (
+                          <option
+                            key={context.entityType.id}
+                            value={context.entityType.id}
+                          >
+                            {context.entityType.name}
                           </option>
                         ))}
                       </select>
                       <FieldError
                         message={
-                          state.errors[
-                            `sourceFieldDefinitionId:${targetField.id}`
-                          ]
+                          state.errors[`actionTargetEntityTypeId:${action.id}`]
                         }
                       />
-                    </>
+                    </div>
                   ) : null}
+
+                  {action.actionType === "update_related_record" ? (
+                    <div>
+                      <label
+                        htmlFor={`relatedFieldDefinitionId-${action.id}`}
+                        className="block text-sm font-medium text-slate-800"
+                      >
+                        Related Record Field
+                      </label>
+                      <select
+                        id={`relatedFieldDefinitionId-${action.id}`}
+                        name={`relatedFieldDefinitionId:${action.id}`}
+                        value={action.relatedFieldDefinitionId}
+                        onChange={(event) =>
+                          handleActionRelatedFieldChange(
+                            action.id,
+                            event.currentTarget.value,
+                          )
+                        }
+                        className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                      >
+                        <option value="">Choose relation field</option>
+                        {relatedFields.map((field) => (
+                          <option key={field.id} value={field.id}>
+                            {getSourceFieldLabel(field)}
+                            {field.archivedAt ? " (Archived)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <FieldError
+                        message={
+                          state.errors[`relatedFieldDefinitionId:${action.id}`]
+                        }
+                      />
+                      {targetContext ? (
+                        <p className="mt-1 text-sm text-slate-500">
+                          Updates one related {targetContext.entityType.name} record.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+                <FieldError message={state.errors[`action:${action.id}`]} />
+
+                <h4 className="mb-3 mt-4 text-sm font-semibold text-slate-950">
+                  {action.actionType === "update_record" ||
+                  action.actionType === "update_related_record"
+                    ? "Update Fields"
+                    : "Set Fields"}
+                </h4>
+                <div className="flex flex-col gap-3">
+                  {renderedTargetFields.map((targetField) => {
+                    const mapping =
+                      action.mappings[targetField.id] ??
+                      getDefaultMapping(targetField, action.actionType);
+                    const compatibleSourceFields = triggerContext
+                      ? getSelectableFields({
+                          fields: triggerContext.fields,
+                          selectedFieldId: mapping.sourceFieldDefinitionId,
+                        }).filter((sourceField) =>
+                          areFieldsCompatible(sourceField, targetField),
+                        )
+                      : [];
+                    const fieldKey = (prefix: string) =>
+                      `${prefix}:${action.id}:${targetField.id}`;
+
+                    return (
+                      <div
+                        key={targetField.id}
+                        className="grid gap-3 border border-slate-200 p-4 md:grid-cols-[1fr_180px_1fr]"
+                      >
+                        <input
+                          name={`targetFieldDefinitionId:${action.id}`}
+                          type="hidden"
+                          value={targetField.id}
+                        />
+                        <div>
+                          <p className="text-sm font-medium text-slate-950">
+                            {targetField.name}
+                            {targetField.required ? (
+                              <span className="ml-1 text-red-700" aria-hidden="true">
+                                *
+                              </span>
+                            ) : null}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {fieldTypeLabel[targetField.type]}
+                            {targetField.archivedAt ? " · Archived" : ""}
+                          </p>
+                          {targetField.archivedAt ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeActionMapping(action.id, targetField.id)
+                              }
+                              className="mt-3 border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:border-red-700 hover:text-red-700"
+                            >
+                              Remove archived mapping
+                            </button>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Mapping
+                          </label>
+                          <select
+                            name={fieldKey("mappingType")}
+                            value={mapping.type}
+                            onChange={(event) => {
+                              const value = event.currentTarget
+                                .value as LocalMapping["type"];
+
+                              updateActionMapping(
+                                action.id,
+                                targetField.id,
+                                (current) => ({
+                                  ...current,
+                                  type: value,
+                                }),
+                              );
+                            }}
+                            className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                          >
+                            {action.actionType === "update_record" ||
+                            action.actionType === "update_related_record" ? (
+                              <>
+                                <option value="leave_unchanged">Leave unchanged</option>
+                                {!targetField.required ? (
+                                  <option value="clear">Clear value</option>
+                                ) : null}
+                              </>
+                            ) : !targetField.required ? (
+                              <option value="unset">Unset</option>
+                            ) : null}
+                            <option value="constant">Constant</option>
+                            <option value="source_field">Source Field</option>
+                            {targetField.type === "text" ? (
+                              <option value="template">Template</option>
+                            ) : null}
+                          </select>
+                          <FieldError message={state.errors[fieldKey("mappingType")]} />
+                        </div>
+
+                        <div>
+                          {mapping.type === "constant" ? (
+                            <>
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Constant Value
+                              </label>
+                              <ConstantInput
+                                field={targetField}
+                                value={mapping.constantValue}
+                                name={fieldKey("constantValue")}
+                                options={
+                                  targetContext?.relationOptionsByFieldId[
+                                    targetField.id
+                                  ] ?? []
+                                }
+                                error={state.errors[fieldKey("constantValue")]}
+                                onChange={(value) =>
+                                  updateActionMapping(
+                                    action.id,
+                                    targetField.id,
+                                    (current) => ({
+                                      ...current,
+                                      constantValue: value,
+                                    }),
+                                  )
+                                }
+                              />
+                            </>
+                          ) : null}
+
+                          {mapping.type === "template" ? (
+                            <>
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Template
+                              </label>
+                              <textarea
+                                name={fieldKey("templateValue")}
+                                value={mapping.template}
+                                onChange={(event) => {
+                                  const value = event.currentTarget.value;
+
+                                  updateActionMapping(
+                                    action.id,
+                                    targetField.id,
+                                    (current) => ({
+                                      ...current,
+                                      template: value,
+                                    }),
+                                  );
+                                }}
+                                rows={3}
+                                className="mt-1 block w-full border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none focus:border-slate-950"
+                              />
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {getActiveFields(triggerContext?.fields ?? []).map(
+                                  (sourceField) => {
+                                    const label = getSourceFieldLabel(sourceField);
+                                    const token = `{${label}}`;
+
+                                    return (
+                                      <button
+                                        key={sourceField.id}
+                                        type="button"
+                                        onClick={() =>
+                                          updateActionMapping(
+                                            action.id,
+                                            targetField.id,
+                                            (current) => ({
+                                              ...current,
+                                              template: `${current.template}${token}`,
+                                            }),
+                                          )
+                                        }
+                                        className="border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:border-slate-950 hover:text-slate-950"
+                                      >
+                                        {label}
+                                      </button>
+                                    );
+                                  },
+                                )}
+                              </div>
+                              <FieldError
+                                message={state.errors[fieldKey("templateValue")]}
+                              />
+                            </>
+                          ) : null}
+
+                          {mapping.type === "source_field" ? (
+                            <>
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Source Field
+                              </label>
+                              <select
+                                name={fieldKey("sourceFieldDefinitionId")}
+                                value={mapping.sourceFieldDefinitionId}
+                                onChange={(event) => {
+                                  const value = event.currentTarget.value;
+
+                                  updateActionMapping(
+                                    action.id,
+                                    targetField.id,
+                                    (current) => ({
+                                      ...current,
+                                      sourceFieldDefinitionId: value,
+                                    }),
+                                  );
+                                }}
+                                className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                              >
+                                <option value="">Choose source field</option>
+                                {compatibleSourceFields.map((sourceField) => (
+                                  <option key={sourceField.id} value={sourceField.id}>
+                                    {getSourceFieldLabel(sourceField)}
+                                  </option>
+                                ))}
+                              </select>
+                              <FieldError
+                                message={
+                                  state.errors[fieldKey("sourceFieldDefinitionId")]
+                                }
+                              />
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

@@ -150,24 +150,27 @@ async function executeDirectRelatedRecordWorkflow({
       enabled: true,
       trigger_type: "record_updated",
       trigger_entity_type_id: fixture.deliverable.id,
-      action_type: "update_related_record",
-      action_target_entity_type_id: null,
       action_config: {
-        relatedFieldDefinitionId: fixture.deliverable.fields.client.id,
         triggerConfig: {
           watchedFieldDefinitionIds: [fixture.deliverable.fields.name.id],
         },
         conditions: [],
-        fieldMappings: [
-          {
-            targetFieldDefinitionId: fixture.client.fields.last_status.id,
-            source: {
-              type: "source_field",
-              sourceFieldDefinitionId: fixture.deliverable.fields.status.id,
-            },
-          },
-        ],
       },
+      actions: [
+        {
+          actionType: "update_related_record",
+          relatedFieldDefinitionId: fixture.deliverable.fields.client.id,
+          fieldMappings: [
+            {
+              targetFieldDefinitionId: fixture.client.fields.last_status.id,
+              source: {
+                type: "source_field",
+                sourceFieldDefinitionId: fixture.deliverable.fields.status.id,
+              },
+            },
+          ],
+        },
+      ],
     })
     .select("id")
     .single();

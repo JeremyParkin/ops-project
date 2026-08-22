@@ -22,7 +22,12 @@ import {
   areFieldsCompatible,
   buildTargetValuesFromWorkflowConfig,
 } from "./workflow-validation";
-import type { WorkflowDefinition, WorkflowTriggerType } from "./workflow-types";
+import type {
+  WorkflowAction,
+  WorkflowActionResult,
+  WorkflowDefinition,
+  WorkflowTriggerType,
+} from "./workflow-types";
 
 export type WorkflowExecutionSummary = {
   succeeded: number;
@@ -38,20 +43,20 @@ async function executeCreateRecordAction({
   workspaceId,
   sourceContext,
   triggerRecord,
-  workflow,
+  action,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   triggerRecord: EntityRecord;
-  workflow: WorkflowDefinition;
+  action: WorkflowAction;
 }) {
-  if (!workflow.actionTargetEntityTypeId) {
-    throw new Error("Create-record workflow is missing its target entity.");
+  if (!action.actionTargetEntityTypeId) {
+    throw new Error("Create-record action is missing its target entity.");
   }
 
   const targetContext = await getEntityContext({
     workspaceId,
-    entityTypeId: workflow.actionTargetEntityTypeId,
+    entityTypeId: action.actionTargetEntityTypeId,
     includeArchivedFields: true,
   });
 
@@ -59,16 +64,26 @@ async function executeCreateRecordAction({
     throw new Error("Workflow target entity is archived.");
   }
 
+  // Reload the latest triggering record, same as update_record/
+  // update_related_record already do, so a create_record action positioned
+  // after an earlier action that modified the triggering record sees that
+  // effect rather than the original triggering snapshot.
+  const latestTriggerRecord = await getEntityRecord({
+    workspaceId,
+    entityTypeId: sourceContext.entityType.id,
+    recordId: triggerRecord.id,
+    fields: sourceContext.fields,
+  });
   const activeTargetFields = targetContext.fields.filter(
     (field) => !field.archivedAt,
   );
   const relationLabelCache = new Map<string, string>();
   const targetValues = await buildTargetValuesFromWorkflowConfig({
-    actionConfig: workflow.actionConfig,
+    fieldMappings: action.fieldMappings,
     sourceEntityType: sourceContext.entityType,
     sourceFields: sourceContext.fields,
     targetFields: targetContext.fields,
-    sourceRecord: triggerRecord,
+    sourceRecord: latestTriggerRecord,
     resolveRelationLabel: async (field, recordId) => {
       if (!field.relatedEntityTypeId) {
         return "";
@@ -197,14 +212,14 @@ async function executeRecordUpdate({
   sourceRecord,
   targetContext,
   targetRecord,
-  workflow,
+  action,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   sourceRecord: EntityRecord;
   targetContext: Awaited<ReturnType<typeof getEntityContext>>;
   targetRecord: EntityRecord;
-  workflow: WorkflowDefinition;
+  action: WorkflowAction;
 }) {
   const sourceFieldById = new Map(
     sourceContext.fields.map((field) => [field.id, field]),
@@ -215,7 +230,7 @@ async function executeRecordUpdate({
   const proposedValues: EntityRecord["values"] = { ...targetRecord.values };
   const touchedFields: typeof targetContext.fields = [];
 
-  for (const mapping of workflow.actionConfig.fieldMappings) {
+  for (const mapping of action.fieldMappings) {
     const targetField = targetFieldById.get(mapping.targetFieldDefinitionId);
 
     if (!targetField) {
@@ -278,9 +293,7 @@ async function executeRecordUpdate({
     }
 
     const targetValues = await buildTargetValuesFromWorkflowConfig({
-      actionConfig: {
-        fieldMappings: [mapping],
-      },
+      fieldMappings: [mapping],
       sourceEntityType: sourceContext.entityType,
       sourceFields: sourceContext.fields,
       targetFields: targetContext.fields,
@@ -347,12 +360,12 @@ async function executeUpdateRecordAction({
   workspaceId,
   sourceContext,
   triggerRecord,
-  workflow,
+  action,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   triggerRecord: EntityRecord;
-  workflow: WorkflowDefinition;
+  action: WorkflowAction;
 }) {
   const latestRecord = await getEntityRecord({
     workspaceId,
@@ -367,7 +380,7 @@ async function executeUpdateRecordAction({
     sourceRecord: latestRecord,
     targetContext: sourceContext,
     targetRecord: latestRecord,
-    workflow,
+    action,
   });
 }
 
@@ -375,12 +388,12 @@ async function executeUpdateRelatedRecordAction({
   workspaceId,
   sourceContext,
   triggerRecord,
-  workflow,
+  action,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   triggerRecord: EntityRecord;
-  workflow: WorkflowDefinition;
+  action: WorkflowAction;
 }) {
   const latestTriggerRecord = await getEntityRecord({
     workspaceId,
@@ -389,7 +402,7 @@ async function executeUpdateRelatedRecordAction({
     fields: sourceContext.fields,
   });
   const relatedField = sourceContext.fields.find(
-    (field) => field.id === workflow.actionConfig.relatedFieldDefinitionId,
+    (field) => field.id === action.relatedFieldDefinitionId,
   );
 
   if (!relatedField || relatedField.type !== "relation" || !relatedField.relatedEntityTypeId) {
@@ -441,7 +454,7 @@ async function executeUpdateRelatedRecordAction({
       sourceRecord: latestTriggerRecord,
       targetContext,
       targetRecord,
-      workflow,
+      action,
     });
   } catch (error) {
     throw new RelatedTargetResolvedError(
@@ -450,6 +463,209 @@ async function executeUpdateRelatedRecordAction({
       targetRecord.id,
     );
   }
+}
+
+async function executeSingleAction({
+  workspaceId,
+  sourceContext,
+  triggerRecord,
+  action,
+}: {
+  workspaceId: string;
+  sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
+  triggerRecord: EntityRecord;
+  action: WorkflowAction;
+}) {
+  const actionResult =
+    action.actionType === "update_record"
+      ? await executeUpdateRecordAction({ workspaceId, sourceContext, triggerRecord, action })
+      : action.actionType === "update_related_record"
+        ? await executeUpdateRelatedRecordAction({
+            workspaceId,
+            sourceContext,
+            triggerRecord,
+            action,
+          })
+        : await executeCreateRecordAction({ workspaceId, sourceContext, triggerRecord, action });
+
+  return {
+    createdRecordId:
+      "createdRecordId" in actionResult ? actionResult.createdRecordId : undefined,
+    actionRecordId:
+      "createdRecordId" in actionResult
+        ? actionResult.createdRecordId
+        : actionResult.actionRecordId,
+    actionEntityTypeId:
+      "targetEntityTypeId" in actionResult
+        ? actionResult.targetEntityTypeId
+        : actionResult.actionEntityTypeId,
+    resultMessage:
+      "changed" in actionResult && !actionResult.changed
+        ? "No changes required."
+        : undefined,
+  };
+}
+
+class WorkflowActionsFailedError extends Error {
+  constructor(
+    message: string,
+    readonly actionResults: WorkflowActionResult[],
+  ) {
+    super(message);
+  }
+}
+
+// Executes a workflow's actions strictly in order. Each action reloads the
+// latest authoritative record before it runs (already true of the
+// individual action executors), so later actions naturally see earlier
+// actions' committed effects without any explicit state hand-off. The first
+// action to throw stops the remaining actions for this workflow run; prior
+// successful writes are not rolled back. Records an ordered result only for
+// actions that actually began execution.
+async function executeWorkflowActions({
+  workspaceId,
+  sourceContext,
+  triggerRecord,
+  actions,
+}: {
+  workspaceId: string;
+  sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
+  triggerRecord: EntityRecord;
+  actions: WorkflowAction[];
+}): Promise<{
+  actionResults: WorkflowActionResult[];
+  targetEntityTypeIds: string[];
+}> {
+  const actionResults: WorkflowActionResult[] = [];
+  const targetEntityTypeIds: string[] = [];
+
+  for (const [index, action] of actions.entries()) {
+    try {
+      const result = await executeSingleAction({
+        workspaceId,
+        sourceContext,
+        triggerRecord,
+        action,
+      });
+
+      actionResults.push({
+        index,
+        actionType: action.actionType,
+        status: "succeeded",
+        actionEntityTypeId: result.actionEntityTypeId,
+        actionRecordId: result.actionRecordId,
+        createdRecordId: result.createdRecordId,
+        resultMessage: result.resultMessage,
+      });
+
+      if (result.actionEntityTypeId) {
+        targetEntityTypeIds.push(result.actionEntityTypeId);
+      }
+    } catch (error) {
+      const resolvedEntityTypeId =
+        error instanceof RelatedTargetResolvedError
+          ? error.actionEntityTypeId
+          : undefined;
+      const resolvedRecordId =
+        error instanceof RelatedTargetResolvedError ? error.actionRecordId : undefined;
+      const errorMessage = getErrorMessage(error);
+
+      actionResults.push({
+        index,
+        actionType: action.actionType,
+        status: "failed",
+        actionEntityTypeId: resolvedEntityTypeId,
+        actionRecordId: resolvedRecordId,
+        errorMessage,
+      });
+
+      // A single-action workflow's error message stays exactly as today
+      // (no prefix); a multi-action workflow's message identifies which
+      // action failed, since action_results may not be surfaced everywhere
+      // the plain error message is read.
+      const message =
+        actions.length === 1
+          ? errorMessage
+          : `Action ${index + 1} (${action.actionType}) failed: ${errorMessage}`;
+
+      throw new WorkflowActionsFailedError(message, actionResults);
+    }
+  }
+
+  return { actionResults, targetEntityTypeIds };
+}
+
+function describeActionOutcome(result: WorkflowActionResult) {
+  if (result.resultMessage) {
+    return result.resultMessage;
+  }
+
+  switch (result.actionType) {
+    case "create_record":
+      return "created a record.";
+    case "update_record":
+      return "updated the triggering record.";
+    case "update_related_record":
+      return "updated a related record.";
+  }
+}
+
+function buildSuccessResultMessage(actionResults: WorkflowActionResult[]) {
+  if (actionResults.length === 0) {
+    return undefined;
+  }
+
+  // Single-action workflows keep today's exact message (or lack thereof):
+  // undefined unless that one action was a no-op update.
+  if (actionResults.length === 1) {
+    return actionResults[0].resultMessage;
+  }
+
+  return actionResults
+    .map((result) => `Action ${result.index + 1}: ${describeActionOutcome(result)}`)
+    .join(" ");
+}
+
+// Legacy singular log fields, retained for backward compatibility. A
+// single-action workflow populates them exactly as before. A multi-action
+// workflow leaves them null on a fully successful run (no single action to
+// point at without being misleading) and, on failure, describes the failed
+// action specifically (a genuinely resolved, non-arbitrary target) —
+// action_results is authoritative in both cases.
+function buildLegacySingularFields({
+  actions,
+  actionResults,
+  failed,
+}: {
+  actions: WorkflowAction[];
+  actionResults: WorkflowActionResult[];
+  failed: boolean;
+}) {
+  if (actions.length === 1) {
+    const onlyResult = actionResults[0];
+
+    return {
+      createdRecordId: onlyResult?.createdRecordId,
+      actionEntityTypeId: onlyResult?.actionEntityTypeId,
+      actionRecordId: onlyResult?.actionRecordId,
+    };
+  }
+
+  if (!failed) {
+    return {
+      createdRecordId: undefined,
+      actionEntityTypeId: undefined,
+      actionRecordId: undefined,
+    };
+  }
+
+  const failedResult = actionResults.at(-1);
+
+  return {
+    createdRecordId: undefined,
+    actionEntityTypeId: failedResult?.actionEntityTypeId,
+    actionRecordId: failedResult?.actionRecordId,
+  };
 }
 
 async function validateAndEvaluateConditions({
@@ -469,7 +685,7 @@ async function validateAndEvaluateConditions({
   watchedFieldDefinitionIds: string[];
   workflow: WorkflowDefinition;
 }) {
-  const conditions = workflow.actionConfig.conditions ?? [];
+  const conditions = workflow.conditions ?? [];
   const conditionValidation = await validateWorkflowConditions({
     conditions,
     sourceFields,
@@ -535,11 +751,9 @@ export async function executeRecordCreatedWorkflows({
 
   for (const workflow of workflows) {
     const startedAt = new Date().toISOString();
-    let createdRecordId: string | undefined;
-    let actionRecordId: string | undefined;
-    let actionEntityTypeId: string | undefined;
     let resultMessage: string | undefined;
     let errorMessage: string | undefined;
+    let actionResults: WorkflowActionResult[] = [];
 
     try {
       if (
@@ -560,6 +774,7 @@ export async function executeRecordCreatedWorkflows({
           triggerRecordId: triggerRecord.id,
           status: "skipped",
           errorMessage,
+          actionResults: [],
           startedAt,
           completedAt: new Date().toISOString(),
         });
@@ -567,54 +782,35 @@ export async function executeRecordCreatedWorkflows({
       }
 
       // Eligibility and conditions above use the original triggering event
-      // snapshot. If this workflow updates the triggering record, the action
-      // reloads the latest persisted record before resolving mappings.
-      const actionResult =
-        workflow.actionType === "update_record"
-          ? await executeUpdateRecordAction({
-              workspaceId,
-              sourceContext,
-              triggerRecord,
-              workflow,
-            })
-          : workflow.actionType === "update_related_record"
-            ? await executeUpdateRelatedRecordAction({
-                workspaceId,
-                sourceContext,
-                triggerRecord,
-                workflow,
-              })
-            : await executeCreateRecordAction({
-              workspaceId,
-              sourceContext,
-              triggerRecord,
-              workflow,
-            });
+      // snapshot and are evaluated once, before any action runs. Actions
+      // execute sequentially in configured order below; a later action
+      // never causes conditions to be re-evaluated.
+      const executionResult = await executeWorkflowActions({
+        workspaceId,
+        sourceContext,
+        triggerRecord,
+        actions: workflow.actions,
+      });
 
-      createdRecordId =
-        "createdRecordId" in actionResult ? actionResult.createdRecordId : undefined;
-      actionRecordId =
-        "createdRecordId" in actionResult
-          ? actionResult.createdRecordId
-          : actionResult.actionRecordId;
-      actionEntityTypeId =
-        "targetEntityTypeId" in actionResult
-          ? actionResult.targetEntityTypeId
-          : actionResult.actionEntityTypeId;
-      resultMessage =
-        "changed" in actionResult && !actionResult.changed
-          ? "No changes required."
-          : undefined;
+      actionResults = executionResult.actionResults;
+      resultMessage = buildSuccessResultMessage(actionResults);
       summary.succeeded += 1;
-      summary.targetEntityTypeIds.push(actionEntityTypeId);
+      executionResult.targetEntityTypeIds.forEach((id) =>
+        summary.targetEntityTypeIds.push(id),
+      );
     } catch (error) {
-      if (error instanceof RelatedTargetResolvedError) {
-        actionEntityTypeId = error.actionEntityTypeId;
-        actionRecordId = error.actionRecordId;
+      if (error instanceof WorkflowActionsFailedError) {
+        actionResults = error.actionResults;
       }
       errorMessage = getErrorMessage(error);
       summary.failed += 1;
     }
+
+    const legacyFields = buildLegacySingularFields({
+      actions: workflow.actions,
+      actionResults,
+      failed: Boolean(errorMessage),
+    });
 
     try {
       await createWorkflowExecutionLog({
@@ -625,9 +821,10 @@ export async function executeRecordCreatedWorkflows({
         status: errorMessage ? "failed" : "succeeded",
         errorMessage,
         resultMessage,
-        createdRecordId,
-        actionEntityTypeId,
-        actionRecordId,
+        createdRecordId: legacyFields.createdRecordId,
+        actionEntityTypeId: legacyFields.actionEntityTypeId,
+        actionRecordId: legacyFields.actionRecordId,
+        actionResults,
         startedAt,
         completedAt: new Date().toISOString(),
       });
@@ -650,7 +847,7 @@ function validateWatchedFieldConfig({
   sourceFields: Awaited<ReturnType<typeof getEntityContext>>["fields"];
 }) {
   const watchedFieldDefinitionIds =
-    workflow.actionConfig.triggerConfig?.watchedFieldDefinitionIds ?? [];
+    workflow.triggerConfig?.watchedFieldDefinitionIds ?? [];
   const watchedFieldIds = new Set(watchedFieldDefinitionIds);
 
   if (workflow.triggerType !== "record_updated") {
@@ -726,11 +923,9 @@ export async function executeRecordUpdatedWorkflows({
 
   for (const workflow of workflows) {
     const startedAt = new Date().toISOString();
-    let createdRecordId: string | undefined;
-    let actionRecordId: string | undefined;
-    let actionEntityTypeId: string | undefined;
     let resultMessage: string | undefined;
     let errorMessage: string | undefined;
+    let actionResults: WorkflowActionResult[] = [];
     let status: "succeeded" | "failed" | "skipped" = "succeeded";
 
     try {
@@ -762,61 +957,41 @@ export async function executeRecordUpdatedWorkflows({
         errorMessage = "Workflow conditions did not match.";
       } else {
         // Workflows are eligible based on the original persisted user edit:
-        // watched-field detection and conditions do not get re-evaluated after
-        // earlier workflow actions. Matching workflows still execute in
-        // deterministic order, and update_record actions reload the latest
-        // authoritative record before resolving their mappings. Related-record
-        // actions likewise follow the latest direct relation value.
-        const actionResult =
-          workflow.actionType === "update_record"
-            ? await executeUpdateRecordAction({
-                workspaceId,
-                sourceContext,
-                triggerRecord,
-                workflow,
-              })
-            : workflow.actionType === "update_related_record"
-              ? await executeUpdateRelatedRecordAction({
-                  workspaceId,
-                  sourceContext,
-                  triggerRecord,
-                  workflow,
-                })
-              : await executeCreateRecordAction({
-                workspaceId,
-                sourceContext,
-                triggerRecord,
-                workflow,
-              });
+        // watched-field detection and conditions do not get re-evaluated
+        // after any action runs, and are only ever checked once, before the
+        // first action. Matching workflows execute their actions in
+        // deterministic configured order below; update_record/
+        // update_related_record actions each reload the latest
+        // authoritative record before resolving their own mappings, so a
+        // later action sees an earlier action's committed effects.
+        const executionResult = await executeWorkflowActions({
+          workspaceId,
+          sourceContext,
+          triggerRecord,
+          actions: workflow.actions,
+        });
 
-        createdRecordId =
-          "createdRecordId" in actionResult
-            ? actionResult.createdRecordId
-            : undefined;
-        actionRecordId =
-          "createdRecordId" in actionResult
-            ? actionResult.createdRecordId
-            : actionResult.actionRecordId;
-        actionEntityTypeId =
-          "targetEntityTypeId" in actionResult
-            ? actionResult.targetEntityTypeId
-            : actionResult.actionEntityTypeId;
-        resultMessage =
-          "changed" in actionResult && !actionResult.changed
-            ? "No changes required."
-            : undefined;
+        actionResults = executionResult.actionResults;
+        resultMessage = buildSuccessResultMessage(actionResults);
         summary.succeeded += 1;
-        summary.targetEntityTypeIds.push(actionEntityTypeId);
+        executionResult.targetEntityTypeIds.forEach((id) =>
+          summary.targetEntityTypeIds.push(id),
+        );
       }
     } catch (error) {
-      if (error instanceof RelatedTargetResolvedError) {
-        actionEntityTypeId = error.actionEntityTypeId;
-        actionRecordId = error.actionRecordId;
+      if (error instanceof WorkflowActionsFailedError) {
+        actionResults = error.actionResults;
       }
       status = "failed";
       errorMessage = getErrorMessage(error);
       summary.failed += 1;
     }
+
+    const legacyFields = buildLegacySingularFields({
+      actions: workflow.actions,
+      actionResults,
+      failed: status === "failed",
+    });
 
     try {
       await createWorkflowExecutionLog({
@@ -827,9 +1002,10 @@ export async function executeRecordUpdatedWorkflows({
         status,
         errorMessage,
         resultMessage,
-        createdRecordId,
-        actionEntityTypeId,
-        actionRecordId,
+        createdRecordId: legacyFields.createdRecordId,
+        actionEntityTypeId: legacyFields.actionEntityTypeId,
+        actionRecordId: legacyFields.actionRecordId,
+        actionResults,
         startedAt,
         completedAt: new Date().toISOString(),
       });

@@ -1,12 +1,22 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
-  WorkflowActionConfig,
+  WorkflowAction,
+  WorkflowActionResult,
   WorkflowActionType,
+  WorkflowCondition,
   WorkflowDefinition,
   WorkflowExecutionLog,
   WorkflowExecutionStatus,
+  WorkflowTriggerConfig,
   WorkflowTriggerType,
 } from "./workflow-types";
+
+type WorkflowActionRow = {
+  actionType: WorkflowActionType;
+  actionTargetEntityTypeId?: string | null;
+  relatedFieldDefinitionId?: string | null;
+  fieldMappings?: WorkflowAction["fieldMappings"];
+};
 
 type WorkflowRow = {
   id: string;
@@ -15,9 +25,11 @@ type WorkflowRow = {
   enabled: boolean;
   trigger_type: WorkflowTriggerType;
   trigger_entity_type_id: string;
-  action_type: WorkflowActionType;
-  action_target_entity_type_id: string | null;
-  action_config: WorkflowActionConfig;
+  action_config: {
+    triggerConfig?: WorkflowTriggerConfig;
+    conditions?: WorkflowCondition[];
+  };
+  actions: WorkflowActionRow[];
   created_at: string;
   updated_at: string;
 };
@@ -34,6 +46,7 @@ type WorkflowExecutionLogRow = {
   created_record_id: string | null;
   action_entity_type_id: string | null;
   action_record_id: string | null;
+  action_results: WorkflowActionResult[] | null;
   started_at: string;
   completed_at: string;
 };
@@ -44,9 +57,9 @@ type CreateWorkflowInput = {
   enabled?: boolean;
   triggerType: WorkflowTriggerType;
   triggerEntityTypeId: string;
-  actionType: WorkflowActionType;
-  actionTargetEntityTypeId?: string;
-  actionConfig: WorkflowActionConfig;
+  triggerConfig?: WorkflowTriggerConfig;
+  conditions?: WorkflowCondition[];
+  actions: WorkflowAction[];
 };
 
 type UpdateWorkflowInput = CreateWorkflowInput & {
@@ -65,9 +78,19 @@ type CreateWorkflowExecutionLogInput = {
   createdRecordId?: string;
   actionEntityTypeId?: string;
   actionRecordId?: string;
+  actionResults: WorkflowActionResult[];
   startedAt: string;
   completedAt: string;
 };
+
+function mapWorkflowAction(row: WorkflowActionRow): WorkflowAction {
+  return {
+    actionType: row.actionType,
+    actionTargetEntityTypeId: row.actionTargetEntityTypeId ?? undefined,
+    relatedFieldDefinitionId: row.relatedFieldDefinitionId ?? undefined,
+    fieldMappings: row.fieldMappings ?? [],
+  };
+}
 
 function mapWorkflow(row: WorkflowRow): WorkflowDefinition {
   return {
@@ -77,9 +100,9 @@ function mapWorkflow(row: WorkflowRow): WorkflowDefinition {
     enabled: row.enabled,
     triggerType: row.trigger_type,
     triggerEntityTypeId: row.trigger_entity_type_id,
-    actionType: row.action_type,
-    actionTargetEntityTypeId: row.action_target_entity_type_id ?? undefined,
-    actionConfig: row.action_config,
+    triggerConfig: row.action_config?.triggerConfig,
+    conditions: row.action_config?.conditions,
+    actions: row.actions.map(mapWorkflowAction),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -100,6 +123,7 @@ function mapWorkflowExecutionLog(
     createdRecordId: row.created_record_id ?? undefined,
     actionEntityTypeId: row.action_entity_type_id ?? undefined,
     actionRecordId: row.action_record_id ?? undefined,
+    actionResults: row.action_results ?? [],
     startedAt: row.started_at,
     completedAt: row.completed_at,
   };
@@ -111,40 +135,42 @@ export function workflowReferencesField(
 ) {
   const templateToken = `{{field:${fieldDefinitionId}}}`;
   const watchedFieldDefinitionIds =
-    workflow.actionConfig.triggerConfig?.watchedFieldDefinitionIds ?? [];
+    workflow.triggerConfig?.watchedFieldDefinitionIds ?? [];
 
   if (watchedFieldDefinitionIds.includes(fieldDefinitionId)) {
     return true;
   }
 
-  if (workflow.actionConfig.relatedFieldDefinitionId === fieldDefinitionId) {
-    return true;
-  }
-
   if (
-    (workflow.actionConfig.conditions ?? []).some(
+    (workflow.conditions ?? []).some(
       (condition) => condition.sourceFieldDefinitionId === fieldDefinitionId,
     )
   ) {
     return true;
   }
 
-  return workflow.actionConfig.fieldMappings.some((mapping) => {
-    if (mapping.targetFieldDefinitionId === fieldDefinitionId) {
+  return workflow.actions.some((action) => {
+    if (action.relatedFieldDefinitionId === fieldDefinitionId) {
       return true;
     }
 
-    if (
-      mapping.source.type === "source_field" &&
-      mapping.source.sourceFieldDefinitionId === fieldDefinitionId
-    ) {
-      return true;
-    }
+    return action.fieldMappings.some((mapping) => {
+      if (mapping.targetFieldDefinitionId === fieldDefinitionId) {
+        return true;
+      }
 
-    return (
-      mapping.source.type === "template" &&
-      mapping.source.template.includes(templateToken)
-    );
+      if (
+        mapping.source.type === "source_field" &&
+        mapping.source.sourceFieldDefinitionId === fieldDefinitionId
+      ) {
+        return true;
+      }
+
+      return (
+        mapping.source.type === "template" &&
+        mapping.source.template.includes(templateToken)
+      );
+    });
   });
 }
 
@@ -251,9 +277,9 @@ export async function createWorkflowDefinition({
   enabled = true,
   triggerType,
   triggerEntityTypeId,
-  actionType,
-  actionTargetEntityTypeId,
-  actionConfig,
+  triggerConfig,
+  conditions,
+  actions,
 }: CreateWorkflowInput) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
@@ -264,9 +290,8 @@ export async function createWorkflowDefinition({
       enabled,
       trigger_type: triggerType,
       trigger_entity_type_id: triggerEntityTypeId,
-      action_type: actionType,
-      action_target_entity_type_id: actionTargetEntityTypeId ?? null,
-      action_config: actionConfig,
+      action_config: { triggerConfig, conditions: conditions ?? [] },
+      actions,
     })
     .select("id")
     .single<{ id: string }>();
@@ -285,9 +310,9 @@ export async function updateWorkflowDefinition({
   enabled,
   triggerType,
   triggerEntityTypeId,
-  actionType,
-  actionTargetEntityTypeId,
-  actionConfig,
+  triggerConfig,
+  conditions,
+  actions,
 }: UpdateWorkflowInput) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
@@ -297,9 +322,8 @@ export async function updateWorkflowDefinition({
       enabled,
       trigger_type: triggerType,
       trigger_entity_type_id: triggerEntityTypeId,
-      action_type: actionType,
-      action_target_entity_type_id: actionTargetEntityTypeId ?? null,
-      action_config: actionConfig,
+      action_config: { triggerConfig, conditions: conditions ?? [] },
+      actions,
       updated_at: new Date().toISOString(),
     })
     .eq("workspace_id", workspaceId)
@@ -382,6 +406,7 @@ export async function createWorkflowExecutionLog({
   createdRecordId,
   actionEntityTypeId,
   actionRecordId,
+  actionResults,
   startedAt,
   completedAt,
 }: CreateWorkflowExecutionLogInput) {
@@ -397,6 +422,7 @@ export async function createWorkflowExecutionLog({
     created_record_id: createdRecordId ?? null,
     action_entity_type_id: actionEntityTypeId ?? null,
     action_record_id: actionRecordId ?? null,
+    action_results: actionResults,
     started_at: startedAt,
     completed_at: completedAt,
   });

@@ -110,7 +110,7 @@ Entities:
 - Archived entities are hidden from normal navigation/selectors by default.
 - Direct entity URLs remain viewable, but archived entities are read-only except restore/safe delete actions.
 - Entity rename updates user-facing name/slug while preserving entity ID.
-- Hard deletion is allowed only when the entity has zero records, including archived records, and no field in the workspace has `related_entity_type_id` equal to that entity ID. Self-relations count as structural references and block deletion.
+- Hard deletion is allowed only when the entity has zero records, including archived records; no field in the workspace has `related_entity_type_id` equal to that entity ID (self-relations count and block deletion); and no workflow's `create_record` action still targets that entity. The workflow check has no FK backing it (the entity-target relationship lives inside `actions[]` JSONB, not a column) — it is an explicit application-level `EXISTS` scan inside `delete_entity_type_if_safe`, deliberately blocking rather than cascading, matching the field-deletion dependency pattern below.
 
 Fields:
 
@@ -164,26 +164,26 @@ Implemented trigger types:
 - `record_created`
 - `record_updated`
 
-Implemented action types:
+Implemented action types (per step; see "Multiple ordered actions" below):
 
 - `create_record`
 - `update_record`
 - `update_related_record`
 
-Workflows are stored in `workflows` with `trigger_type`, `trigger_entity_type_id`, `action_type`, nullable `action_target_entity_type_id`, and JSONB `action_config`. `create_record` requires an action target entity. `update_record` targets the triggering record, while `update_related_record` targets the current record reached through `action_config.relatedFieldDefinitionId`; both have no action target entity ID.
+Workflows are stored in `workflows` with `trigger_type`, `trigger_entity_type_id`, an ordered JSONB `actions` array (at least one element, enforced by a `jsonb_array_length >= 1` CHECK constraint), and a narrowed JSONB `action_config` holding only workflow-level `triggerConfig`/`conditions`. Each element of `actions` is one step: `{ actionType, actionTargetEntityTypeId?, relatedFieldDefinitionId?, fieldMappings }`. `create_record` requires `actionTargetEntityTypeId`; `update_record` targets the triggering record; `update_related_record` targets the current record reached through that step's own `relatedFieldDefinitionId`. The legacy top-level `action_type`/`action_target_entity_type_id` columns no longer exist (see Database And Migrations).
 
 Conditions:
 
-- Stored in `action_config.conditions`.
+- Stored in `conditions`, at the workflow level — not per action.
 - Empty conditions means always run.
 - Conditions are AND-only.
 - Supported operators include equality/inequality, numeric comparisons, date before/after, `is_set`/`is_not_set`, and (record_updated only) `changed`, `changed_from`, `changed_to`, `changed_from_to`.
 - At execution time, all condition configuration is fully validated before evaluation. Broken config logs `failed`; non-matching valid conditions log `skipped` with “Workflow conditions did not match.”
-- Conditions evaluate against the triggering record snapshot for that workflow event.
+- Conditions evaluate against the triggering record snapshot for that workflow event, exactly once, before any action runs. No action — including one that modifies the field a condition matched on — causes conditions to be re-evaluated.
 
 Record-updated watched fields:
 
-- Stored in `action_config.triggerConfig.watchedFieldDefinitionIds`.
+- Stored in `triggerConfig.watchedFieldDefinitionIds`, at the workflow level — not per action.
 - A `record_updated` workflow must watch at least one field.
 - ANY watched field changing qualifies.
 - Invalid or archived watched fields log `failed`.
@@ -200,7 +200,7 @@ Transition-aware conditions (`changed`, `changed_from`, `changed_to`, `changed_f
 - **Watched-field invariant:** a transition operator's `sourceFieldDefinitionId` must also be in `triggerConfig.watchedFieldDefinitionIds`, or the workflow cannot be saved (“`<field>` must be a watched field to use a changed condition on it.”). This is enforced in the one shared `validateWorkflowConditions` function used at both save time and execution time, so execution never relies on editor behavior alone. The editor auto-checks a field as watched when a transition operator is selected for it, but does not prevent unchecking a still-referenced watched field afterward — that combination fails save validation with a clear inline message instead.
 - v1 limitation: from/to operands must be concrete typed values; there is no “unset” sentinel. A transition from/to an unset value cannot be expressed directly. Combining `changed` with `is_set`/`is_not_set` approximates it but is not equivalent (it does not guarantee the *previous* value was specifically unset).
 
-Field mappings:
+Field mappings (per action step):
 
 - `unset` is available for optional target fields in `create_record`.
 - `leave_unchanged` and `clear` are available for `update_record` and `update_related_record`.
@@ -227,18 +227,32 @@ Execution semantics:
 - Enabled workflows execute in deterministic order: `created_at ASC, id ASC`.
 - Each matching workflow executes independently. Failure of one workflow does not prevent later workflows from running, and the original triggering record remains created/updated.
 - Workflow-generated record creation or updates do not recursively trigger workflows.
-- Eligibility/watch-field detection/conditions are based on the original persisted triggering event.
-- `update_record` actions reload the latest authoritative triggering record before resolving mappings/templates and applying changes, so sequential update actions see earlier action effects.
+- Eligibility/watch-field detection/conditions are based on the original persisted triggering event, and are evaluated exactly once, before the first action runs — never per action, never re-checked after an action executes.
+- `update_record` and `create_record` actions both reload the latest authoritative triggering record before resolving mappings/templates, so a later action sees an earlier action's committed effects rather than the original triggering snapshot. (`create_record`'s reload was added in this milestone — with only ever one action per workflow previously, the original triggering snapshot and "latest" were always identical, so the gap was invisible until multiple actions could run in sequence.)
 - `update_record` modifies only explicitly configured fields, preserving unrelated active and archived primitive values and unrelated relation rows.
 - A valid no-op `update_record` logs `succeeded` with result message “No changes required.” and does not perform an unnecessary DB update or bump `entity_records.updated_at`.
 - `update_related_record` follows exactly one active direct relation field on the latest triggering record, then reloads and updates that one related record using the same mapping, compatibility, validation, atomic RPC, no-op, and no-recursion rules as `update_record`.
 - `update_related_record` configurations require at least one mapping other than `leave_unchanged`. Missing relations, archived selected relation fields, archived target entities/records, and archived mapped fields fail execution. If a related target is resolved before a later failure, its entity/record IDs are retained in the execution log.
 
+Multiple ordered actions:
+
+- A workflow's `actions` array is executed strictly in configured order, sequentially (`for...of`, awaited) — no parallelism, no branching, no delays/scheduling.
+- The first action to fail stops the remaining actions in that workflow run. Actions that already completed keep their committed writes — there is no cross-action rollback of the workflow run, and the original triggering event is never rolled back.
+- A later workflow (in the deterministic `created_at ASC, id ASC` order) still runs even if an earlier workflow's action sequence failed partway through.
+- Workflow-driven writes still bypass the normal user-edit action layer entirely (they call the record repository directly), so they still cannot recursively trigger workflows — true for every action in the sequence, not just the first.
+- The editor (`app/components/workflow-create-form.tsx`) supports Add Action, Remove Action (minimum one action enforced both client-side and server-side), and Move Up/Move Down for reordering; there is no drag-and-drop. Per-action form field names are namespaced by a client-generated action id (`mappingType:<actionId>:<targetFieldId>`, etc.) so two actions can target the same field without colliding.
+- Submitted action ids must be unique; a duplicate is rejected server-side with a clear `_form` validation error before any per-action parsing that keys off action id, so a duplicate can never silently collapse two submitted actions into one persisted action.
+
 Execution logs:
 
 - Stored in `workflow_execution_logs`.
-- Status is `succeeded`, `failed`, or `skipped`.
-- Logs include trigger entity/record, timestamps, error/result messages, legacy `created_record_id`, and newer `action_entity_type_id`/`action_record_id`.
+- Status is `succeeded`, `failed`, or `skipped` — this is the whole-workflow-run status, not a per-action status.
+- Logs include trigger entity/record, timestamps, error/result messages, legacy `created_record_id`/`action_entity_type_id`/`action_record_id`, and a structured `action_results` JSONB array.
+- `action_results` holds one ordered entry per action that actually began execution (never an entry for an action skipped because an earlier one failed first), each with `index`, `actionType`, `status` (`succeeded`/`failed`), and — where applicable — `actionEntityTypeId`, `actionRecordId`, `createdRecordId`, `resultMessage`, `errorMessage`.
+- Legacy singular fields (`createdRecordId`/`actionEntityTypeId`/`actionRecordId`) keep their original single-action meaning for a workflow with exactly one action. For a workflow with more than one action they are `null` on a fully successful run (no single action to point at without being misleading) and describe the *failed* action on a failed run (a genuinely resolved, non-arbitrary target) — `action_results` is authoritative in both cases, especially for multi-action runs.
+- The top-level `errorMessage` for a multi-action failure is prefixed with which action failed, e.g. `"Action 2 (update_related_record) failed: ..."`; a single-action workflow's error message is unprefixed, exactly as before this milestone.
+- `resultMessage` for a multi-action success summarizes each action's outcome (`"Action 1: ... Action 2: ..."`); a single-action workflow's result message is unprefixed, exactly as before (e.g. still exactly `"No changes required."` for a single-action no-op).
+- The workflow execution log UI (`app/workflows/page.tsx`) renders the `action_results` breakdown beneath the existing summary line only when there is more than one entry, so single-action and legacy logs render exactly as they did before this milestone.
 - Action entity/record log fields intentionally do not have FKs so audit/history semantics are not undermined by future hard deletes.
 - Deleting a workflow currently cascades its execution logs. This is acceptable for the prototype; audit preservation may change later.
 
@@ -246,7 +260,9 @@ Execution logs:
 
 Migrations live in `supabase/migrations/` and are currently applied manually through the Supabase SQL Editor. The latest migration is:
 
-- `0018_update_related_record_workflows.sql`
+- `0020_entity_delete_blocks_create_record_targets.sql`
+
+`0019_workflow_multiple_actions.sql` added the ordered `actions` JSONB column (backfilling every pre-existing single-action workflow into a one-element array before enforcing `NOT NULL`/non-empty-array constraints), narrowed `action_config` to `{ triggerConfig, conditions }`, dropped the legacy `action_type`/`action_target_entity_type_id` columns and their constraints/FK, added `action_results` JSONB to `workflow_execution_logs`, and rewrote `delete_field_definition_if_safe` to scan all of `actions[]`. `0020_entity_delete_blocks_create_record_targets.sql` followed up: dropping `action_target_entity_type_id` also removed the composite FK that used to structurally block deleting an entity still targeted by a `create_record` action, so `delete_entity_type_if_safe` was rewritten (drop + recreate, since its `TABLE` return shape gained a column) to explicitly block that case instead.
 
 Major tables:
 
@@ -269,8 +285,8 @@ Important RPCs/functions:
 - `set_entity_display_field` sets or clears the configured display field, enforcing active same-entity text fields.
 - `set_entity_default_view` sets or clears the default saved table view without a circular entity/view FK.
 - `delete_entity_record_if_unreferenced` blocks hard deletion when incoming references exist.
-- `delete_entity_type_if_safe` blocks hard deletion for populated or structurally referenced entities.
-- `delete_field_definition_if_safe` blocks hard deletion for primitive JSON values, relation rows, workflow JSON references including selected related-record fields, display-field configuration, or saved table-view configuration.
+- `delete_entity_type_if_safe` blocks hard deletion for entities with records, entities with another field's relation pointing to them, or entities still targeted by any workflow's `create_record` action (scans `actions[]` across all workflows in the workspace). Never modifies or deletes the dependent workflow — deletion is blocked, not cascaded.
+- `delete_field_definition_if_safe` blocks hard deletion for primitive JSON values, relation rows, workflow JSON references (scanning workflow-level `triggerConfig`/`conditions` plus every action's `relatedFieldDefinitionId`/`fieldMappings` across `actions[]`), display-field configuration, or saved table-view configuration.
 
 Important structural constraints include workspace-scoped uniqueness/foreign keys, relation contract constraints, field position > 0, relation target metadata requirements, workflow trigger/action check constraints, and indexes for common workspace/entity/trigger lookups.
 
@@ -325,6 +341,7 @@ Current spec files:
 - `workspace-search.spec.ts`
 - `dark-mode-contrast.spec.ts`
 - `record-updated-transition-conditions.spec.ts`
+- `workflow-multiple-actions.spec.ts`
 
 Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
 
@@ -338,7 +355,7 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current E2E count after the Changed-From/Changed-To Transition Conditions milestone: 86 tests passing.
+Current E2E count after the Multiple Ordered Workflow Actions milestone: 93 tests passing.
 
 ## Intentional Limitations
 
@@ -357,14 +374,15 @@ Current E2E count after the Changed-From/Changed-To Transition Conditions milest
 - No comments, attachments, activity feed, or audit UI.
 - No Kanban/calendar/gallery saved-view modes.
 - No fuzzy/vector search, pagination, advanced filters, or search for workflows, views, or settings.
-- No workflow recursion/chaining.
-- No multiple actions per workflow.
+- No workflow recursion/chaining (still true even with multiple actions per workflow: workflow-generated writes never re-trigger workflow evaluation).
+- No branching, parallel actions, loops, or delays/scheduling within a workflow's action sequence — actions execute strictly in configured order.
 - No "unset" sentinel for changed_from/changed_to/changed_from_to transition operands; they require concrete typed values.
 - No schedules, queues, background workers, integrations, or webhooks.
 - No AI configuration UI yet.
 - No configurable delete/archive policies.
 - Workflow execution is synchronous app-side execution.
 - Workflow logs are basic execution records, not a durable audit ledger.
+- No deep DB-level JSON-schema validation of individual `workflows.actions[]` elements; the DB only enforces a non-empty array, and per-action shape (action type, target, mappings) is validated entirely at the application layer. Noted as a future hardening candidate, not needed for the current single-tenant, app-validated prototype.
 
 ## Development Principles
 
@@ -436,11 +454,12 @@ Complete major capabilities:
 - Create related records from reverse relationship groups using the standard record-create form and validated origin-detail return navigation.
 - Workflow management: create/edit/enable/disable/delete.
 - Workflow triggers for record created and record updated.
-- Workflow actions for create record, update triggering record, and update one record reached through a direct triggering-record relation.
-- Conditions, watched fields, constants, source-field mappings, text templates, relation mappings, deterministic execution, isolated failures, no recursion, and execution logs.
+- Workflow actions for create record, update triggering record, and update one record reached through a direct triggering-record relation — now composable as an ordered sequence of multiple actions per workflow (add/remove/reorder in the editor), executed sequentially with first-failure-stops semantics, no cross-action rollback, and structured per-action execution logging (`action_results`).
+- Conditions, watched fields, constants, source-field mappings, text templates, relation mappings, deterministic execution, isolated failures, no recursion, and execution logs. Conditions/watched fields are workflow-level, evaluated once against the original triggering event regardless of how many actions the workflow has.
 - Transition-aware record_updated conditions (`changed`, `changed_from`, `changed_to`, `changed_from_to`) evaluated against the previous/current values from the original user-edit event, with a save-time-and-execution-time-enforced invariant that a transition condition's field must also be watched.
 - A consistent light UI theme: the app shell is pinned to its light palette regardless of OS/browser dark-mode preference, matching the hardcoded light-card design used throughout, so text never renders on a mismatched background.
-- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, record-updated transition conditions, update-record, update-related-record, and dark-mode-contrast behavior.
+- Entity hard deletion is blocked when a workflow's `create_record` action still targets that entity, alongside the existing record-count and relation-field checks — deletion is blocked, never cascaded, and the dependent workflow is left untouched.
+- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, record-updated transition conditions, update-record, update-related-record, multiple-ordered-actions, and dark-mode-contrast behavior.
 
 Sensible next areas, without committing to architecture yet:
 

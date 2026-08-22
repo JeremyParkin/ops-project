@@ -80,12 +80,18 @@ export type WorkflowFieldMapping =
       };
     };
 
-export type WorkflowActionConfig = {
+export type WorkflowTriggerConfig = {
+  watchedFieldDefinitionIds?: FieldDefinition["id"][];
+};
+
+// One step in a workflow's ordered action list. Everything here is
+// action-specific: which kind of action, its target, and its field
+// mappings. Eligibility (trigger config / conditions) lives on the
+// workflow itself, evaluated once, not per action.
+export type WorkflowAction = {
+  actionType: WorkflowActionType;
+  actionTargetEntityTypeId?: EntityType["id"];
   relatedFieldDefinitionId?: FieldDefinition["id"];
-  triggerConfig?: {
-    watchedFieldDefinitionIds?: FieldDefinition["id"][];
-  };
-  conditions?: WorkflowCondition[];
   fieldMappings: WorkflowFieldMapping[];
 };
 
@@ -96,11 +102,27 @@ export type WorkflowDefinition = {
   enabled: boolean;
   triggerType: WorkflowTriggerType;
   triggerEntityTypeId: EntityType["id"];
-  actionType: WorkflowActionType;
-  actionTargetEntityTypeId?: EntityType["id"];
-  actionConfig: WorkflowActionConfig;
+  triggerConfig?: WorkflowTriggerConfig;
+  conditions?: WorkflowCondition[];
+  // Ordered, at least one. Executed sequentially; the first action to fail
+  // stops the rest for that workflow run.
+  actions: WorkflowAction[];
   createdAt: IsoUtcTimestamp;
   updatedAt: IsoUtcTimestamp;
+};
+
+// Outcome of one action within a workflow run. Only recorded for actions
+// that actually began execution — never for actions skipped because an
+// earlier action in the same run failed.
+export type WorkflowActionResult = {
+  index: number;
+  actionType: WorkflowActionType;
+  status: "succeeded" | "failed";
+  actionEntityTypeId?: EntityType["id"];
+  actionRecordId?: EntityRecord["id"];
+  createdRecordId?: EntityRecord["id"];
+  resultMessage?: string;
+  errorMessage?: string;
 };
 
 export type WorkflowExecutionLog = {
@@ -112,9 +134,16 @@ export type WorkflowExecutionLog = {
   status: WorkflowExecutionStatus;
   errorMessage?: string;
   resultMessage?: string;
+  // Legacy singular fields, retained for backward compatibility. For a
+  // single-action workflow they describe that one action, exactly as
+  // before. For a multi-action workflow they are null on a fully
+  // successful run (no single action to misleadingly point at) and
+  // describe the failed action on a failed run (a genuinely resolved,
+  // non-arbitrary target). action_results is authoritative either way.
   createdRecordId?: string;
   actionEntityTypeId?: EntityType["id"];
   actionRecordId?: EntityRecord["id"];
+  actionResults: WorkflowActionResult[];
   startedAt: IsoUtcTimestamp;
   completedAt: IsoUtcTimestamp;
 };

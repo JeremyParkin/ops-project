@@ -25,7 +25,7 @@ export async function waitForWorkflowFormReady(page: Page) {
     .toBeGreaterThan(0);
 
   await expect(conditionField).toBeVisible();
-  await page.getByRole("button", { name: "Remove" }).click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(conditionField).toHaveCount(0);
 }
 
@@ -67,16 +67,23 @@ export async function expectTableValue(page: Page, value: string) {
   await expect(rowForText(page, value)).toBeVisible();
 }
 
+// Mapping field names are scoped per action as `<prefix>:<actionId>:<fieldId>`.
+// Matching on prefix + suffix (rather than an exact name) keeps these helpers
+// working regardless of which action a target field belongs to, as long as
+// the field id itself is unique in the rendered form (true whenever two
+// actions don't target the very same field).
 export function workflowMappingType(page: Page, field: TestField) {
-  return page.locator(`select[name="mappingType:${field.id}"]`);
+  return page.locator(`select[name^="mappingType:"][name$=":${field.id}"]`);
 }
 
 export function workflowSourceField(page: Page, field: TestField) {
-  return page.locator(`select[name="sourceFieldDefinitionId:${field.id}"]`);
+  return page.locator(
+    `select[name^="sourceFieldDefinitionId:"][name$=":${field.id}"]`,
+  );
 }
 
 export function workflowConstantValue(page: Page, field: TestField) {
-  return page.locator(`[name="constantValue:${field.id}"]`);
+  return page.locator(`[name^="constantValue:"][name$=":${field.id}"]`);
 }
 
 export async function selectReactOption(

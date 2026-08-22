@@ -20,11 +20,12 @@ import {
   renderWorkflowTemplate,
 } from "./workflow-template";
 import type {
-  WorkflowActionConfig,
+  WorkflowAction,
   WorkflowActionType,
   WorkflowCondition,
   WorkflowConditionOperator,
   WorkflowDefinition,
+  WorkflowFieldMapping,
   WorkflowTriggerType,
 } from "./workflow-types";
 
@@ -49,6 +50,14 @@ export type WorkflowConditionFormValue = {
   previousValue: string;
 };
 
+export type WorkflowActionFormValue = {
+  id: string;
+  actionType: WorkflowActionType;
+  actionTargetEntityTypeId: string;
+  relatedFieldDefinitionId: string;
+  mappings: Record<string, WorkflowMappingFormValue>;
+};
+
 export type WorkflowFormState = {
   success: boolean;
   formVersion: number;
@@ -59,12 +68,9 @@ export type WorkflowFormState = {
     enabled: boolean;
     triggerType: WorkflowTriggerType;
     triggerEntityTypeId: string;
-    actionType: WorkflowActionType;
-    actionTargetEntityTypeId: string;
-    relatedFieldDefinitionId: string;
     watchedFieldDefinitionIds: string[];
     conditions: WorkflowConditionFormValue[];
-    mappings: Record<string, WorkflowMappingFormValue>;
+    actions: WorkflowActionFormValue[];
   };
 };
 
@@ -97,12 +103,17 @@ export const initialWorkflowFormState: WorkflowFormState = {
     enabled: true,
     triggerType: "record_created",
     triggerEntityTypeId: "",
-    actionType: "create_record",
-    actionTargetEntityTypeId: "",
-    relatedFieldDefinitionId: "",
     watchedFieldDefinitionIds: [],
     conditions: [],
-    mappings: {},
+    actions: [
+      {
+        id: "action-0",
+        actionType: "create_record",
+        actionTargetEntityTypeId: "",
+        relatedFieldDefinitionId: "",
+        mappings: {},
+      },
+    ],
   },
 };
 
@@ -138,6 +149,30 @@ function getConditionRows(formData: FormData) {
         previousValue: getString(formData, `conditionPreviousValue:${id}`),
       };
     });
+}
+
+function coerceActionType(rawActionType: string): WorkflowActionType {
+  return rawActionType === "update_record" || rawActionType === "update_related_record"
+    ? rawActionType
+    : "create_record";
+}
+
+function getActionRows(formData: FormData) {
+  return formData
+    .getAll("actionId")
+    .filter((value): value is string => typeof value === "string")
+    .map((id) => ({
+      id,
+      actionType: coerceActionType(getString(formData, `actionType:${id}`)),
+      actionTargetEntityTypeId: getString(
+        formData,
+        `actionTargetEntityTypeId:${id}`,
+      ),
+      relatedFieldDefinitionId: getString(
+        formData,
+        `relatedFieldDefinitionId:${id}`,
+      ),
+    }));
 }
 
 function isValidDate(value: string) {
@@ -239,9 +274,9 @@ export async function validateWorkflowFormData({
         enabled: boolean;
         triggerType: WorkflowTriggerType;
         triggerEntityTypeId: string;
-        actionType: WorkflowActionType;
-        actionTargetEntityTypeId?: string;
-        actionConfig: WorkflowActionConfig;
+        triggerConfig?: { watchedFieldDefinitionIds: string[] };
+        conditions: WorkflowCondition[];
+        actions: WorkflowAction[];
       };
       state: WorkflowFormState;
     }
@@ -264,33 +299,62 @@ export async function validateWorkflowFormData({
   const rawTriggerType = getString(formData, "workflowTriggerType");
   const triggerType: WorkflowTriggerType =
     rawTriggerType === "record_updated" ? "record_updated" : "record_created";
-  const rawActionType = getString(formData, "workflowActionType");
-  const actionType: WorkflowActionType =
-    rawActionType === "update_record" || rawActionType === "update_related_record"
-      ? rawActionType
-      : "create_record";
   const triggerEntityTypeId = getString(formData, "triggerEntityTypeId");
-  const actionTargetEntityTypeId =
-    actionType === "create_record"
-      ? getString(formData, "actionTargetEntityTypeId")
-      : "";
-  const relatedFieldDefinitionId = getString(
-    formData,
-    "relatedFieldDefinitionId",
-  );
   const triggerContext = entityContextById.get(triggerEntityTypeId);
-  const relatedField = triggerContext?.fields.find(
-    (field) => field.id === relatedFieldDefinitionId,
-  );
-  const targetContext =
-    actionType === "create_record"
-      ? entityContextById.get(actionTargetEntityTypeId)
-      : actionType === "update_related_record" && relatedField?.relatedEntityTypeId
-        ? entityContextById.get(relatedField.relatedEntityTypeId)
-        : triggerContext;
   const errors: Record<string, string> = {};
   const conditionRows = getConditionRows(formData);
-  const mappings: WorkflowFormState["values"]["mappings"] = {};
+  const actionRows = getActionRows(formData);
+  const actionIds = actionRows.map((row) => row.id);
+
+  // Guard against crafted form data submitting the same actionId more than
+  // once: fail fast here, before any Map keyed by actionId is built, so a
+  // duplicate can never silently collapse two submitted actions into one.
+  if (new Set(actionIds).size !== actionIds.length) {
+    return {
+      success: false,
+      state: {
+        success: false,
+        formVersion,
+        message: "Please fix the highlighted fields.",
+        errors: { _form: "Workflow actions must have unique identifiers." },
+        values: {
+          name,
+          enabled,
+          triggerType,
+          triggerEntityTypeId,
+          watchedFieldDefinitionIds: [],
+          conditions: conditionRows,
+          actions: actionRows.map((row) => ({
+            id: row.id,
+            actionType: row.actionType,
+            actionTargetEntityTypeId: row.actionTargetEntityTypeId,
+            relatedFieldDefinitionId: row.relatedFieldDefinitionId,
+            mappings: {},
+          })),
+        },
+      },
+    };
+  }
+
+  const configConditions: WorkflowCondition[] = [];
+  const configActions: WorkflowAction[] = [];
+  const submittedWatchedFieldDefinitionIds = formData
+    .getAll("watchedFieldDefinitionId")
+    .filter((value): value is string => typeof value === "string");
+  const watchedFieldDefinitionIds =
+    triggerType === "record_updated" ? submittedWatchedFieldDefinitionIds : [];
+  const actionFormValueById = new Map<string, WorkflowActionFormValue>(
+    actionRows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        actionType: row.actionType,
+        actionTargetEntityTypeId: row.actionTargetEntityTypeId,
+        relatedFieldDefinitionId: row.relatedFieldDefinitionId,
+        mappings: {},
+      },
+    ]),
+  );
 
   if (!name) {
     errors.workflowName = "Workflow name is required.";
@@ -300,70 +364,14 @@ export async function validateWorkflowFormData({
     errors.triggerEntityTypeId = "Choose an active trigger entity.";
   }
 
-  if (actionType === "create_record" && !targetContext) {
-    errors.actionTargetEntityTypeId = "Choose an active target entity.";
+  if (actionRows.length === 0) {
+    errors._form = "A workflow needs at least one action.";
   }
 
-  if (actionType === "update_related_record") {
-    if (!relatedField || relatedField.entityTypeId !== triggerEntityTypeId) {
-      errors.relatedFieldDefinitionId = "Choose a relation field on the trigger entity.";
-    } else if (relatedField.archivedAt) {
-      errors.relatedFieldDefinitionId = getArchivedFieldError(relatedField);
-    } else if (relatedField.type !== "relation" || !relatedField.relatedEntityTypeId) {
-      errors.relatedFieldDefinitionId = "Choose a relation field on the trigger entity.";
-    } else if (!targetContext) {
-      errors.relatedFieldDefinitionId = "The related entity must be active.";
-    }
-  }
-
-  const configMappings: WorkflowActionConfig["fieldMappings"] = [];
-  const configConditions: WorkflowCondition[] = [];
-  const submittedWatchedFieldDefinitionIds = formData
-    .getAll("watchedFieldDefinitionId")
-    .filter((value): value is string => typeof value === "string");
-  const watchedFieldDefinitionIds =
-    triggerType === "record_updated" ? submittedWatchedFieldDefinitionIds : [];
-
-  if (triggerContext && targetContext) {
+  if (triggerContext) {
     const sourceFieldById = new Map(
       triggerContext.fields.map((field) => [field.id, field]),
     );
-    const allTargetFieldIds = new Set(
-      targetContext.fields.map((field) => field.id),
-    );
-    const submittedTargetFieldDefinitionIds = formData
-      .getAll("targetFieldDefinitionId")
-      .filter((value): value is string => typeof value === "string");
-    const submittedTargetFieldIds =
-      submittedTargetFieldDefinitionIds.length > 0
-        ? submittedTargetFieldDefinitionIds
-        : targetContext.fields
-            .filter((field) => !field.archivedAt)
-            .map((field) => field.id);
-    const targetFieldIds = new Set(submittedTargetFieldIds);
-
-    for (const key of formData.keys()) {
-      const [prefix, fieldId] = key.split(":");
-
-      if (
-        [
-          "mappingType",
-          "constantValue",
-          "sourceFieldDefinitionId",
-          "templateValue",
-        ].includes(prefix) &&
-        fieldId &&
-        !allTargetFieldIds.has(fieldId)
-      ) {
-        errors._form = "The workflow included an unknown target field.";
-      }
-    }
-
-    for (const targetFieldId of submittedTargetFieldIds) {
-      if (!allTargetFieldIds.has(targetFieldId)) {
-        errors._form = "The workflow included an unknown target field.";
-      }
-    }
 
     if (triggerType === "record_updated") {
       const watchedFieldIds = new Set(watchedFieldDefinitionIds);
@@ -488,199 +496,305 @@ export async function validateWorkflowFormData({
       });
     }
 
-    for (const targetFieldId of targetFieldIds) {
-      const targetField = targetContext.fields.find(
-        (field) => field.id === targetFieldId,
+    for (const actionRow of actionRows) {
+      const relatedField = triggerContext.fields.find(
+        (field) => field.id === actionRow.relatedFieldDefinitionId,
       );
+      const targetContext =
+        actionRow.actionType === "create_record"
+          ? entityContextById.get(actionRow.actionTargetEntityTypeId)
+          : actionRow.actionType === "update_related_record" &&
+              relatedField?.relatedEntityTypeId
+            ? entityContextById.get(relatedField.relatedEntityTypeId)
+            : triggerContext;
 
-      if (!targetField) {
-        continue;
+      if (actionRow.actionType === "create_record" && !targetContext) {
+        errors[`actionTargetEntityTypeId:${actionRow.id}`] =
+          "Choose an active target entity.";
       }
 
-      const rawMappingType = getString(formData, `mappingType:${targetField.id}`);
-      const validMappingTypes =
-        actionType === "update_record" || actionType === "update_related_record"
-          ? updateMappingTypes
-          : createMappingTypes;
-      const defaultMappingType =
-        actionType === "update_record" || actionType === "update_related_record"
-          ? "leave_unchanged"
-          : targetField.required
-            ? "constant"
-            : "unset";
-      const mappingType = validMappingTypes.has(rawMappingType)
-        ? (rawMappingType as WorkflowMappingFormValue["type"])
-        : defaultMappingType;
-      const constantValue = getString(
-        formData,
-        `constantValue:${targetField.id}`,
-      );
-      const sourceFieldDefinitionId = getString(
-        formData,
-        `sourceFieldDefinitionId:${targetField.id}`,
-      );
-      const template = getString(formData, `templateValue:${targetField.id}`);
-
-      mappings[targetField.id] = {
-        type: mappingType,
-        constantValue,
-        sourceFieldDefinitionId,
-        template,
-      };
-
-      if (targetField.archivedAt) {
-        errors[`mappingType:${targetField.id}`] =
-          getArchivedFieldError(targetField);
-        continue;
-      }
-
-      if (mappingType === "unset") {
-        if (actionType === "update_record" || actionType === "update_related_record") {
-          errors[`mappingType:${targetField.id}`] =
-            `${targetField.name} cannot use Unset for an update action. Choose Leave unchanged or Clear value.`;
-          continue;
+      if (actionRow.actionType === "update_related_record") {
+        if (!relatedField || relatedField.entityTypeId !== triggerEntityTypeId) {
+          errors[`relatedFieldDefinitionId:${actionRow.id}`] =
+            "Choose a relation field on the trigger entity.";
+        } else if (relatedField.archivedAt) {
+          errors[`relatedFieldDefinitionId:${actionRow.id}`] =
+            getArchivedFieldError(relatedField);
+        } else if (relatedField.type !== "relation" || !relatedField.relatedEntityTypeId) {
+          errors[`relatedFieldDefinitionId:${actionRow.id}`] =
+            "Choose a relation field on the trigger entity.";
+        } else if (!targetContext) {
+          errors[`relatedFieldDefinitionId:${actionRow.id}`] =
+            "The related entity must be active.";
         }
-
-        if (targetField.required) {
-          errors[`mappingType:${targetField.id}`] =
-            `${targetField.name} is required and cannot be unset.`;
-        }
-
-        configMappings.push({
-          targetFieldDefinitionId: targetField.id,
-          source: {
-            type: "unset",
-          },
-        });
-        continue;
       }
 
-      if (mappingType === "leave_unchanged") {
-        if (actionType !== "update_record" && actionType !== "update_related_record") {
-          errors[`mappingType:${targetField.id}`] =
-            `${targetField.name} cannot use Leave unchanged for a create action.`;
-          continue;
-        }
+      const configMappings: WorkflowFieldMapping[] = [];
 
-        configMappings.push({
-          targetFieldDefinitionId: targetField.id,
-          source: {
-            type: "leave_unchanged",
-          },
-        });
-        continue;
-      }
+      if (targetContext) {
+        const allTargetFieldIds = new Set(
+          targetContext.fields.map((field) => field.id),
+        );
+        const submittedTargetFieldDefinitionIds = formData
+          .getAll(`targetFieldDefinitionId:${actionRow.id}`)
+          .filter((value): value is string => typeof value === "string");
+        const submittedTargetFieldIds =
+          submittedTargetFieldDefinitionIds.length > 0
+            ? submittedTargetFieldDefinitionIds
+            : targetContext.fields
+                .filter((field) => !field.archivedAt)
+                .map((field) => field.id);
+        const targetFieldIds = new Set(submittedTargetFieldIds);
 
-      if (mappingType === "clear") {
-        if (actionType !== "update_record" && actionType !== "update_related_record") {
-          errors[`mappingType:${targetField.id}`] =
-            `${targetField.name} cannot use Clear value for a create action.`;
-        } else if (targetField.required) {
-          errors[`mappingType:${targetField.id}`] =
-            `${targetField.name} is required and cannot be cleared.`;
-        } else {
-          configMappings.push({
-            targetFieldDefinitionId: targetField.id,
-            source: {
-              type: "clear",
-            },
-          });
-        }
-        continue;
-      }
+        for (const key of formData.keys()) {
+          const [prefix, keyActionId, fieldId] = key.split(":");
 
-      if (mappingType === "constant") {
-        const parsedValue = parseConstantValue(targetField, constantValue);
-
-        if ("error" in parsedValue) {
-          errors[`constantValue:${targetField.id}`] = parsedValue.error;
-        } else {
           if (
-            targetField.type === "relation" &&
-            typeof parsedValue.value === "string" &&
-            !(await validateConstantRelationValue(targetField, parsedValue.value))
+            [
+              "mappingType",
+              "constantValue",
+              "sourceFieldDefinitionId",
+              "templateValue",
+            ].includes(prefix) &&
+            keyActionId === actionRow.id &&
+            fieldId &&
+            !allTargetFieldIds.has(fieldId)
           ) {
-            errors[`constantValue:${targetField.id}`] =
-              `${targetField.name} must reference an active record.`;
+            errors._form = "The workflow included an unknown target field.";
+          }
+        }
+
+        for (const targetFieldId of submittedTargetFieldIds) {
+          if (!allTargetFieldIds.has(targetFieldId)) {
+            errors._form = "The workflow included an unknown target field.";
+          }
+        }
+
+        const actionMappingsForm: Record<string, WorkflowMappingFormValue> = {};
+
+        for (const targetFieldId of targetFieldIds) {
+          const targetField = targetContext.fields.find(
+            (field) => field.id === targetFieldId,
+          );
+
+          if (!targetField) {
+            continue;
           }
 
-          configMappings.push({
-            targetFieldDefinitionId: targetField.id,
-            source: {
-              type: "constant",
-              value: parsedValue.value,
-            },
-          });
-        }
-        continue;
-      }
+          const fieldKey = (prefix: string) =>
+            `${prefix}:${actionRow.id}:${targetField.id}`;
+          const rawMappingType = getString(formData, fieldKey("mappingType"));
+          const validMappingTypes =
+            actionRow.actionType === "update_record" ||
+            actionRow.actionType === "update_related_record"
+              ? updateMappingTypes
+              : createMappingTypes;
+          const defaultMappingType =
+            actionRow.actionType === "update_record" ||
+            actionRow.actionType === "update_related_record"
+              ? "leave_unchanged"
+              : targetField.required
+                ? "constant"
+                : "unset";
+          const mappingType = validMappingTypes.has(rawMappingType)
+            ? (rawMappingType as WorkflowMappingFormValue["type"])
+            : defaultMappingType;
+          const constantValue = getString(formData, fieldKey("constantValue"));
+          const sourceFieldDefinitionId = getString(
+            formData,
+            fieldKey("sourceFieldDefinitionId"),
+          );
+          const template = getString(formData, fieldKey("templateValue"));
 
-      if (mappingType === "template") {
-        if (targetField.type !== "text") {
-          errors[`mappingType:${targetField.id}`] =
-            "Template mappings can only populate text fields.";
-          continue;
-        }
-
-        const parsedTemplate = friendlyTemplateToCanonical({
-          template,
-          sourceEntityType: triggerContext.entityType,
-          sourceFields: triggerContext.fields,
-          entityNameById,
-        });
-
-        if (!parsedTemplate.success) {
-          errors[`templateValue:${targetField.id}`] = parsedTemplate.error;
-        } else if (
-          parsedTemplate.referencedSourceFieldIds.some((sourceFieldId) => {
-            return Boolean(sourceFieldById.get(sourceFieldId)?.archivedAt);
-          })
-        ) {
-          errors[`templateValue:${targetField.id}`] =
-            "Template placeholders cannot reference archived fields.";
-        } else {
-          configMappings.push({
-            targetFieldDefinitionId: targetField.id,
-            source: {
-              type: "template",
-              template: parsedTemplate.canonicalTemplate,
-            },
-          });
-        }
-        continue;
-      }
-
-      const sourceField = sourceFieldById.get(sourceFieldDefinitionId);
-
-      if (!sourceField) {
-        errors[`sourceFieldDefinitionId:${targetField.id}`] =
-          `Choose a source field for ${targetField.name}.`;
-      } else if (sourceField.archivedAt) {
-        errors[`sourceFieldDefinitionId:${targetField.id}`] =
-          getArchivedFieldError(sourceField);
-      } else if (!areFieldsCompatible(sourceField, targetField)) {
-        errors[`sourceFieldDefinitionId:${targetField.id}`] =
-          `${sourceField.name} (${getFieldTypeLabel(
-            sourceField.type,
-          )}) cannot populate ${targetField.name} (${getFieldTypeLabel(
-            targetField.type,
-          )}).`;
-      } else {
-        configMappings.push({
-          targetFieldDefinitionId: targetField.id,
-          source: {
-            type: "source_field",
+          actionMappingsForm[targetField.id] = {
+            type: mappingType,
+            constantValue,
             sourceFieldDefinitionId,
-          },
-        });
-      }
-    }
+            template,
+          };
 
-    if (
-      actionType === "update_related_record" &&
-      configMappings.every((mapping) => mapping.source.type === "leave_unchanged")
-    ) {
-      errors._form = "Configure at least one field to update.";
+          if (targetField.archivedAt) {
+            errors[fieldKey("mappingType")] = getArchivedFieldError(targetField);
+            continue;
+          }
+
+          if (mappingType === "unset") {
+            if (
+              actionRow.actionType === "update_record" ||
+              actionRow.actionType === "update_related_record"
+            ) {
+              errors[fieldKey("mappingType")] =
+                `${targetField.name} cannot use Unset for an update action. Choose Leave unchanged or Clear value.`;
+              continue;
+            }
+
+            if (targetField.required) {
+              errors[fieldKey("mappingType")] =
+                `${targetField.name} is required and cannot be unset.`;
+            }
+
+            configMappings.push({
+              targetFieldDefinitionId: targetField.id,
+              source: {
+                type: "unset",
+              },
+            });
+            continue;
+          }
+
+          if (mappingType === "leave_unchanged") {
+            if (
+              actionRow.actionType !== "update_record" &&
+              actionRow.actionType !== "update_related_record"
+            ) {
+              errors[fieldKey("mappingType")] =
+                `${targetField.name} cannot use Leave unchanged for a create action.`;
+              continue;
+            }
+
+            configMappings.push({
+              targetFieldDefinitionId: targetField.id,
+              source: {
+                type: "leave_unchanged",
+              },
+            });
+            continue;
+          }
+
+          if (mappingType === "clear") {
+            if (
+              actionRow.actionType !== "update_record" &&
+              actionRow.actionType !== "update_related_record"
+            ) {
+              errors[fieldKey("mappingType")] =
+                `${targetField.name} cannot use Clear value for a create action.`;
+            } else if (targetField.required) {
+              errors[fieldKey("mappingType")] =
+                `${targetField.name} is required and cannot be cleared.`;
+            } else {
+              configMappings.push({
+                targetFieldDefinitionId: targetField.id,
+                source: {
+                  type: "clear",
+                },
+              });
+            }
+            continue;
+          }
+
+          if (mappingType === "constant") {
+            const parsedValue = parseConstantValue(targetField, constantValue);
+
+            if ("error" in parsedValue) {
+              errors[fieldKey("constantValue")] = parsedValue.error;
+            } else {
+              if (
+                targetField.type === "relation" &&
+                typeof parsedValue.value === "string" &&
+                !(await validateConstantRelationValue(targetField, parsedValue.value))
+              ) {
+                errors[fieldKey("constantValue")] =
+                  `${targetField.name} must reference an active record.`;
+              }
+
+              configMappings.push({
+                targetFieldDefinitionId: targetField.id,
+                source: {
+                  type: "constant",
+                  value: parsedValue.value,
+                },
+              });
+            }
+            continue;
+          }
+
+          if (mappingType === "template") {
+            if (targetField.type !== "text") {
+              errors[fieldKey("mappingType")] =
+                "Template mappings can only populate text fields.";
+              continue;
+            }
+
+            const parsedTemplate = friendlyTemplateToCanonical({
+              template,
+              sourceEntityType: triggerContext.entityType,
+              sourceFields: triggerContext.fields,
+              entityNameById,
+            });
+
+            if (!parsedTemplate.success) {
+              errors[fieldKey("templateValue")] = parsedTemplate.error;
+            } else if (
+              parsedTemplate.referencedSourceFieldIds.some((sourceFieldId) => {
+                return Boolean(sourceFieldById.get(sourceFieldId)?.archivedAt);
+              })
+            ) {
+              errors[fieldKey("templateValue")] =
+                "Template placeholders cannot reference archived fields.";
+            } else {
+              configMappings.push({
+                targetFieldDefinitionId: targetField.id,
+                source: {
+                  type: "template",
+                  template: parsedTemplate.canonicalTemplate,
+                },
+              });
+            }
+            continue;
+          }
+
+          const sourceField = sourceFieldById.get(sourceFieldDefinitionId);
+
+          if (!sourceField) {
+            errors[fieldKey("sourceFieldDefinitionId")] =
+              `Choose a source field for ${targetField.name}.`;
+          } else if (sourceField.archivedAt) {
+            errors[fieldKey("sourceFieldDefinitionId")] =
+              getArchivedFieldError(sourceField);
+          } else if (!areFieldsCompatible(sourceField, targetField)) {
+            errors[fieldKey("sourceFieldDefinitionId")] =
+              `${sourceField.name} (${getFieldTypeLabel(
+                sourceField.type,
+              )}) cannot populate ${targetField.name} (${getFieldTypeLabel(
+                targetField.type,
+              )}).`;
+          } else {
+            configMappings.push({
+              targetFieldDefinitionId: targetField.id,
+              source: {
+                type: "source_field",
+                sourceFieldDefinitionId,
+              },
+            });
+          }
+        }
+
+        const actionFormValue = actionFormValueById.get(actionRow.id);
+
+        if (actionFormValue) {
+          actionFormValue.mappings = actionMappingsForm;
+        }
+
+        if (
+          actionRow.actionType === "update_related_record" &&
+          configMappings.every((mapping) => mapping.source.type === "leave_unchanged")
+        ) {
+          errors[`action:${actionRow.id}`] = "Configure at least one field to update.";
+        }
+      }
+
+      configActions.push({
+        actionType: actionRow.actionType,
+        actionTargetEntityTypeId:
+          actionRow.actionType === "create_record"
+            ? actionRow.actionTargetEntityTypeId
+            : undefined,
+        relatedFieldDefinitionId:
+          actionRow.actionType === "update_related_record"
+            ? actionRow.relatedFieldDefinitionId
+            : undefined,
+        fieldMappings: configMappings,
+      });
     }
   }
 
@@ -694,12 +808,9 @@ export async function validateWorkflowFormData({
       enabled,
       triggerType,
       triggerEntityTypeId,
-      actionType,
-      actionTargetEntityTypeId,
-      relatedFieldDefinitionId,
       watchedFieldDefinitionIds,
       conditions: conditionRows,
-      mappings,
+      actions: [...actionFormValueById.values()],
     },
   };
 
@@ -720,23 +831,12 @@ export async function validateWorkflowFormData({
       enabled,
       triggerType,
       triggerEntityTypeId,
-      actionType,
-      actionTargetEntityTypeId:
-        actionType === "create_record" ? actionTargetEntityTypeId : undefined,
-      actionConfig: {
-        relatedFieldDefinitionId:
-          actionType === "update_related_record"
-            ? relatedFieldDefinitionId
-            : undefined,
-        triggerConfig:
-          triggerType === "record_updated"
-            ? {
-                watchedFieldDefinitionIds: [...new Set(watchedFieldDefinitionIds)],
-              }
-            : undefined,
-        conditions: configConditions,
-        fieldMappings: configMappings,
-      },
+      triggerConfig:
+        triggerType === "record_updated"
+          ? { watchedFieldDefinitionIds: [...new Set(watchedFieldDefinitionIds)] }
+          : undefined,
+      conditions: configConditions,
+      actions: configActions,
     },
     state,
   };
@@ -763,126 +863,126 @@ export function createWorkflowFormStateFromDefinition({
       enabled: workflow.enabled,
       triggerType: workflow.triggerType,
       triggerEntityTypeId: workflow.triggerEntityTypeId,
-      actionType: workflow.actionType,
-      actionTargetEntityTypeId: workflow.actionTargetEntityTypeId ?? "",
-      relatedFieldDefinitionId:
-        workflow.actionConfig.relatedFieldDefinitionId ?? "",
       watchedFieldDefinitionIds:
         workflow.triggerType === "record_updated"
-          ? workflow.actionConfig.triggerConfig?.watchedFieldDefinitionIds ?? []
+          ? workflow.triggerConfig?.watchedFieldDefinitionIds ?? []
           : [],
-      conditions: (workflow.actionConfig.conditions ?? []).map(
-        (condition, index) => ({
-          id: `condition-${index}`,
-          sourceFieldDefinitionId: condition.sourceFieldDefinitionId,
-          operator: condition.operator,
-          value:
-            condition.value === null || condition.value === undefined
-              ? ""
-              : String(condition.value),
-          previousValue:
-            condition.previousValue === null || condition.previousValue === undefined
-              ? ""
-              : String(condition.previousValue),
-        }),
-      ),
-      mappings: Object.fromEntries(
-        workflow.actionConfig.fieldMappings.map((mapping) => {
-          if (mapping.source.type === "unset") {
+      conditions: (workflow.conditions ?? []).map((condition, index) => ({
+        id: `condition-${index}`,
+        sourceFieldDefinitionId: condition.sourceFieldDefinitionId,
+        operator: condition.operator,
+        value:
+          condition.value === null || condition.value === undefined
+            ? ""
+            : String(condition.value),
+        previousValue:
+          condition.previousValue === null || condition.previousValue === undefined
+            ? ""
+            : String(condition.previousValue),
+      })),
+      actions: workflow.actions.map((action, index) => ({
+        id: `action-${index}`,
+        actionType: action.actionType,
+        actionTargetEntityTypeId: action.actionTargetEntityTypeId ?? "",
+        relatedFieldDefinitionId: action.relatedFieldDefinitionId ?? "",
+        mappings: Object.fromEntries(
+          action.fieldMappings.map((mapping) => {
+            if (mapping.source.type === "unset") {
+              return [
+                mapping.targetFieldDefinitionId,
+                {
+                  type: "unset",
+                  constantValue: "",
+                  sourceFieldDefinitionId: "",
+                  template: "",
+                },
+              ];
+            }
+
+            if (mapping.source.type === "leave_unchanged") {
+              return [
+                mapping.targetFieldDefinitionId,
+                {
+                  type: "leave_unchanged",
+                  constantValue: "",
+                  sourceFieldDefinitionId: "",
+                  template: "",
+                },
+              ];
+            }
+
+            if (mapping.source.type === "clear") {
+              return [
+                mapping.targetFieldDefinitionId,
+                {
+                  type: "clear",
+                  constantValue: "",
+                  sourceFieldDefinitionId: "",
+                  template: "",
+                },
+              ];
+            }
+
+            if (mapping.source.type === "constant") {
+              return [
+                mapping.targetFieldDefinitionId,
+                {
+                  type: "constant",
+                  constantValue:
+                    mapping.source.value === null ||
+                    mapping.source.value === undefined
+                      ? ""
+                      : String(mapping.source.value),
+                  sourceFieldDefinitionId: "",
+                  template: "",
+                },
+              ];
+            }
+
+            if (mapping.source.type === "template") {
+              return [
+                mapping.targetFieldDefinitionId,
+                {
+                  type: "template",
+                  constantValue: "",
+                  sourceFieldDefinitionId: "",
+                  template: sourceEntityContext
+                    ? canonicalTemplateToFriendly({
+                        template: mapping.source.template,
+                        sourceEntityType: sourceEntityContext.entityType,
+                        sourceFields: sourceEntityContext.fields,
+                        entityNameById,
+                      })
+                    : mapping.source.template,
+                },
+              ];
+            }
+
             return [
               mapping.targetFieldDefinitionId,
               {
-                type: "unset",
+                type: "source_field",
                 constantValue: "",
-                sourceFieldDefinitionId: "",
+                sourceFieldDefinitionId: mapping.source.sourceFieldDefinitionId,
                 template: "",
               },
             ];
-          }
-
-          if (mapping.source.type === "leave_unchanged") {
-            return [
-              mapping.targetFieldDefinitionId,
-              {
-                type: "leave_unchanged",
-                constantValue: "",
-                sourceFieldDefinitionId: "",
-                template: "",
-              },
-            ];
-          }
-
-          if (mapping.source.type === "clear") {
-            return [
-              mapping.targetFieldDefinitionId,
-              {
-                type: "clear",
-                constantValue: "",
-                sourceFieldDefinitionId: "",
-                template: "",
-              },
-            ];
-          }
-
-          if (mapping.source.type === "constant") {
-            return [
-              mapping.targetFieldDefinitionId,
-              {
-                type: "constant",
-                constantValue:
-                  mapping.source.value === null ||
-                  mapping.source.value === undefined
-                    ? ""
-                    : String(mapping.source.value),
-                sourceFieldDefinitionId: "",
-                template: "",
-              },
-            ];
-          }
-
-          if (mapping.source.type === "template") {
-            return [
-              mapping.targetFieldDefinitionId,
-              {
-                type: "template",
-                constantValue: "",
-                sourceFieldDefinitionId: "",
-                template: sourceEntityContext
-                  ? canonicalTemplateToFriendly({
-                      template: mapping.source.template,
-                      sourceEntityType: sourceEntityContext.entityType,
-                      sourceFields: sourceEntityContext.fields,
-                      entityNameById,
-                    })
-                  : mapping.source.template,
-              },
-            ];
-          }
-
-          return [
-            mapping.targetFieldDefinitionId,
-            {
-              type: "source_field",
-              constantValue: "",
-              sourceFieldDefinitionId: mapping.source.sourceFieldDefinitionId,
-              template: "",
-            },
-          ];
-        }),
-      ),
+          }),
+        ),
+      })),
     },
   };
 }
 
 export async function buildTargetValuesFromWorkflowConfig({
-  actionConfig,
+  fieldMappings,
   sourceEntityType,
   sourceFields,
   targetFields,
   sourceRecord,
   resolveRelationLabel,
 }: {
-  actionConfig: WorkflowActionConfig;
+  fieldMappings: WorkflowFieldMapping[];
   sourceEntityType: EntityType;
   sourceFields: FieldDefinition[];
   targetFields: FieldDefinition[];
@@ -896,7 +996,7 @@ export async function buildTargetValuesFromWorkflowConfig({
   const targetFieldById = new Map(targetFields.map((field) => [field.id, field]));
   const values: EntityRecord["values"] = {};
 
-  for (const mapping of actionConfig.fieldMappings) {
+  for (const mapping of fieldMappings) {
     const targetField = targetFieldById.get(mapping.targetFieldDefinitionId);
 
     if (!targetField) {

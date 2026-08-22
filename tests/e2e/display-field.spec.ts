@@ -407,19 +407,22 @@ test("workflow relation templates use configured display field", async ({
     name: `${run.label} Display Template Workflow`,
     trigger_type: "record_created",
     trigger_entity_type_id: ticket.id,
-    action_type: "create_record",
-    action_target_entity_type_id: activity.id,
-    action_config: {
-      fieldMappings: [
-        {
-          targetFieldDefinitionId: activity.fields.summary.id,
-          source: {
-            type: "template",
-            template: `{{field:${ticket.fields.client.id}}}`,
+    action_config: {},
+    actions: [
+      {
+        actionType: "create_record",
+        actionTargetEntityTypeId: activity.id,
+        fieldMappings: [
+          {
+            targetFieldDefinitionId: activity.fields.summary.id,
+            source: {
+              type: "template",
+              template: `{{field:${ticket.fields.client.id}}}`,
+            },
           },
-        },
-      ],
-    },
+        ],
+      },
+    ],
   });
   expect(workflowResult.error).toBeNull();
 

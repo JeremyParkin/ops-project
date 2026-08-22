@@ -43,6 +43,7 @@ import {
   deleteFieldDefinition,
   deleteEntityType,
   getEntityTypeRelationFieldSummary,
+  getEntityTypeWorkflowTargetSummary,
   getEntityContext,
   listEntityTypes,
   restoreFieldDefinition,
@@ -1297,15 +1298,19 @@ function formatEntityDeleteBlockMessage({
   entityName,
   recordCount,
   relationFieldCount,
-  references,
+  relationReferences,
+  workflowTargetCount,
+  workflowReferences,
 }: {
   entityName: string;
   recordCount: number;
   relationFieldCount: number;
-  references: Array<{
+  relationReferences: Array<{
     entityTypeName: string;
     fieldName: string;
   }>;
+  workflowTargetCount: number;
+  workflowReferences: Array<{ workflowName: string }>;
 }) {
   if (recordCount > 0) {
     return `Cannot delete ${entityName} because it contains ${recordCount} record${
@@ -1313,14 +1318,27 @@ function formatEntityDeleteBlockMessage({
     }.`;
   }
 
-  const referenceNames = references
+  if (relationFieldCount > 0) {
+    const referenceNames = relationReferences
+      .slice(0, 3)
+      .map((reference) => `${reference.entityTypeName}.${reference.fieldName}`)
+      .join(", ");
+
+    return `Cannot delete ${entityName} because ${relationFieldCount} relation field${
+      relationFieldCount === 1 ? "" : "s"
+    } reference it${referenceNames ? `: ${referenceNames}` : ""}.`;
+  }
+
+  const workflowNames = workflowReferences
     .slice(0, 3)
-    .map((reference) => `${reference.entityTypeName}.${reference.fieldName}`)
+    .map((reference) => reference.workflowName)
     .join(", ");
 
-  return `Cannot delete ${entityName} because ${relationFieldCount} relation field${
-    relationFieldCount === 1 ? "" : "s"
-  } reference it${referenceNames ? `: ${referenceNames}` : ""}.`;
+  return `Cannot delete ${entityName} because ${workflowTargetCount} workflow${
+    workflowTargetCount === 1 ? "" : "s"
+  } create${workflowTargetCount === 1 ? "s" : ""} records in it${
+    workflowNames ? `: ${workflowNames}` : ""
+  }.`;
 }
 
 export async function deleteEntity(
@@ -1341,6 +1359,10 @@ export async function deleteEntity(
         result.relationFieldCount > 0
           ? await getEntityTypeRelationFieldSummary(context)
           : { references: [] };
+      const workflowSummary =
+        result.workflowTargetCount > 0
+          ? await getEntityTypeWorkflowTargetSummary(context)
+          : { references: [] };
 
       return {
         success: false,
@@ -1348,7 +1370,9 @@ export async function deleteEntity(
           entityName: entityType.name,
           recordCount: result.recordCount,
           relationFieldCount: result.relationFieldCount,
-          references: relationSummary.references,
+          relationReferences: relationSummary.references,
+          workflowTargetCount: result.workflowTargetCount,
+          workflowReferences: workflowSummary.references,
         }),
       };
     }
@@ -1408,9 +1432,9 @@ export async function createWorkflow(
       enabled: validation.workflow.enabled,
       triggerType: validation.workflow.triggerType,
       triggerEntityTypeId: validation.workflow.triggerEntityTypeId,
-      actionType: validation.workflow.actionType,
-      actionTargetEntityTypeId: validation.workflow.actionTargetEntityTypeId,
-      actionConfig: validation.workflow.actionConfig,
+      triggerConfig: validation.workflow.triggerConfig,
+      conditions: validation.workflow.conditions,
+      actions: validation.workflow.actions,
     });
   } catch {
     return {
@@ -1477,9 +1501,9 @@ export async function updateWorkflow(
       enabled: validation.workflow.enabled,
       triggerType: validation.workflow.triggerType,
       triggerEntityTypeId: validation.workflow.triggerEntityTypeId,
-      actionType: validation.workflow.actionType,
-      actionTargetEntityTypeId: validation.workflow.actionTargetEntityTypeId,
-      actionConfig: validation.workflow.actionConfig,
+      triggerConfig: validation.workflow.triggerConfig,
+      conditions: validation.workflow.conditions,
+      actions: validation.workflow.actions,
     });
   } catch {
     return {

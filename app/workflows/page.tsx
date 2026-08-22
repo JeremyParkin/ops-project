@@ -12,8 +12,28 @@ import {
   listRecentWorkflowExecutionLogs,
   listWorkflows,
 } from "@/lib/domain/workflow-repository";
+import type { WorkflowAction } from "@/lib/domain/workflow-types";
 
 export const dynamic = "force-dynamic";
+
+function describeWorkflowAction(
+  action: WorkflowAction,
+  entityNameById: Map<string, string>,
+) {
+  if (action.actionType === "update_record") {
+    return "Update triggering record";
+  }
+
+  if (action.actionType === "update_related_record") {
+    return "Update related record";
+  }
+
+  return `Create record in ${
+    action.actionTargetEntityTypeId
+      ? entityNameById.get(action.actionTargetEntityTypeId) ?? "Unknown entity"
+      : "Unknown entity"
+  }`;
+}
 
 export default async function WorkflowsPage() {
   const [entityTypes, allEntityTypes, workflows, logs] = await Promise.all([
@@ -99,17 +119,10 @@ export default async function WorkflowsPage() {
                         "Unknown entity"}
                     </td>
                     <td className="px-4 py-3">
-                      {workflow.actionType === "update_record"
-                        ? "Update triggering record"
-                        : workflow.actionType === "update_related_record"
-                          ? "Update related record"
-                        : `Create record in ${
-                            workflow.actionTargetEntityTypeId
-                              ? entityNameById.get(
-                                  workflow.actionTargetEntityTypeId,
-                                ) ?? "Unknown entity"
-                              : "Unknown entity"
-                          }`}
+                      {describeWorkflowAction(workflow.actions[0], entityNameById)}
+                      {workflow.actions.length > 1
+                        ? ` (+${workflow.actions.length - 1} more)`
+                        : ""}
                     </td>
                     <td className="px-4 py-3">
                       {workflow.enabled ? "Enabled" : "Disabled"}
@@ -183,6 +196,25 @@ export default async function WorkflowsPage() {
                           : log.actionRecordId
                             ? "Record updated"
                             : "Completed")}
+                      {log.actionResults.length > 1 ? (
+                        <ul className="mt-2 space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-600">
+                          {log.actionResults.map((result) => (
+                            <li key={result.index}>
+                              Action {result.index + 1} ({result.actionType}):{" "}
+                              {result.status}
+                              {result.errorMessage
+                                ? ` — ${result.errorMessage}`
+                                : result.resultMessage
+                                  ? ` — ${result.resultMessage}`
+                                  : result.createdRecordId
+                                    ? " — record created"
+                                    : result.actionRecordId
+                                      ? " — record updated"
+                                      : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">{log.startedAt}</td>
                   </tr>
