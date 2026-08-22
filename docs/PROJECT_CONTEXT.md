@@ -81,6 +81,8 @@ Each field has an immutable `key`, unique within the workspace. Record JSON valu
 
 Record display labels are centralized in `lib/domain/record-repository.ts`: use a configured active text display field when present, otherwise the first active text field by position, otherwise a shortened record ID. If the configured display-field value is empty, labels fall back directly to the shortened record ID. Archived target records can still display with an `(Archived)` suffix where needed.
 
+Workspace record search is centralized in the same repository. It searches active text fields on active records in active entities, groups results by entity, and uses the centralized label resolver for every result.
+
 `EntityView` represents a saved table view for one entity. Saved views live in `entity_views` with `name`, `position`, `isDefault`, JSONB filters/sorts/column field IDs, and ISO timestamps. They configure table presentation only; they do not copy schema or records.
 
 ## Data Integrity And Lifecycle Rules
@@ -134,6 +136,14 @@ Saved views:
 - At most one saved view per entity can be the default view.
 - Stale column/sort references are surfaced as warnings; stale filter references fail closed.
 - Deleting a view never deletes records.
+- Workspace Home uses entity base links for primary navigation, preserving configured default-view behavior. Its secondary shortcuts use `?view=all` and `?view=<view-id>` routes.
+
+Workspace search:
+
+- `GET /search?q=...` performs a case-insensitive trimmed substring search across active text fields on active records in active entities.
+- Results are grouped by entity, capped at 20 records per entity, and link to record detail pages.
+- For each entity, display-field matches rank before other text-field matches; prefix matches rank before general substring matches; remaining ties use label then record ID.
+- A match outside the display field can show concise matching-field context. Search is deliberately limited to records: no fuzzy matching, pagination, workflow/view/settings search, or database search index in v1.
 
 Record details and reverse relationships:
 
@@ -260,12 +270,15 @@ Workflow and saved-view references inside JSONB are not protected by relational 
 Important directories/files:
 
 - `app/` contains Next.js routes, Server Components, and Server Actions.
+- `app/page.tsx` is the workspace home, with active entity cards and capped saved-view shortcuts.
+- `app/search/page.tsx` is the server-rendered workspace record search page.
 - `app/actions.ts` is the main server-action layer for entity, field, record, lifecycle, and workflow mutations.
 - `app/entities/[entityTypeId]/page.tsx` is the main entity page: metadata, saved views, records, record create form, table, field management, entity settings/lifecycle.
 - `app/entities/[entityTypeId]/records/[recordId]/page.tsx` is the record detail page with outgoing and incoming relationship display.
 - `app/entities/[entityTypeId]/records/[recordId]/edit/page.tsx` handles metadata-driven record editing.
 - `app/entities/new/page.tsx` handles entity creation.
 - `app/workflows/page.tsx`, `app/workflows/new/page.tsx`, and `app/workflows/[workflowId]/edit/page.tsx` handle workflow listing, creation, editing, toggling, deletion, and log display.
+- `app/components/entity-navigation.tsx` is the shared workspace navigation for Home, entities, Workflows, Create Entity, archived-entity management, and the compact record-search entry point.
 - `app/components/record-create-form.tsx`, `record-edit-form.tsx`, `record-detail-view.tsx`, and `entity-records-table.tsx` are generic metadata-driven record UI.
 - `app/components/entity-views-panel.tsx` manages saved table views.
 - `app/components/workflow-create-form.tsx` is the reusable workflow definition form for create/edit.
@@ -297,6 +310,8 @@ Current spec files:
 - `update-related-record-workflows.spec.ts`
 - `archived-relation-edit.spec.ts`
 - `related-create-records.spec.ts`
+- `workspace-navigation.spec.ts`
+- `workspace-search.spec.ts`
 
 Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
 
@@ -310,7 +325,7 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current E2E count after the related-record creation milestone: 70 tests passing.
+Current E2E count after the Workspace Record Search milestone: 75 tests passing.
 
 ## Intentional Limitations
 
@@ -328,6 +343,7 @@ Current E2E count after the related-record creation milestone: 70 tests passing.
 - No custom record layouts/page builder.
 - No comments, attachments, activity feed, or audit UI.
 - No Kanban/calendar/gallery saved-view modes.
+- No fuzzy/vector search, pagination, advanced filters, or search for workflows, views, or settings.
 - No workflow recursion/chaining.
 - No multiple actions per workflow.
 - No schedules, queues, background workers, integrations, or webhooks.
@@ -352,6 +368,43 @@ Current E2E count after the related-record creation milestone: 70 tests passing.
 - Use accessible selectors in tests.
 - Run lint, typecheck, webpack build, and E2E tests sequentially before declaring milestones complete.
 
+## Agent Working Agreement
+
+- The repository and checked-in migrations are the source of truth.
+- Read `PROJECT_CONTEXT.md` before starting substantial work.
+- Inspect existing code before proposing new architecture.
+- Plan first when a milestone involves product semantics or architectural choices.
+- Keep milestones small and coherent.
+- Do not silently change established behavior outside the requested milestone.
+- Reuse existing domain/repository abstractions where practical.
+- Favor structural database integrity where appropriate.
+- Do not silently rewrite or delete dependent data.
+- Preserve backwards compatibility where reasonable.
+- During implementation, prefer targeted verification: lint, typecheck, and directly relevant E2E spec(s).
+- At milestone completion, run the full gate sequentially:
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run build -- --webpack
+npm run test:e2e
+```
+
+- Do not run typecheck and build concurrently because of the known `.next` generated-types race.
+- Update `PROJECT_CONTEXT.md` only when a milestone is complete or when durable architecture/process decisions change.
+- Do not begin the next milestone without approval.
+- If another coding agent has worked on the repo since your last session, re-read `PROJECT_CONTEXT.md` and inspect the current diff/history before proceeding.
+
+## Multi-Agent Development
+
+This project may be worked on by Codex, Claude Code, or other coding agents.
+
+- Only one agent should actively implement a milestone at a time.
+- Agents should not assume their prior chat history is current.
+- Each new session should orient from `PROJECT_CONTEXT.md` and the repository.
+- Completed milestones should be tested, documented, and committed before another agent begins the next milestone where practical.
+- A second agent may review another agent's work, but should not simultaneously rewrite the same feature unless explicitly requested.
+
 ## Current State And Next Frontier
 
 Complete major capabilities:
@@ -363,13 +416,15 @@ Complete major capabilities:
 - Relation fields with dedicated relational persistence and generic labels.
 - Configurable entity display fields.
 - Saved table views with filters, sorts, visible columns, and default view selection.
+- Workspace home and shared navigation with active entity cards and capped saved-view shortcuts.
+- Workspace record search across active entities and records, with deterministic per-entity result caps and detail-page links.
 - Record detail pages with outgoing links and derived reverse relationship visibility.
 - Create related records from reverse relationship groups using the standard record-create form and validated origin-detail return navigation.
 - Workflow management: create/edit/enable/disable/delete.
 - Workflow triggers for record created and record updated.
 - Workflow actions for create record, update triggering record, and update one record reached through a direct triggering-record relation.
 - Conditions, watched fields, constants, source-field mappings, text templates, relation mappings, deterministic execution, isolated failures, no recursion, and execution logs.
-- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workflow, record-updated, update-record, and update-related-record behavior.
+- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, update-record, and update-related-record behavior.
 
 Sensible next areas, without committing to architecture yet:
 

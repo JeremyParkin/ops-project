@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getEntityContext } from "./metadata-repository";
+import { getEntityContext, listEntityTypes } from "./metadata-repository";
 import type { EntityRecord, EntityType, FieldDefinition } from "./types";
 
 type EntityRecordRow = {
@@ -74,6 +74,17 @@ export type IncomingRelationGroup = {
   sourceFields: FieldDefinition[];
   relationField: FieldDefinition;
   records: EntityRecord[];
+};
+
+export type WorkspaceRecordSearchResult = {
+  record: EntityRecord;
+  label: string;
+  matchedFieldName?: string;
+};
+
+export type WorkspaceRecordSearchGroup = {
+  entityType: EntityType;
+  results: WorkspaceRecordSearchResult[];
 };
 
 function mapEntityRecord(row: EntityRecordRow): EntityRecord {
@@ -172,6 +183,148 @@ export function getRelationOptionLabel(
   const label = getRecordLabel({ entityType, fields, record });
 
   return record.archivedAt ? `${label} (Archived)` : label;
+}
+
+const WORKSPACE_SEARCH_RESULTS_PER_ENTITY = 20;
+
+export async function searchWorkspaceRecords({
+  workspaceId,
+  query,
+}: {
+  workspaceId: string;
+  query: string;
+}): Promise<WorkspaceRecordSearchGroup[]> {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const entityTypes = await listEntityTypes({ workspaceId });
+
+  if (entityTypes.length === 0) {
+    return [];
+  }
+
+  const supabase = createServerSupabaseClient();
+  const entityTypeIds = entityTypes.map((entityType) => entityType.id);
+  const [{ data: fieldRows, error: fieldError }, { data: recordRows, error: recordError }] =
+    await Promise.all([
+      supabase
+        .from("field_definitions")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .is("archived_at", null)
+        .eq("type", "text")
+        .in("entity_type_id", entityTypeIds)
+        .returns<FieldDefinitionRow[]>(),
+      supabase
+        .from("entity_records")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .is("archived_at", null)
+        .in("entity_type_id", entityTypeIds)
+        .returns<EntityRecordRow[]>(),
+    ]);
+
+  if (fieldError) {
+    throw new Error(`Unable to load searchable fields: ${fieldError.message}`);
+  }
+
+  if (recordError) {
+    throw new Error(`Unable to load searchable records: ${recordError.message}`);
+  }
+
+  const fieldsByEntityTypeId = new Map<string, FieldDefinition[]>();
+
+  fieldRows.map(mapFieldDefinition).forEach((field) => {
+    const fields = fieldsByEntityTypeId.get(field.entityTypeId) ?? [];
+    fields.push(field);
+    fieldsByEntityTypeId.set(field.entityTypeId, fields);
+  });
+
+  const recordsByEntityTypeId = new Map<string, EntityRecord[]>();
+
+  recordRows.map(mapEntityRecord).forEach((record) => {
+    const records = recordsByEntityTypeId.get(record.entityTypeId) ?? [];
+    records.push(record);
+    recordsByEntityTypeId.set(record.entityTypeId, records);
+  });
+
+  return [...entityTypes]
+    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
+    .flatMap((entityType) => {
+      const fields = (fieldsByEntityTypeId.get(entityType.id) ?? []).sort(
+        (left, right) => left.position - right.position || left.id.localeCompare(right.id),
+      );
+      const identityField = getRecordIdentityField({ entityType, fields });
+
+      if (fields.length === 0) {
+        return [];
+      }
+
+      const results = (recordsByEntityTypeId.get(entityType.id) ?? [])
+        .flatMap((record) => {
+          const matches = fields
+            .flatMap((field) => {
+              const value = record.values[field.key];
+
+              if (typeof value !== "string") {
+                return [];
+              }
+
+              const normalizedValue = value.toLocaleLowerCase();
+
+              if (!normalizedValue.includes(normalizedQuery)) {
+                return [];
+              }
+
+              return [{ field, isPrefixMatch: normalizedValue.startsWith(normalizedQuery) }];
+            })
+            .sort(
+              (left, right) =>
+                Number(left.field.id !== identityField?.id) -
+                  Number(right.field.id !== identityField?.id) ||
+                Number(!left.isPrefixMatch) - Number(!right.isPrefixMatch) ||
+                left.field.position - right.field.position ||
+                left.field.id.localeCompare(right.field.id),
+            );
+
+          const match = matches[0];
+
+          if (!match) {
+            return [];
+          }
+
+          return [
+            {
+              record,
+              label: getRecordLabel({ entityType, fields, record }),
+              matchedFieldName:
+                match.field.id === identityField?.id ? undefined : match.field.name,
+              isIdentityMatch: match.field.id === identityField?.id,
+              isPrefixMatch: match.isPrefixMatch,
+              matchPosition: match.field.position,
+            },
+          ];
+        })
+        .sort(
+          (left, right) =>
+            Number(!left.isIdentityMatch) - Number(!right.isIdentityMatch) ||
+            Number(!left.isPrefixMatch) - Number(!right.isPrefixMatch) ||
+            left.matchPosition - right.matchPosition ||
+            left.label.localeCompare(right.label) ||
+            left.record.id.localeCompare(right.record.id),
+        )
+        .slice(0, WORKSPACE_SEARCH_RESULTS_PER_ENTITY)
+        .map((result) => ({
+          record: result.record,
+          label: result.label,
+          matchedFieldName: result.matchedFieldName,
+        }));
+
+      return results.length > 0 ? [{ entityType, results }] : [];
+    });
 }
 
 export async function listEntityRecords({

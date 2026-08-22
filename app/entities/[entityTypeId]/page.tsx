@@ -361,7 +361,7 @@ export default async function EntityPage({
               workflowReferenceCountByFieldId={workflowReferenceCountByFieldId}
               viewReferenceCountByFieldId={viewReferenceCountByFieldId}
             />
-            <div className="mx-auto -mt-6 w-full max-w-6xl">
+            <div className="mx-auto -mt-6 w-full max-w-6xl bg-white">
               <Link
                 href={
                   showArchivedFields
@@ -412,7 +412,7 @@ export default async function EntityPage({
           }
           recordActionContext={isArchivedEntity ? undefined : context}
         />
-        <div className="mx-auto w-full max-w-6xl">
+        <div className="mx-auto w-full max-w-6xl bg-white">
           <Link
             href={
               showArchivedRecords

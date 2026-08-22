@@ -46,6 +46,24 @@ export function WorkspaceNavigation({
       >
         Workspace
       </Link>
+      <form action="/search" method="get" className="mb-4 flex gap-2">
+        <label className="sr-only" htmlFor="workspace-record-search">
+          Search records
+        </label>
+        <input
+          id="workspace-record-search"
+          name="q"
+          type="search"
+          className="min-w-0 flex-1 border border-slate-300 px-2 py-1.5 text-sm text-slate-950"
+          placeholder="Search records"
+        />
+        <button
+          type="submit"
+          className="border border-slate-950 bg-slate-950 px-2 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+        >
+          Search
+        </button>
+      </form>
       <nav className="flex flex-col gap-1" aria-label="Workspace navigation">
         <Link href={homeHref} className={navigationLinkClass(activeSection === "home")}>
           Home
