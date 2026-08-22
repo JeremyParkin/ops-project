@@ -698,41 +698,35 @@ export async function listIncomingRelationsForRecord({
     throw new Error(`Unable to load incoming relations: ${relationError.message}`);
   }
 
-  if (relationRows.length === 0) {
-    return [];
-  }
-
   const relationFieldById = new Map(
     relationFields.map((fieldRow) => [
       fieldRow.id,
       mapFieldDefinition(fieldRow),
     ]),
   );
-  const relationRowsBySourceEntityId = new Map<
-    string,
-    Array<{
-      sourceRecordId: string;
-      fieldDefinitionId: string;
-    }>
-  >();
+  const relationRowsByFieldId = new Map<string, string[]>();
 
   relationRows.forEach((row) => {
     if (!relationFieldById.has(row.field_definition_id)) {
       return;
     }
 
-    const rows = relationRowsBySourceEntityId.get(row.source_entity_type_id) ?? [];
-    rows.push({
-      sourceRecordId: row.source_record_id,
-      fieldDefinitionId: row.field_definition_id,
-    });
-    relationRowsBySourceEntityId.set(row.source_entity_type_id, rows);
+    const recordIds = relationRowsByFieldId.get(row.field_definition_id) ?? [];
+    recordIds.push(row.source_record_id);
+    relationRowsByFieldId.set(row.field_definition_id, recordIds);
   });
 
   const groups: IncomingRelationGroup[] = [];
+  const relationFieldsBySourceEntityId = new Map<string, FieldDefinition[]>();
+
+  relationFieldById.forEach((field) => {
+    const fields = relationFieldsBySourceEntityId.get(field.entityTypeId) ?? [];
+    fields.push(field);
+    relationFieldsBySourceEntityId.set(field.entityTypeId, fields);
+  });
 
   await Promise.all(
-    [...relationRowsBySourceEntityId].map(async ([sourceEntityTypeId, rows]) => {
+    [...relationFieldsBySourceEntityId].map(async ([sourceEntityTypeId, sourceRelationFields]) => {
       const { entityType: sourceEntityType, fields: sourceFields } =
         await getEntityContext({
           workspaceId,
@@ -743,37 +737,30 @@ export async function listIncomingRelationsForRecord({
         return;
       }
 
-      const sourceRecordIds = [...new Set(rows.map((row) => row.sourceRecordId))];
-      const sourceRecords = await listEntityRecords({
-        workspaceId,
-        entityTypeId: sourceEntityTypeId,
-        fields: sourceFields,
-      });
+      const sourceRecordIds = [
+        ...new Set(
+          sourceRelationFields.flatMap(
+            (field) => relationRowsByFieldId.get(field.id) ?? [],
+          ),
+        ),
+      ];
+      const sourceRecords =
+        sourceRecordIds.length > 0
+          ? await listEntityRecords({
+              workspaceId,
+              entityTypeId: sourceEntityTypeId,
+              fields: sourceFields,
+            })
+          : [];
       const sourceRecordById = new Map(
         sourceRecords
           .filter((record) => sourceRecordIds.includes(record.id))
           .map((record) => [record.id, record]),
       );
-      const recordsByRelationFieldId = new Map<string, EntityRecord[]>();
-
-      rows.forEach((row) => {
-        const record = sourceRecordById.get(row.sourceRecordId);
-
-        if (!record) {
-          return;
-        }
-
-        const records = recordsByRelationFieldId.get(row.fieldDefinitionId) ?? [];
-        records.push(record);
-        recordsByRelationFieldId.set(row.fieldDefinitionId, records);
-      });
-
-      recordsByRelationFieldId.forEach((records, fieldDefinitionId) => {
-        const relationField = relationFieldById.get(fieldDefinitionId);
-
-        if (!relationField || records.length === 0) {
-          return;
-        }
+      sourceRelationFields.forEach((relationField) => {
+        const records = (relationRowsByFieldId.get(relationField.id) ?? [])
+          .map((recordId) => sourceRecordById.get(recordId))
+          .filter((record): record is EntityRecord => Boolean(record));
 
         groups.push({
           sourceEntityType,

@@ -25,6 +25,7 @@ import {
 } from "@/lib/domain/metadata-repository";
 import {
   getRelationLookups,
+  getEntityRecord,
   listEntityRecords,
 } from "@/lib/domain/record-repository";
 import { evaluateEntityView } from "@/lib/domain/view-engine";
@@ -38,6 +39,78 @@ import {
 } from "@/lib/domain/workflow-repository";
 
 export const dynamic = "force-dynamic";
+
+type RelatedCreateParams = {
+  prefillRelationFieldId?: string;
+  originEntityTypeId?: string;
+  originRecordId?: string;
+};
+
+async function getRelatedCreateMode({
+  context,
+  fields,
+  entityType,
+  params,
+}: {
+  context: { workspaceId: string; entityTypeId: string };
+  fields: Awaited<ReturnType<typeof getEntityContext>>["fields"];
+  entityType: Awaited<ReturnType<typeof getEntityContext>>["entityType"];
+  params: RelatedCreateParams;
+}) {
+  const {
+    prefillRelationFieldId,
+    originEntityTypeId,
+    originRecordId,
+  } = params;
+
+  if (
+    entityType.archivedAt ||
+    !prefillRelationFieldId ||
+    !originEntityTypeId ||
+    !originRecordId
+  ) {
+    return undefined;
+  }
+
+  const relationField = fields.find(
+    (field) =>
+      field.id === prefillRelationFieldId &&
+      field.type === "relation" &&
+      field.relatedEntityTypeId === originEntityTypeId,
+  );
+
+  if (!relationField) {
+    return undefined;
+  }
+
+  try {
+    const originContext = await getEntityContext({
+      workspaceId: context.workspaceId,
+      entityTypeId: originEntityTypeId,
+    });
+    const originRecord = await getEntityRecord({
+      workspaceId: context.workspaceId,
+      entityTypeId: originEntityTypeId,
+      recordId: originRecordId,
+      fields: originContext.fields,
+    });
+
+    if (originContext.entityType.archivedAt || originRecord.archivedAt) {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return {
+    initialValues: { [relationField.key]: originRecordId },
+    cancelHref: `/entities/${originEntityTypeId}/records/${originRecordId}`,
+    origin: {
+      entityTypeId: originEntityTypeId,
+      recordId: originRecordId,
+    },
+  };
+}
 
 function entityPageHref(
   entityTypeId: string,
@@ -145,6 +218,9 @@ export default async function EntityPage({
     showArchivedEntities?: string;
     showArchivedFields?: string;
     view?: string;
+    prefillRelationFieldId?: string;
+    originEntityTypeId?: string;
+    originRecordId?: string;
   }>;
 }) {
   const { entityTypeId } = await params;
@@ -153,6 +229,9 @@ export default async function EntityPage({
     showArchivedEntities: showArchivedEntitiesParam,
     showArchivedFields: showArchivedFieldsParam,
     view: viewParam,
+    prefillRelationFieldId,
+    originEntityTypeId,
+    originRecordId,
   } = await searchParams;
   const showArchivedRecords = showArchivedParam === "true";
   const showArchivedEntities = showArchivedEntitiesParam === "true";
@@ -201,7 +280,20 @@ export default async function EntityPage({
       listedEntityType.name,
     ]),
   );
-  const createEntityRecord = createRecord.bind(null, context);
+  const relatedCreateMode = await getRelatedCreateMode({
+    context,
+    entityType,
+    fields,
+    params: {
+      prefillRelationFieldId,
+      originEntityTypeId,
+      originRecordId,
+    },
+  });
+  const createEntityRecord = createRecord.bind(
+    null,
+    relatedCreateMode ? { ...context, relatedCreateOrigin: relatedCreateMode.origin } : context,
+  );
   const addEntityField = addFieldDefinition.bind(null, context);
   const createEntityView = createView.bind(null, context);
   const updateEntityView = selectedView
@@ -288,6 +380,8 @@ export default async function EntityPage({
               fields={fields}
               relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
               entityNameById={entityNameById}
+              initialValues={relatedCreateMode?.initialValues}
+              cancelHref={relatedCreateMode?.cancelHref}
               createRecordAction={createEntityRecord}
             />
           </>

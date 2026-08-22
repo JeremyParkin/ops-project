@@ -142,6 +142,8 @@ Record details and reverse relationships:
 - Archived records remain directly viewable, show archived state, and can be restored or safely deleted.
 - Incoming/reverse relationships are derived from existing relation rows and metadata. They are not stored separately.
 - Reverse relationship groups exclude archived source records, archived relation fields, and archived source entities.
+- Active incoming relation fields produce a reverse group even when it has no records, so users can create the first related record.
+- A reverse group can open the source entity's normal create form with its specific relation field prefilled to the current active record. The prefilled relation remains editable; successful creation and Cancel return to the originating detail page through validated origin entity/record IDs, never an arbitrary return URL.
 
 ## Workflow System
 
@@ -294,6 +296,7 @@ Current spec files:
 - `record-detail.spec.ts`
 - `update-related-record-workflows.spec.ts`
 - `archived-relation-edit.spec.ts`
+- `related-create-records.spec.ts`
 
 Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
 
@@ -307,7 +310,7 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current E2E count after the `update_related_record` milestone: 67 tests passing.
+Current E2E count after the related-record creation milestone: 70 tests passing.
 
 ## Intentional Limitations
 
@@ -319,7 +322,7 @@ Current E2E count after the `update_related_record` milestone: 67 tests passing.
 - No relation target changes after field creation.
 - No field/entity delete flows that rewrite dependent data.
 - No many-to-many relationships.
-- No reverse relation editing; reverse relationships are read-only derived lists.
+- No reverse relation editing; reverse relationships are derived lists with a narrow action to create one new source record prelinked to the current record.
 - No relation traversal in workflows/templates/conditions or saved views.
 - `update_related_record` is limited to one direct relation and one related target record; no arbitrary lookup, reverse traversal, multi-hop traversal, or multi-record update exists.
 - No custom record layouts/page builder.
@@ -361,11 +364,12 @@ Complete major capabilities:
 - Configurable entity display fields.
 - Saved table views with filters, sorts, visible columns, and default view selection.
 - Record detail pages with outgoing links and derived reverse relationship visibility.
+- Create related records from reverse relationship groups using the standard record-create form and validated origin-detail return navigation.
 - Workflow management: create/edit/enable/disable/delete.
 - Workflow triggers for record created and record updated.
 - Workflow actions for create record, update triggering record, and update one record reached through a direct triggering-record relation.
 - Conditions, watched fields, constants, source-field mappings, text templates, relation mappings, deterministic execution, isolated failures, no recursion, and execution logs.
-- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, workflow, record-updated, update-record, and update-related-record behavior.
+- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workflow, record-updated, update-record, and update-related-record behavior.
 
 Sensible next areas, without committing to architecture yet:
 

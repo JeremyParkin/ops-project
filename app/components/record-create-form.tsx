@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useRef } from "react";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
 import type { RelationOptionsByFieldKey } from "@/lib/domain/record-repository";
@@ -13,6 +14,8 @@ type RecordCreateFormProps = {
   fields: FieldDefinition[];
   relationOptionsByFieldKey?: RelationOptionsByFieldKey;
   entityNameById?: Record<string, string>;
+  initialValues?: Record<string, string>;
+  cancelHref?: string;
   createRecordAction: (
     state: RecordFormState,
     formData: FormData,
@@ -40,12 +43,17 @@ export function RecordCreateForm({
   fields,
   relationOptionsByFieldKey = {},
   entityNameById = {},
+  initialValues = {},
+  cancelHref,
   createRecordAction,
 }: RecordCreateFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(
     createRecordAction,
-    initialRecordFormState,
+    {
+      ...initialRecordFormState,
+      values: initialValues,
+    },
   );
   const orderedFields = [...fields].sort((left, right) => {
     return left.position - right.position;
@@ -58,7 +66,10 @@ export function RecordCreateForm({
   }, [state.success]);
 
   return (
-    <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
+    <section
+      id="add-record"
+      className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5"
+    >
       <div className="mb-5">
         <h2 className="text-xl font-semibold text-slate-950">
           Add {entityType.name}
@@ -198,6 +209,14 @@ export function RecordCreateForm({
           >
             {pending ? "Adding..." : `Add ${entityType.name}`}
           </button>
+          {cancelHref ? (
+            <Link
+              href={cancelHref}
+              className="ml-4 text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+            >
+              Cancel
+            </Link>
+          ) : null}
         </div>
       </form>
     </section>

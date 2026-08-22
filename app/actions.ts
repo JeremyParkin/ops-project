@@ -84,6 +84,10 @@ import {
 type CreateRecordContext = {
   workspaceId: string;
   entityTypeId: string;
+  relatedCreateOrigin?: {
+    entityTypeId: string;
+    recordId: string;
+  };
 };
 
 type EntityTypeContext = CreateRecordContext;
@@ -275,6 +279,14 @@ export async function createRecord(
   }
 
   revalidatePath(`/entities/${entityType.id}`);
+
+  if (context.relatedCreateOrigin) {
+    const originPath = `/entities/${context.relatedCreateOrigin.entityTypeId}/records/${context.relatedCreateOrigin.recordId}`;
+
+    revalidatePath(`/entities/${context.relatedCreateOrigin.entityTypeId}`);
+    revalidatePath(originPath);
+    redirect(originPath);
+  }
 
   return {
     ...initialRecordFormState,

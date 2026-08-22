@@ -256,7 +256,8 @@ test("reverse relationships are grouped by source entity and relation field", as
     page.getByRole("heading", {
       name: `${run.label} Detail Projects via Billing Client`,
     }),
-  ).toHaveCount(0);
+  ).toBeVisible();
+  await expect(page.getByText("No related records yet.")).toBeVisible();
 
   await page.getByRole("link", { name: `${run.label} Q3 Media Report` }).click();
   await expect(

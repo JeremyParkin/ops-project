@@ -131,26 +131,40 @@ export function RecordDetailView({
           <div className="mt-5 grid gap-6">
             {incomingRelationGroups.map((group) => (
               <div key={`${group.sourceEntityType.id}:${group.relationField.id}`}>
-                <h3 className="text-sm font-semibold text-slate-950">
-                  {formatEntityGroupName(group.sourceEntityType.name)} via{" "}
-                  {group.relationField.name}
-                </h3>
-                <ul className="mt-2 divide-y divide-slate-100 border-y border-slate-100">
-                  {group.records.map((incomingRecord) => (
-                    <li key={incomingRecord.id} className="py-2">
-                      <Link
-                        href={`/entities/${group.sourceEntityType.id}/records/${incomingRecord.id}`}
-                        className="text-sm font-medium text-slate-950 underline-offset-4 hover:underline"
-                      >
-                        {getRecordLabel({
-                          entityType: group.sourceEntityType,
-                          fields: group.sourceFields,
-                          record: incomingRecord,
-                        })}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-slate-950">
+                    {formatEntityGroupName(group.sourceEntityType.name)} via{" "}
+                    {group.relationField.name}
+                  </h3>
+                  {!record.archivedAt ? (
+                    <Link
+                      href={`/entities/${group.sourceEntityType.id}?prefillRelationFieldId=${group.relationField.id}&originEntityTypeId=${entityType.id}&originRecordId=${record.id}#add-record`}
+                      className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+                    >
+                      Add {group.sourceEntityType.name}
+                    </Link>
+                  ) : null}
+                </div>
+                {group.records.length > 0 ? (
+                  <ul className="mt-2 divide-y divide-slate-100 border-y border-slate-100">
+                    {group.records.map((incomingRecord) => (
+                      <li key={incomingRecord.id} className="py-2">
+                        <Link
+                          href={`/entities/${group.sourceEntityType.id}/records/${incomingRecord.id}`}
+                          className="text-sm font-medium text-slate-950 underline-offset-4 hover:underline"
+                        >
+                          {getRecordLabel({
+                            entityType: group.sourceEntityType,
+                            fields: group.sourceFields,
+                            record: incomingRecord,
+                          })}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">No related records yet.</p>
+                )}
               </div>
             ))}
           </div>
