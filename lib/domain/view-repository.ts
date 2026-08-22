@@ -70,6 +70,26 @@ export async function listEntityViews({
   return data.map(mapEntityView);
 }
 
+export async function listWorkspaceEntityViews({
+  workspaceId,
+}: {
+  workspaceId: string;
+}) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("entity_views")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .order("position", { ascending: true })
+    .returns<EntityViewRow[]>();
+
+  if (error) {
+    throw new Error(`Unable to load workspace entity views: ${error.message}`);
+  }
+
+  return data.map(mapEntityView);
+}
+
 export async function createEntityView({
   workspaceId,
   entityTypeId,

@@ -4,7 +4,7 @@ import {
   disableWorkflow,
   enableWorkflow,
 } from "@/app/actions";
-import { EntityNavigation } from "@/app/components/entity-navigation";
+import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkflowRowActions } from "@/app/components/workflow-row-actions";
 import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
@@ -34,7 +34,7 @@ export default async function WorkflowsPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
-      <EntityNavigation entityTypes={entityTypes} />
+      <WorkspaceNavigation entityTypes={entityTypes} activeSection="workflows" />
       <div className="flex min-w-0 flex-1 flex-col gap-8">
         <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">

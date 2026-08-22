@@ -5,7 +5,7 @@ import {
   deleteRecordFromDetail,
   restoreRecord,
 } from "@/app/actions";
-import { EntityNavigation } from "@/app/components/entity-navigation";
+import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { RecordDetailView } from "@/app/components/record-detail-view";
 import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
 import {
@@ -92,7 +92,7 @@ export default async function RecordDetailPage({
 
   return (
     <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
-      <EntityNavigation
+      <WorkspaceNavigation
         entityTypes={entityTypes}
         activeEntityTypeId={entityType.id}
       />

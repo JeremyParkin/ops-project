@@ -1,31 +1,73 @@
 import Link from "next/link";
 import type { EntityType } from "@/lib/domain/types";
 
-type EntityNavigationProps = {
+type WorkspaceNavigationProps = {
   entityTypes: EntityType[];
   activeEntityTypeId?: string;
+  activeSection?: "home" | "workflows" | "create-entity";
   showArchivedEntities?: boolean;
 };
 
-export function EntityNavigation({
+function navigationLinkClass(isActive: boolean) {
+  return `px-3 py-2 text-sm font-medium ${
+    isActive
+      ? "bg-slate-950 text-white"
+      : "text-slate-700 hover:bg-slate-100"
+  }`;
+}
+
+export function WorkspaceNavigation({
   entityTypes,
   activeEntityTypeId,
+  activeSection,
   showArchivedEntities = false,
-}: EntityNavigationProps) {
+}: WorkspaceNavigationProps) {
+  const homeHref = showArchivedEntities ? "/?showArchivedEntities=true" : "/";
+  const createEntityHref = showArchivedEntities
+    ? "/entities/new?showArchivedEntities=true"
+    : "/entities/new";
+  const archiveToggleHref = activeEntityTypeId
+    ? showArchivedEntities
+      ? `/entities/${activeEntityTypeId}`
+      : `/entities/${activeEntityTypeId}?showArchivedEntities=true`
+    : activeSection === "home"
+      ? showArchivedEntities
+        ? "/"
+        : "/?showArchivedEntities=true"
+      : showArchivedEntities
+        ? "/entities/new"
+        : "/entities/new?showArchivedEntities=true";
+
   return (
     <aside className="w-full border border-slate-200 bg-white p-4 lg:w-64">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Entities
-        </h2>
-        <Link
-          href="/entities/new"
-          className="text-sm font-medium text-slate-950 underline-offset-4 hover:underline"
-        >
-          New
+      <Link
+        href={homeHref}
+        className="mb-4 block text-sm font-semibold uppercase tracking-wide text-slate-950"
+      >
+        Workspace
+      </Link>
+      <nav className="flex flex-col gap-1" aria-label="Workspace navigation">
+        <Link href={homeHref} className={navigationLinkClass(activeSection === "home")}>
+          Home
         </Link>
+        <Link
+          href="/workflows"
+          className={navigationLinkClass(activeSection === "workflows")}
+        >
+          Workflows
+        </Link>
+        <Link
+          href={createEntityHref}
+          className={navigationLinkClass(activeSection === "create-entity")}
+        >
+          Create Entity
+        </Link>
+      </nav>
+      <div className="my-4 border-t border-slate-100" />
+      <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+        Entities
       </div>
-      <nav className="flex flex-col gap-1">
+      <nav className="flex flex-col gap-1" aria-label="Entity navigation">
         {entityTypes.map((entityType) => {
           const isActive = entityType.id === activeEntityTypeId;
 
@@ -37,11 +79,7 @@ export function EntityNavigation({
                   ? `/entities/${entityType.id}?showArchivedEntities=true`
                   : `/entities/${entityType.id}`
               }
-              className={`px-3 py-2 text-sm ${
-                isActive
-                  ? "bg-slate-950 text-white"
-                  : "text-slate-700 hover:bg-slate-100"
-              }`}
+              className={navigationLinkClass(isActive)}
             >
               <span className="flex items-center justify-between gap-3">
                 <span>{entityType.name}</span>
@@ -61,21 +99,7 @@ export function EntityNavigation({
       </nav>
       <div className="mt-4 border-t border-slate-100 pt-4">
         <Link
-          href="/workflows"
-          className="mb-3 block text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
-        >
-          Workflows
-        </Link>
-        <Link
-          href={
-            activeEntityTypeId
-              ? showArchivedEntities
-                ? `/entities/${activeEntityTypeId}`
-                : `/entities/${activeEntityTypeId}?showArchivedEntities=true`
-              : showArchivedEntities
-                ? "/entities/new"
-                : "/entities/new?showArchivedEntities=true"
-          }
+          href={archiveToggleHref}
           className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
         >
           {showArchivedEntities ? "Hide archived entities" : "Show archived entities"}

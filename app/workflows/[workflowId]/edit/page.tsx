@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { updateWorkflow } from "@/app/actions";
-import { EntityNavigation } from "@/app/components/entity-navigation";
+import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkflowDefinitionForm } from "@/app/components/workflow-create-form";
 import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
 import {
@@ -97,7 +97,7 @@ export default async function EditWorkflowPage({
 
   return (
     <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
-      <EntityNavigation entityTypes={entityTypes} />
+      <WorkspaceNavigation entityTypes={entityTypes} />
       <WorkflowDefinitionForm
         mode="edit"
         entityContexts={entityContexts}

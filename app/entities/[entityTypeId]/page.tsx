@@ -11,7 +11,7 @@ import {
   updateEntityMetadata,
   updateView,
 } from "@/app/actions";
-import { EntityNavigation } from "@/app/components/entity-navigation";
+import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { EntityRecordsTable } from "@/app/components/entity-records-table";
 import { EntitySettingsForm } from "@/app/components/entity-settings-form";
 import { EntityViewsPanel } from "@/app/components/entity-views-panel";
@@ -333,7 +333,7 @@ export default async function EntityPage({
 
   return (
     <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
-      <EntityNavigation
+      <WorkspaceNavigation
         entityTypes={navigationEntityTypes}
         activeEntityTypeId={entityType.id}
         showArchivedEntities={showArchivedEntities}

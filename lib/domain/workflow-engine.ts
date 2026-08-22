@@ -418,15 +418,23 @@ async function executeUpdateRelatedRecordAction({
     fields: targetContext.fields,
   });
 
+  if (targetContext.entityType.archivedAt) {
+    throw new RelatedTargetResolvedError(
+      new Error("Workflow related target entity is archived."),
+      targetContext.entityType.id,
+      targetRecord.id,
+    );
+  }
+
+  if (targetRecord.archivedAt) {
+    throw new RelatedTargetResolvedError(
+      new Error("Workflow related target record is archived."),
+      targetContext.entityType.id,
+      targetRecord.id,
+    );
+  }
+
   try {
-    if (targetContext.entityType.archivedAt) {
-      throw new Error("Workflow related target entity is archived.");
-    }
-
-    if (targetRecord.archivedAt) {
-      throw new Error("Workflow related target record is archived.");
-    }
-
     return await executeRecordUpdate({
       workspaceId,
       sourceContext,

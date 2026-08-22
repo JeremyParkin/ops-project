@@ -1,5 +1,5 @@
 import { createWorkflow } from "@/app/actions";
-import { EntityNavigation } from "@/app/components/entity-navigation";
+import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkflowCreateForm } from "@/app/components/workflow-create-form";
 import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
 import {
@@ -37,7 +37,7 @@ export default async function NewWorkflowPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
-      <EntityNavigation entityTypes={entityTypes} />
+      <WorkspaceNavigation entityTypes={entityTypes} />
       <WorkflowCreateForm
         mode="create"
         entityContexts={entityContexts}
