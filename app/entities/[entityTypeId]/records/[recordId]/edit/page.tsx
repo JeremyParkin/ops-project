@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { updateRecord } from "@/app/actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { RecordEditForm } from "@/app/components/record-edit-form";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import {
   getEntityContext,
   listEntityTypes,
@@ -15,15 +15,19 @@ import {
 
 export const dynamic = "force-dynamic";
 
-async function loadRecordEditPageData(entityTypeId: string, recordId: string) {
+async function loadRecordEditPageData(
+  workspaceId: string,
+  entityTypeId: string,
+  recordId: string,
+) {
   const context = {
-    workspaceId: DEMO_WORKSPACE_ID,
+    workspaceId,
     entityTypeId,
   };
 
   try {
     const [entityTypes, entityContext] = await Promise.all([
-      listEntityTypes({ workspaceId: DEMO_WORKSPACE_ID }),
+      listEntityTypes({ workspaceId }),
       getEntityContext(context),
     ]);
     const record = await getEntityRecord({
@@ -32,7 +36,7 @@ async function loadRecordEditPageData(entityTypeId: string, recordId: string) {
       fields: entityContext.fields,
     });
     const relationLookups = await getRelationLookups({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       fields: entityContext.fields,
       currentRecord: record,
     });
@@ -63,7 +67,8 @@ export default async function RecordEditPage({
 }) {
   const { entityTypeId, recordId } = await params;
   const { returnTo } = await searchParams;
-  const pageData = await loadRecordEditPageData(entityTypeId, recordId);
+  const { workspaceId } = await getActiveWorkspaceId();
+  const pageData = await loadRecordEditPageData(workspaceId, entityTypeId, recordId);
 
   if (!pageData) {
     notFound();

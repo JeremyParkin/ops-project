@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import {
   type EntityDefinitionFormState,
   validateEntityDefinitionFormData,
@@ -563,6 +563,7 @@ export async function createEntityDefinition(
   previousState: EntityDefinitionFormState,
   formData: FormData,
 ): Promise<EntityDefinitionFormState> {
+  const { workspaceId } = await getActiveWorkspaceId();
   const nextFormVersion = previousState.formVersion + 1;
   const validation = validateEntityDefinitionFormData(formData, nextFormVersion);
 
@@ -571,7 +572,7 @@ export async function createEntityDefinition(
   }
 
   const inactiveRelationTarget = await findInactiveRelationTarget(
-    DEMO_WORKSPACE_ID,
+    workspaceId,
     validation.definition.fields,
   );
 
@@ -595,7 +596,7 @@ export async function createEntityDefinition(
 
   try {
     entityTypeId = await createEntityTypeWithFields({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       name: validation.definition.name,
       description: validation.definition.description,
       fields: validation.definition.fields.map((field) => ({
@@ -1392,14 +1393,15 @@ export async function createWorkflow(
   previousState: WorkflowFormState,
   formData: FormData,
 ): Promise<WorkflowFormState> {
+  const { workspaceId } = await getActiveWorkspaceId();
   const nextFormVersion = previousState.formVersion + 1;
   const activeEntityTypes = await listEntityTypes({
-    workspaceId: DEMO_WORKSPACE_ID,
+    workspaceId,
   });
   const activeEntityContexts = await Promise.all(
     activeEntityTypes.map((entityType) =>
       getEntityContext({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         entityTypeId: entityType.id,
       }),
     ),
@@ -1414,7 +1416,7 @@ export async function createWorkflow(
       }
 
       return entityRecordExists({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         entityTypeId: field.relatedEntityTypeId,
         recordId: value,
       });
@@ -1427,7 +1429,7 @@ export async function createWorkflow(
 
   try {
     await createWorkflowDefinition({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       name: validation.workflow.name,
       enabled: validation.workflow.enabled,
       triggerType: validation.workflow.triggerType,
@@ -1459,14 +1461,15 @@ export async function updateWorkflow(
   previousState: WorkflowFormState,
   formData: FormData,
 ): Promise<WorkflowFormState> {
+  const { workspaceId } = await getActiveWorkspaceId();
   const nextFormVersion = previousState.formVersion + 1;
   const activeEntityTypes = await listEntityTypes({
-    workspaceId: DEMO_WORKSPACE_ID,
+    workspaceId,
   });
   const activeEntityContexts = await Promise.all(
     activeEntityTypes.map((entityType) =>
       getEntityContext({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         entityTypeId: entityType.id,
         includeArchivedFields: true,
       }),
@@ -1482,7 +1485,7 @@ export async function updateWorkflow(
       }
 
       return entityRecordExists({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         entityTypeId: field.relatedEntityTypeId,
         recordId: value,
       });
@@ -1495,7 +1498,7 @@ export async function updateWorkflow(
 
   try {
     await updateWorkflowDefinition({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       workflowId: context.workflowId,
       name: validation.workflow.name,
       enabled: validation.workflow.enabled,
@@ -1528,12 +1531,13 @@ export async function enableWorkflow(
   previousState: WorkflowActionState,
   formData: FormData,
 ): Promise<WorkflowActionState> {
+  const { workspaceId } = await getActiveWorkspaceId();
   void previousState;
   void formData;
 
   try {
     await setWorkflowEnabled({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       workflowId: context.workflowId,
       enabled: true,
     });
@@ -1559,12 +1563,13 @@ export async function disableWorkflow(
   previousState: WorkflowActionState,
   formData: FormData,
 ): Promise<WorkflowActionState> {
+  const { workspaceId } = await getActiveWorkspaceId();
   void previousState;
   void formData;
 
   try {
     await setWorkflowEnabled({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       workflowId: context.workflowId,
       enabled: false,
     });
@@ -1590,12 +1595,13 @@ export async function deleteWorkflow(
   previousState: WorkflowActionState,
   formData: FormData,
 ): Promise<WorkflowActionState> {
+  const { workspaceId } = await getActiveWorkspaceId();
   void previousState;
   void formData;
 
   try {
     await deleteWorkflowDefinition({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       workflowId: context.workflowId,
     });
   } catch {
@@ -1614,17 +1620,18 @@ export async function deleteWorkflow(
 }
 
 export async function getWorkflowFormState(workflowId: string) {
+  const { workspaceId } = await getActiveWorkspaceId();
   const workflow = await getWorkflow({
-    workspaceId: DEMO_WORKSPACE_ID,
+    workspaceId,
     workflowId,
   });
   const activeEntityTypes = await listEntityTypes({
-    workspaceId: DEMO_WORKSPACE_ID,
+    workspaceId,
   });
   const activeEntityContexts = await Promise.all(
     activeEntityTypes.map((entityType) =>
       getEntityContext({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         entityTypeId: entityType.id,
         includeArchivedFields: true,
       }),

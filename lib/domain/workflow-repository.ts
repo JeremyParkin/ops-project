@@ -192,7 +192,7 @@ export function countWorkflowReferencesByFieldId({
 }
 
 export async function listWorkflows({ workspaceId }: { workspaceId: string }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("workflows")
     .select("*")
@@ -214,7 +214,7 @@ export async function getWorkflow({
   workspaceId: string;
   workflowId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("workflows")
     .select("*")
@@ -238,7 +238,7 @@ export async function listEnabledWorkflowsForTrigger({
   triggerType: WorkflowTriggerType;
   triggerEntityTypeId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("workflows")
     .select("*")
@@ -281,7 +281,7 @@ export async function createWorkflowDefinition({
   conditions,
   actions,
 }: CreateWorkflowInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("workflows")
     .insert({
@@ -314,7 +314,7 @@ export async function updateWorkflowDefinition({
   conditions,
   actions,
 }: UpdateWorkflowInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("workflows")
     .update({
@@ -349,7 +349,7 @@ export async function setWorkflowEnabled({
   workflowId: string;
   enabled: boolean;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("workflows")
     .update({
@@ -377,7 +377,7 @@ export async function deleteWorkflowDefinition({
   workspaceId: string;
   workflowId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("workflows")
     .delete()
@@ -410,7 +410,7 @@ export async function createWorkflowExecutionLog({
   startedAt,
   completedAt,
 }: CreateWorkflowExecutionLogInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { error } = await supabase.from("workflow_execution_logs").insert({
     workspace_id: workspaceId,
     workflow_id: workflowId,
@@ -439,7 +439,7 @@ export async function listRecentWorkflowExecutionLogs({
   workspaceId: string;
   limit?: number;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("workflow_execution_logs")
     .select("*")

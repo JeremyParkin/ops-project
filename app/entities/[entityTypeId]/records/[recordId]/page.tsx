@@ -7,7 +7,7 @@ import {
 } from "@/app/actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { RecordDetailView } from "@/app/components/record-detail-view";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import {
   getEntityContext,
   listEntityTypes,
@@ -20,15 +20,19 @@ import {
 
 export const dynamic = "force-dynamic";
 
-async function loadRecordDetailPageData(entityTypeId: string, recordId: string) {
+async function loadRecordDetailPageData(
+  workspaceId: string,
+  entityTypeId: string,
+  recordId: string,
+) {
   const context = {
-    workspaceId: DEMO_WORKSPACE_ID,
+    workspaceId,
     entityTypeId,
   };
 
   try {
     const [entityTypes, entityContext] = await Promise.all([
-      listEntityTypes({ workspaceId: DEMO_WORKSPACE_ID }),
+      listEntityTypes({ workspaceId }),
       getEntityContext(context),
     ]);
     const record = await getEntityRecord({
@@ -38,12 +42,12 @@ async function loadRecordDetailPageData(entityTypeId: string, recordId: string) 
     });
     const [relationLookups, incomingRelationGroups] = await Promise.all([
       getRelationLookups({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         fields: entityContext.fields,
         currentRecord: record,
       }),
       listIncomingRelationsForRecord({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         targetEntityTypeId: entityTypeId,
         targetRecordId: recordId,
       }),
@@ -71,7 +75,8 @@ export default async function RecordDetailPage({
   }>;
 }) {
   const { entityTypeId, recordId } = await params;
-  const pageData = await loadRecordDetailPageData(entityTypeId, recordId);
+  const { workspaceId } = await getActiveWorkspaceId();
+  const pageData = await loadRecordDetailPageData(workspaceId, entityTypeId, recordId);
 
   if (!pageData) {
     notFound();

@@ -1,7 +1,7 @@
 import { createWorkflow } from "@/app/actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkflowCreateForm } from "@/app/components/workflow-create-form";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import {
   getEntityContext,
   listEntityTypes,
@@ -11,15 +11,16 @@ import { getRelationLookups } from "@/lib/domain/record-repository";
 export const dynamic = "force-dynamic";
 
 export default async function NewWorkflowPage() {
-  const entityTypes = await listEntityTypes({ workspaceId: DEMO_WORKSPACE_ID });
+  const { workspaceId } = await getActiveWorkspaceId();
+  const entityTypes = await listEntityTypes({ workspaceId });
   const entityContexts = await Promise.all(
     entityTypes.map(async (entityType) => {
       const context = await getEntityContext({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         entityTypeId: entityType.id,
       });
       const relationLookups = await getRelationLookups({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         fields: context.fields,
       });
 

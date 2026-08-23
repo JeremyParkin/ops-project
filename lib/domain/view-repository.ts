@@ -54,7 +54,7 @@ export async function listEntityViews({
   workspaceId: string;
   entityTypeId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("entity_views")
     .select("*")
@@ -75,7 +75,7 @@ export async function listWorkspaceEntityViews({
 }: {
   workspaceId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("entity_views")
     .select("*")
@@ -99,7 +99,7 @@ export async function createEntityView({
   columnFieldDefinitionIds,
   isDefault,
 }: ViewMutationInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data: views, error: viewsError } = await supabase
     .from("entity_views")
     .select("position")
@@ -160,7 +160,7 @@ export async function updateEntityView({
     throw new Error("Unable to update entity view: view ID missing.");
   }
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("entity_views")
     .update({
@@ -201,7 +201,7 @@ export async function deleteEntityView({
   entityTypeId: string;
   viewId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { error } = await supabase
     .from("entity_views")
     .delete()
@@ -223,7 +223,7 @@ export async function setEntityDefaultView({
   entityTypeId: string;
   viewId?: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc("set_entity_default_view", {
     p_workspace_id: workspaceId,
     p_entity_type_id: entityTypeId,

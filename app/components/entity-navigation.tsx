@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { signOut, switchActiveWorkspace } from "@/app/auth-actions";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import type { EntityType } from "@/lib/domain/types";
 
 type WorkspaceNavigationProps = {
@@ -16,12 +18,13 @@ function navigationLinkClass(isActive: boolean) {
   }`;
 }
 
-export function WorkspaceNavigation({
+export async function WorkspaceNavigation({
   entityTypes,
   activeEntityTypeId,
   activeSection,
   showArchivedEntities = false,
 }: WorkspaceNavigationProps) {
+  const { memberships, workspaceId } = await getActiveWorkspaceId();
   const homeHref = showArchivedEntities ? "/?showArchivedEntities=true" : "/";
   const createEntityHref = showArchivedEntities
     ? "/entities/new?showArchivedEntities=true"
@@ -46,6 +49,28 @@ export function WorkspaceNavigation({
       >
         Workspace
       </Link>
+      {memberships.length > 1 ? (
+        <form action={switchActiveWorkspace} className="mb-4 flex gap-2">
+          <label className="sr-only" htmlFor="active-workspace">
+            Active workspace
+          </label>
+          <select
+            id="active-workspace"
+            name="workspaceId"
+            defaultValue={workspaceId}
+            className="min-w-0 flex-1 border border-slate-300 px-2 py-1.5 text-sm text-slate-950"
+          >
+            {memberships.map((membership) => (
+              <option key={membership.workspaceId} value={membership.workspaceId}>
+                {membership.workspaceName}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="border border-slate-300 px-2 text-sm font-medium">
+            Switch
+          </button>
+        </form>
+      ) : null}
       <form action="/search" method="get" className="mb-4 flex gap-2">
         <label className="sr-only" htmlFor="workspace-record-search">
           Search records
@@ -122,6 +147,11 @@ export function WorkspaceNavigation({
         >
           {showArchivedEntities ? "Hide archived entities" : "Show archived entities"}
         </Link>
+        <form action={signOut} className="mt-3">
+          <button type="submit" className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline">
+            Sign out
+          </button>
+        </form>
       </div>
     </aside>
   );

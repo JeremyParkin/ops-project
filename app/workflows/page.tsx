@@ -6,7 +6,7 @@ import {
 } from "@/app/actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkflowRowActions } from "@/app/components/workflow-row-actions";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
 import {
   listRecentWorkflowExecutionLogs,
@@ -36,14 +36,15 @@ function describeWorkflowAction(
 }
 
 export default async function WorkflowsPage() {
+  const { workspaceId } = await getActiveWorkspaceId();
   const [entityTypes, allEntityTypes, workflows, logs] = await Promise.all([
-    listEntityTypes({ workspaceId: DEMO_WORKSPACE_ID }),
+    listEntityTypes({ workspaceId }),
     listEntityTypes({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       includeArchived: true,
     }),
-    listWorkflows({ workspaceId: DEMO_WORKSPACE_ID }),
-    listRecentWorkflowExecutionLogs({ workspaceId: DEMO_WORKSPACE_ID }),
+    listWorkflows({ workspaceId }),
+    listRecentWorkflowExecutionLogs({ workspaceId }),
   ]);
   const entityNameById = new Map(
     allEntityTypes.map((entityType) => [entityType.id, entityType.name]),

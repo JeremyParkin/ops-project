@@ -10,7 +10,6 @@ import {
   type RelatedRecordWorkflowFixture,
   type TestRun,
 } from "./helpers/supabase-test-data";
-import { executeRecordUpdatedWorkflows } from "@/lib/domain/workflow-engine";
 import {
   addRecordSection,
   chooseRecordField,
@@ -126,11 +125,13 @@ async function createDeliverable({
 }
 
 async function executeDirectRelatedRecordWorkflow({
+  page,
   fixture,
   workflowName,
   archiveRelatedField = false,
   archiveTargetRecord = false,
 }: {
+  page: Page;
   fixture: RelatedRecordWorkflowFixture;
   workflowName: string;
   archiveRelatedField?: boolean;
@@ -190,35 +191,16 @@ async function executeDirectRelatedRecordWorkflow({
       .eq("id", fixture.firstClientRecordId);
   }
 
-  await executeRecordUpdatedWorkflows({
-    workspaceId: DEMO_WORKSPACE_ID,
-    triggerEntityTypeId: fixture.deliverable.id,
-    triggerRecord: {
-      id: sourceRecordId,
-      workspaceId: DEMO_WORKSPACE_ID,
-      entityTypeId: fixture.deliverable.id,
-      values: {
-        [fixture.deliverable.fields.name.key]: `${workflowName} Source`,
-        [fixture.deliverable.fields.status.key]: "Complete",
-        [fixture.deliverable.fields.client.key]: fixture.firstClientRecordId,
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    previousRecord: {
-      id: sourceRecordId,
-      workspaceId: DEMO_WORKSPACE_ID,
-      entityTypeId: fixture.deliverable.id,
-      values: {
-        [fixture.deliverable.fields.name.key]: `${workflowName} Source (previous)`,
-        [fixture.deliverable.fields.status.key]: "Complete",
-        [fixture.deliverable.fields.client.key]: fixture.firstClientRecordId,
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    changedFieldDefinitionIds: [fixture.deliverable.fields.name.id],
-  });
+  // Execute through the authenticated edit flow. The workflow engine is
+  // request-scoped under auth/RLS, so direct Node invocation is not a product path.
+  await page.goto(
+    `/entities/${fixture.deliverable.id}/records/${sourceRecordId}/edit`,
+  );
+  await page
+    .locator(`[name="${fixture.deliverable.fields.name.key}"]`)
+    .fill(`${workflowName} Source updated`);
+  await page.getByRole("button", { name: "Save Changes" }).click();
+  await page.waitForURL(`/entities/${fixture.deliverable.id}`);
 
   const { data: log, error: logError } = await supabase
     .from("workflow_execution_logs")
@@ -260,10 +242,11 @@ test("rejects an all-leave-unchanged related-record configuration", async ({ pag
   await expect(page.getByText("Configure at least one field to update.")).toBeVisible();
 });
 
-test("logs a resolved archived related target when execution fails", async () => {
+test("logs a resolved archived related target when execution fails", async ({ page }) => {
   const { run, fixture } = await createScenario();
   const workflowName = `${run.label} Archived Target`;
   const log = await executeDirectRelatedRecordWorkflow({
+    page,
     fixture,
     workflowName,
     archiveTargetRecord: true,
@@ -275,10 +258,11 @@ test("logs a resolved archived related target when execution fails", async () =>
   });
 });
 
-test("fails when the configured related field is archived", async () => {
+test("fails when the configured related field is archived", async ({ page }) => {
   const { run, fixture } = await createScenario();
   const workflowName = `${run.label} Archived Relation`;
   const log = await executeDirectRelatedRecordWorkflow({
+    page,
     fixture,
     workflowName,
     archiveRelatedField: true,

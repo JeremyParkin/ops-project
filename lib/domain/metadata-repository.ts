@@ -118,7 +118,7 @@ export async function getEntityContext({
   entityTypeId,
   includeArchivedFields = false,
 }: EntityContextInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: entityTypeRow, error: entityTypeError } = await supabase
     .from("entity_types")
@@ -162,7 +162,7 @@ export async function listEntityTypes({
   workspaceId: string;
   includeArchived?: boolean;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("entity_types")
     .select("*")
@@ -229,7 +229,7 @@ export async function createEntityTypeWithFields({
   description,
   fields,
 }: CreateEntityTypeWithFieldsInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const entitySlug = await createUniqueEntitySlug({ workspaceId, name });
   const fieldPayload = createUniqueFieldSlugs(fields);
 
@@ -260,7 +260,7 @@ export async function createFieldDefinition({
   relatedEntityTypeId,
   required,
 }: CreateFieldDefinitionInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { fields } = await getEntityContext({
     workspaceId,
     entityTypeId,
@@ -298,7 +298,7 @@ export async function updateFieldDefinition({
   name,
   required,
 }: UpdateFieldDefinitionInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { fields } = await getEntityContext({
     workspaceId,
     entityTypeId,
@@ -350,7 +350,7 @@ export async function archiveFieldDefinition({
   entityTypeId,
   fieldDefinitionId,
 }: FieldDefinitionLifecycleInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("field_definitions")
@@ -378,7 +378,7 @@ export async function restoreFieldDefinition({
   entityTypeId,
   fieldDefinitionId,
 }: FieldDefinitionLifecycleInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("field_definitions")
     .update({
@@ -405,9 +405,9 @@ export async function deleteFieldDefinition({
   entityTypeId,
   fieldDefinitionId,
 }: FieldDefinitionLifecycleInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc(
-    "delete_field_definition_if_safe",
+    "delete_field_definition_if_safe_authorized",
     {
       p_workspace_id: workspaceId,
       p_entity_type_id: entityTypeId,
@@ -449,7 +449,7 @@ export async function updateEntityTypeMetadata({
   name,
   description,
 }: UpdateEntityTypeMetadataInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const slug = await createUniqueEntitySlug({
     workspaceId,
     entityTypeId,
@@ -488,7 +488,7 @@ export async function setEntityDisplayField({
   entityTypeId: string;
   displayFieldDefinitionId?: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc("set_entity_display_field", {
     p_workspace_id: workspaceId,
     p_entity_type_id: entityTypeId,
@@ -510,7 +510,7 @@ export async function archiveEntityType({
   workspaceId,
   entityTypeId,
 }: EntityTypeLifecycleInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("entity_types")
@@ -536,7 +536,7 @@ export async function restoreEntityType({
   workspaceId,
   entityTypeId,
 }: EntityTypeLifecycleInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("entity_types")
     .update({
@@ -561,7 +561,7 @@ export async function getEntityTypeRelationFieldSummary({
   workspaceId,
   entityTypeId,
 }: EntityTypeLifecycleInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("field_definitions")
     .select("name, entity_type_id")
@@ -625,8 +625,8 @@ export async function deleteEntityType({
   workspaceId,
   entityTypeId,
 }: EntityTypeLifecycleInput) {
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase.rpc("delete_entity_type_if_safe", {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("delete_entity_type_if_safe_authorized", {
     p_workspace_id: workspaceId,
     p_entity_type_id: entityTypeId,
   });

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
 import { listWorkspaceEntityViews } from "@/lib/domain/view-repository";
 
@@ -15,13 +15,14 @@ export default async function Home({
 }) {
   const { showArchivedEntities: showArchivedEntitiesParam } =
     await searchParams;
+  const { workspaceId } = await getActiveWorkspaceId();
   const showArchivedEntities = showArchivedEntitiesParam === "true";
   const [entityTypes, views] = await Promise.all([
     listEntityTypes({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       includeArchived: showArchivedEntities,
     }),
-    listWorkspaceEntityViews({ workspaceId: DEMO_WORKSPACE_ID }),
+    listWorkspaceEntityViews({ workspaceId }),
   ]);
   const viewsByEntityTypeId = new Map<string, typeof views>();
 

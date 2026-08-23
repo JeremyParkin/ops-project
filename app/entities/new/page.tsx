@@ -1,7 +1,7 @@
 import { createEntityDefinition } from "@/app/actions";
 import { EntityCreateForm } from "@/app/components/entity-create-form";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +15,14 @@ export default async function NewEntityPage({
 }) {
   const { showArchivedEntities: showArchivedEntitiesParam } =
     await searchParams;
+  const { workspaceId } = await getActiveWorkspaceId();
   const showArchivedEntities = showArchivedEntitiesParam === "true";
   const [navigationEntityTypes, activeEntityTypes] = await Promise.all([
     listEntityTypes({
-      workspaceId: DEMO_WORKSPACE_ID,
+      workspaceId,
       includeArchived: showArchivedEntities,
     }),
-    listEntityTypes({ workspaceId: DEMO_WORKSPACE_ID }),
+    listEntityTypes({ workspaceId }),
   ]);
 
   return (

@@ -18,7 +18,7 @@ import { EntityViewsPanel } from "@/app/components/entity-views-panel";
 import { FieldCreateForm } from "@/app/components/field-create-form";
 import { FieldManagementList } from "@/app/components/field-management-list";
 import { RecordCreateForm } from "@/app/components/record-create-form";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import {
   getEntityContext,
   listEntityTypes,
@@ -122,18 +122,20 @@ function entityPageHref(
 }
 
 async function loadEntityPageData({
+  workspaceId,
   entityTypeId,
   showArchivedRecords,
   showArchivedEntities,
   showArchivedFields,
 }: {
+  workspaceId: string;
   entityTypeId: string;
   showArchivedRecords: boolean;
   showArchivedEntities: boolean;
   showArchivedFields: boolean;
 }) {
   const context = {
-    workspaceId: DEMO_WORKSPACE_ID,
+    workspaceId,
     entityTypeId,
   };
 
@@ -149,12 +151,12 @@ async function loadEntityPageData({
       views,
     ] = await Promise.all([
       listEntityTypes({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         includeArchived: showArchivedEntities,
       }),
-      listEntityTypes({ workspaceId: DEMO_WORKSPACE_ID }),
+      listEntityTypes({ workspaceId }),
       listEntityTypes({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         includeArchived: true,
       }),
       getEntityContext(context),
@@ -166,7 +168,7 @@ async function loadEntityPageData({
         ...context,
         includeArchivedFields: true,
       }),
-      listWorkflows({ workspaceId: DEMO_WORKSPACE_ID }),
+      listWorkflows({ workspaceId }),
       listEntityViews(context),
     ]);
     const [records, relationLookups] = await Promise.all([
@@ -176,7 +178,7 @@ async function loadEntityPageData({
         includeArchived: showArchivedRecords,
       }),
       getRelationLookups({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         fields: entityContext.fields,
       }),
     ]);
@@ -236,7 +238,9 @@ export default async function EntityPage({
   const showArchivedRecords = showArchivedParam === "true";
   const showArchivedEntities = showArchivedEntitiesParam === "true";
   const showArchivedFields = showArchivedFieldsParam === "true";
+  const { workspaceId } = await getActiveWorkspaceId();
   const pageData = await loadEntityPageData({
+    workspaceId,
     entityTypeId,
     showArchivedRecords,
     showArchivedEntities,

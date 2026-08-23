@@ -28,12 +28,12 @@ Core product/design principles established so far:
 - Styling is simple app CSS/Tailwind-compatible setup; no UI component framework
 - Playwright Test for E2E tests
 
-Server-side Supabase access is centralized in `lib/supabase/server.ts`. It reads:
+Normal server-side Supabase access is centralized in `lib/supabase/server.ts`. It reads:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `SUPABASE_SECRET_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
-The secret key must remain server-only. This prototype has no auth/RLS yet, and server-side secret access bypasses RLS. Tenant/security hardening will require a different model later.
+The separate server-only `lib/supabase/admin.ts` reads `SUPABASE_SECRET_KEY` and is reserved for E2E fixtures/bootstrap administration. Normal application runtime uses request-scoped authenticated Supabase clients with the publishable key; RLS is the tenant-security boundary.
 
 Useful npm commands:
 
@@ -61,7 +61,7 @@ Do not run typecheck and build concurrently; they can race over `.next` generate
 
 The canonical TypeScript domain types are in `lib/domain/types.ts`.
 
-`Workspace` is the top-level tenant boundary. The app currently uses one hard-coded demo workspace ID in `lib/domain/demo-ids.ts`, but repository calls keep `workspaceId` explicit.
+`Workspace` is the top-level tenant boundary. Authenticated users receive access only through explicit `workspace_memberships`; repository calls keep `workspaceId` explicit. The validated `active_workspace_id` cookie is UI convenience state, never authorization.
 
 `EntityType` represents a user-defined kind of record. It has `id`, `workspaceId`, `name`, `slug`, optional `description`, optional `displayFieldDefinitionId`, optional `archivedAt`, and ISO 8601 UTC `createdAt`/`updatedAt` strings. Entity IDs are stable; names, slugs, and display-field configuration are user-facing metadata.
 
@@ -260,9 +260,18 @@ Execution logs:
 
 Migrations live in `supabase/migrations/` and are currently applied manually through the Supabase SQL Editor. The latest migration is:
 
-- `0020_entity_delete_blocks_create_record_targets.sql`
+- `0025_authorized_safe_delete_wrappers.sql`
 
 `0019_workflow_multiple_actions.sql` added the ordered `actions` JSONB column (backfilling every pre-existing single-action workflow into a one-element array before enforcing `NOT NULL`/non-empty-array constraints), narrowed `action_config` to `{ triggerConfig, conditions }`, dropped the legacy `action_type`/`action_target_entity_type_id` columns and their constraints/FK, added `action_results` JSONB to `workflow_execution_logs`, and rewrote `delete_field_definition_if_safe` to scan all of `actions[]`. `0020_entity_delete_blocks_create_record_targets.sql` followed up: dropping `action_target_entity_type_id` also removed the composite FK that used to structurally block deleting an entity still targeted by a `create_record` action, so `delete_entity_type_if_safe` was rewritten (drop + recreate, since its `TABLE` return shape gained a column) to explicitly block that case instead.
+
+`0021_auth_workspace_rls.sql` introduced Supabase Auth memberships and RLS for every workspace-scoped table. `0022_workspace_ownership_and_mutation_grants.sql` makes `workspace_id` immutable on every persisted workspace-scoped domain row. `0023_record_mutation_rpc_wrappers.sql` adds membership-checking, fixed-search-path SECURITY DEFINER wrappers for canonical record create/update/delete, allowing raw record/relation writes to be revoked. `0024_entity_create_display_field_grant.sql` restores the narrowly required display-field update permission for the still-SECURITY-INVOKER entity-creation RPC. `0025_authorized_safe_delete_wrappers.sql` revokes PUBLIC execution from privileged wrappers and adds equivalent authorized wrappers for safe entity/field deletion, allowing raw authenticated DELETE to be revoked for both tables.
+
+Authenticated mutation grants are intentionally split:
+
+- Records and relation rows: canonical authorized wrappers for create/update/delete; records retain only direct archive/restore timestamp updates.
+- Entity types and field definitions: raw create/update writes remain available inside a member's own workspace because their canonical create/update RPCs are still SECURITY INVOKER and need those table privileges. Safe deletion is now wrapper-only. This preserves RLS tenant isolation but leaves technical same-workspace users able to bypass some app-layer entity/field create/update validation; wrapping those RPCs is future hardening.
+- Entity views and workflows: direct member insert/update/delete remains because their repositories have no canonical mutation RPC. Workflow execution logs allow direct insert only.
+- `workspace_memberships` is select-only to authenticated users; membership administration is privileged/bootstrap-only.
 
 Major tables:
 
@@ -353,15 +362,14 @@ This first E2E setup intentionally uses the development Supabase project with na
 npm run build -- --webpack && npm run start:e2e
 ```
 
-The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
+The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Global setup creates an ordinary authenticated E2E browser session and stores it at the ignored stable path `tests/e2e/.auth/e2e-auth.json`, outside Playwright-managed output directories. The auth/RLS security spec deliberately uses empty storage state. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current E2E count after the Multiple Ordered Workflow Actions milestone: 93 tests passing.
+Current full-suite baseline after Auth & Workspace Foundation: 96 tests passing. The Auth/RLS security suite (`auth-workspace-security.spec.ts`) has 3 tests covering sign-in/no-access, active-workspace cookie validation, two-user/two-workspace RLS, immutable workspace ownership, raw grant boundaries, authorized wrappers, and cleanup.
 
 ## Intentional Limitations
 
-- No authentication yet.
-- No RLS yet; server-side Supabase secret key bypasses RLS in this prototype.
-- One hard-coded demo workspace ID remains.
+- Email/password Auth only; users are pre-provisioned and explicitly assigned workspace memberships. No signup, invitations, roles, or workspace administration UI.
+- No workspace switching UI is shown unless a user has multiple memberships. There is no auth/RLS coverage for other clients or integrations beyond the app and targeted E2E harness.
 - No ORM.
 - No field type changes.
 - No relation target changes after field creation.
@@ -382,7 +390,8 @@ Current E2E count after the Multiple Ordered Workflow Actions milestone: 93 test
 - No configurable delete/archive policies.
 - Workflow execution is synchronous app-side execution.
 - Workflow logs are basic execution records, not a durable audit ledger.
-- No deep DB-level JSON-schema validation of individual `workflows.actions[]` elements; the DB only enforces a non-empty array, and per-action shape (action type, target, mappings) is validated entirely at the application layer. Noted as a future hardening candidate, not needed for the current single-tenant, app-validated prototype.
+- No deep DB-level JSON-schema validation of individual `workflows.actions[]` elements; the DB only enforces a non-empty array, and per-action shape (action type, target, mappings) is validated entirely at the application layer. Noted as a future hardening candidate.
+- Entity/field create/update RPCs remain SECURITY INVOKER, so a technical member can still use retained same-workspace raw create/update grants to bypass app-layer validation. Safe entity/field deletion and record/relation mutation bypasses are closed through authorized wrappers.
 
 ## Development Principles
 
@@ -460,10 +469,11 @@ Complete major capabilities:
 - A consistent light UI theme: the app shell is pinned to its light palette regardless of OS/browser dark-mode preference, matching the hardcoded light-card design used throughout, so text never renders on a mismatched background.
 - Entity hard deletion is blocked when a workflow's `create_record` action still targets that entity, alongside the existing record-count and relation-field checks — deletion is blocked, never cascaded, and the dependent workflow is left untouched.
 - Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, record-updated transition conditions, update-record, update-related-record, multiple-ordered-actions, and dark-mode-contrast behavior.
+- Supabase Auth email/password sign-in, protected workspace access, explicit memberships, active-workspace selection, RLS tenant isolation, immutable workspace ownership, and authorized record mutation wrappers.
 
 Sensible next areas, without committing to architecture yet:
 
-- Authentication and a real multi-workspace security model with RLS.
+- Future hardening of the remaining SECURITY-INVOKER entity/field create/update RPCs so their raw same-workspace mutation grants can be removed.
 - Better workflow observability/history and possibly durable background execution.
 - Richer record detail capabilities such as layouts, comments, attachments, and activity.
 - Field/entity editing beyond currently safe properties.

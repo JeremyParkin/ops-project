@@ -206,7 +206,7 @@ export async function searchWorkspaceRecords({
     return [];
   }
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const entityTypeIds = entityTypes.map((entityType) => entityType.id);
   const [{ data: fieldRows, error: fieldError }, { data: recordRows, error: recordError }] =
     await Promise.all([
@@ -333,7 +333,7 @@ export async function listEntityRecords({
   fields,
   includeArchived = false,
 }: ListEntityRecordsInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("entity_records")
     .select("*")
@@ -439,10 +439,10 @@ export async function createEntityRecord({
   fields,
   values,
 }: CreateEntityRecordInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { primitiveValues, relations } = splitRecordValues(fields, values);
   const { data, error } = await supabase.rpc(
-    "create_entity_record_with_relations",
+    "create_entity_record_with_relations_authorized",
     {
       p_workspace_id: workspaceId,
       p_entity_type_id: entityTypeId,
@@ -490,13 +490,13 @@ export async function updateEntityRecord({
   fields,
   values,
 }: UpdateEntityRecordInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { primitiveValues, relationFieldIds, relations } = splitRecordValues(
     fields,
     values,
   );
   const { data, error } = await supabase.rpc(
-    "update_entity_record_with_relations",
+    "update_entity_record_with_relations_authorized",
     {
       p_workspace_id: workspaceId,
       p_entity_type_id: entityTypeId,
@@ -529,7 +529,7 @@ export async function entityRecordExists({
   recordId: string;
   includeArchived?: boolean;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("entity_records")
     .select("id")
@@ -557,7 +557,7 @@ export async function countEntityRecords({
   workspaceId: string;
   entityTypeId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { count, error } = await supabase
     .from("entity_records")
     .select("id", { count: "exact", head: true })
@@ -690,7 +690,7 @@ export async function archiveEntityRecord({
   entityTypeId: string;
   recordId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("entity_records")
@@ -722,7 +722,7 @@ export async function restoreEntityRecord({
   entityTypeId: string;
   recordId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("entity_records")
     .update({
@@ -753,7 +753,7 @@ export async function getIncomingReferenceSummary({
   entityTypeId: string;
   recordId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("entity_record_relation_values")
     .select("source_entity_type_id")
@@ -815,7 +815,7 @@ export async function listIncomingRelationsForRecord({
   targetEntityTypeId: string;
   targetRecordId: string;
 }): Promise<IncomingRelationGroup[]> {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data: relationFields, error: fieldError } = await supabase
     .from("field_definitions")
     .select("*")
@@ -963,9 +963,9 @@ export async function deleteEntityRecord({
   entityTypeId: string;
   recordId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc(
-    "delete_entity_record_if_unreferenced",
+    "delete_entity_record_if_unreferenced_authorized",
     {
       p_workspace_id: workspaceId,
       p_entity_type_id: entityTypeId,

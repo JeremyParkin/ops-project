@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { updateWorkflow } from "@/app/actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkflowDefinitionForm } from "@/app/components/workflow-create-form";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import {
   getEntityContext,
   listEntityTypes,
@@ -15,17 +15,17 @@ import { getWorkflow } from "@/lib/domain/workflow-repository";
 
 export const dynamic = "force-dynamic";
 
-async function getWorkflowEntityContexts() {
-  const entityTypes = await listEntityTypes({ workspaceId: DEMO_WORKSPACE_ID });
+async function getWorkflowEntityContexts(workspaceId: string) {
+  const entityTypes = await listEntityTypes({ workspaceId });
   const entityContexts = await Promise.all(
     entityTypes.map(async (entityType) => {
       const context = await getEntityContext({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         entityTypeId: entityType.id,
         includeArchivedFields: true,
       });
       const relationLookups = await getRelationLookups({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         fields: context.fields,
       });
 
@@ -47,12 +47,12 @@ async function getWorkflowEntityContexts() {
   };
 }
 
-async function loadEditWorkflowPageData(workflowId: string) {
+async function loadEditWorkflowPageData(workspaceId: string, workflowId: string) {
   try {
     const [{ entityTypes, entityContexts }, workflow] = await Promise.all([
-      getWorkflowEntityContexts(),
+      getWorkflowEntityContexts(workspaceId),
       getWorkflow({
-        workspaceId: DEMO_WORKSPACE_ID,
+        workspaceId,
         workflowId,
       }),
     ]);
@@ -75,7 +75,8 @@ export default async function EditWorkflowPage({
   }>;
 }) {
   const { workflowId } = await params;
-  const pageData = await loadEditWorkflowPageData(workflowId);
+  const { workspaceId } = await getActiveWorkspaceId();
+  const pageData = await loadEditWorkflowPageData(workspaceId, workflowId);
 
   if (!pageData) {
     notFound();

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { searchWorkspaceRecords } from "@/lib/domain/record-repository";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
-import { DEMO_WORKSPACE_ID } from "@/lib/domain/demo-ids";
+import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +13,10 @@ export default async function SearchPage({
 }) {
   const { q = "" } = await searchParams;
   const query = q.trim();
+  const { workspaceId } = await getActiveWorkspaceId();
   const [entityTypes, groups] = await Promise.all([
-    listEntityTypes({ workspaceId: DEMO_WORKSPACE_ID }),
-    searchWorkspaceRecords({ workspaceId: DEMO_WORKSPACE_ID, query }),
+    listEntityTypes({ workspaceId }),
+    searchWorkspaceRecords({ workspaceId, query }),
   ]);
 
   return (

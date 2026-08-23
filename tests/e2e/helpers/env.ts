@@ -60,15 +60,17 @@ export function requireE2eEnv() {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
+  const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-  if (!supabaseUrl || !supabaseSecretKey) {
+  if (!supabaseUrl || !supabaseSecretKey || !supabasePublishableKey) {
     throw new Error(
-      "E2E tests require NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY.",
+      "E2E tests require NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, and SUPABASE_SECRET_KEY.",
     );
   }
 
   return {
     supabaseUrl,
     supabaseSecretKey,
+    supabasePublishableKey,
   };
 }
