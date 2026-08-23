@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
+import type { EntityRecord, FieldDefinition } from "@/lib/domain/types";
 import {
   type EntityDefinitionFormState,
   validateEntityDefinitionFormData,
@@ -29,7 +30,10 @@ import {
   executeRecordCreatedWorkflows,
   executeRecordUpdatedWorkflows,
 } from "@/lib/domain/workflow-engine";
-import { getChangedFieldDefinitionIds } from "@/lib/domain/workflow-change-detection";
+import {
+  getChangedFieldDefinitionIds,
+  valuesAreEqual,
+} from "@/lib/domain/workflow-change-detection";
 import {
   createWorkflowFormStateFromDefinition,
   type WorkflowFormState,
@@ -563,6 +567,229 @@ export async function updateRecord(
   }
 
   redirect(`/entities/${entityType.id}`);
+}
+
+export type RecordFieldFormState = {
+  success: boolean;
+  message: string;
+  value: string;
+  blocked?: boolean;
+};
+
+const initialRecordFieldFormState: RecordFieldFormState = {
+  success: false,
+  message: "",
+  value: "",
+};
+
+function stringifyFieldValueForForm(
+  field: FieldDefinition,
+  record: EntityRecord,
+) {
+  const value = record.values[field.key];
+
+  if (field.type === "boolean") {
+    return value === true ? "true" : "false";
+  }
+
+  return value === null || value === undefined ? "" : String(value);
+}
+
+// The update RPC replaces the entire primitive values object rather than
+// patching a single key (see update_entity_record_with_relations), so an
+// inline single-field edit must be validated and submitted as a full record:
+// the current persisted values for every other active field, plus the one
+// edited value. This reuses the exact FormData-based validator the full edit
+// form uses, so required-field and per-type validation stay identical.
+function buildMergedFormData(
+  fields: FieldDefinition[],
+  previousRecord: EntityRecord,
+  editedField: FieldDefinition,
+  rawValue: string,
+) {
+  const formData = new FormData();
+
+  fields.forEach((field) => {
+    formData.set(
+      field.key,
+      field.id === editedField.id
+        ? rawValue
+        : stringifyFieldValueForForm(field, previousRecord),
+    );
+  });
+
+  return formData;
+}
+
+export async function updateRecordField(
+  context: UpdateRecordContext,
+  _previousState: RecordFieldFormState,
+  formData: FormData,
+): Promise<RecordFieldFormState> {
+  const fieldKey = formData.get("fieldKey");
+  // The boolean control submits a hidden "false" fallback alongside the
+  // checkbox's "true" value under the same name (see record-edit-form.tsx),
+  // so the last submitted "value" entry is the one that reflects intent.
+  const rawValue = formData.getAll("value").at(-1);
+
+  if (typeof fieldKey !== "string" || typeof rawValue !== "string") {
+    return {
+      ...initialRecordFieldFormState,
+      message: "Invalid submission.",
+    };
+  }
+
+  const { entityType, fields } = await getEntityContext(context);
+
+  if (entityType.archivedAt) {
+    return {
+      success: false,
+      message: "Archived entities are read-only.",
+      value: rawValue,
+    };
+  }
+
+  const field = fields.find(
+    (candidate) => candidate.key === fieldKey && !candidate.archivedAt,
+  );
+
+  if (!field || field.type === "relation") {
+    return {
+      success: false,
+      message: "This field can't be edited inline.",
+      value: rawValue,
+    };
+  }
+
+  let previousRecord;
+
+  try {
+    previousRecord = await getEntityRecord({
+      workspaceId: entityType.workspaceId,
+      entityTypeId: entityType.id,
+      recordId: context.recordId,
+      fields,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to load the existing record. Please try again.",
+      value: rawValue,
+    };
+  }
+
+  if (previousRecord.archivedAt) {
+    return {
+      success: false,
+      message: "Archived records are read-only.",
+      value: rawValue,
+    };
+  }
+
+  const mergedFormData = buildMergedFormData(fields, previousRecord, field, rawValue);
+  const validation = await validateRecordFormData(
+    fields,
+    mergedFormData,
+    async (relationField, value) => {
+      if (!relationField.relatedEntityTypeId) {
+        return false;
+      }
+
+      if (previousRecord.values[relationField.key] === value) {
+        return entityRecordExists({
+          workspaceId: context.workspaceId,
+          entityTypeId: relationField.relatedEntityTypeId,
+          recordId: value,
+          includeArchived: true,
+        });
+      }
+
+      return entityRecordExists({
+        workspaceId: context.workspaceId,
+        entityTypeId: relationField.relatedEntityTypeId,
+        recordId: value,
+      });
+    },
+  );
+
+  if (!validation.success) {
+    const ownFieldError = validation.errors[field.key];
+
+    if (ownFieldError) {
+      return {
+        success: false,
+        message: ownFieldError,
+        value: rawValue,
+      };
+    }
+
+    return {
+      success: false,
+      message: "This record needs additional changes. Open full edit.",
+      value: rawValue,
+      blocked: true,
+    };
+  }
+
+  if (valuesAreEqual(previousRecord.values[field.key], validation.values[field.key])) {
+    return {
+      success: true,
+      message: "",
+      value: validation.submittedValues[field.key] ?? rawValue,
+    };
+  }
+
+  try {
+    await updateEntityRecordInRepository({
+      workspaceId: entityType.workspaceId,
+      entityTypeId: entityType.id,
+      recordId: context.recordId,
+      fields,
+      values: validation.values,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to update the record. Please try again.",
+      value: rawValue,
+    };
+  }
+
+  try {
+    const nextRecord = await getEntityRecord({
+      workspaceId: entityType.workspaceId,
+      entityTypeId: entityType.id,
+      recordId: context.recordId,
+      fields,
+    });
+    const changedFieldDefinitionIds = getChangedFieldDefinitionIds({
+      fields,
+      previousRecord,
+      nextRecord,
+    });
+    const workflowSummary = await executeRecordUpdatedWorkflows({
+      workspaceId: entityType.workspaceId,
+      triggerEntityTypeId: entityType.id,
+      triggerRecord: nextRecord,
+      previousRecord,
+      changedFieldDefinitionIds,
+    });
+
+    workflowSummary.targetEntityTypeIds.forEach((targetEntityTypeId) => {
+      revalidatePath(`/entities/${targetEntityTypeId}`);
+    });
+  } catch {
+    // Workflow execution must not roll back or block a successful inline edit.
+  }
+
+  revalidatePath(`/entities/${entityType.id}`);
+  revalidatePath(`/entities/${entityType.id}/records/${context.recordId}`);
+
+  return {
+    success: true,
+    message: "",
+    value: validation.submittedValues[field.key] ?? rawValue,
+  };
 }
 
 export async function createEntityDefinition(

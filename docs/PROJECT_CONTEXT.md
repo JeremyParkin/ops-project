@@ -166,6 +166,18 @@ Record details and reverse relationships:
 - Active incoming relation fields produce a reverse group even when it has no records, so users can create the first related record.
 - A reverse group can open the source entity's normal create form with its specific relation field prefilled to the current active record. The prefilled relation remains editable; successful creation and Cancel return to the originating detail page through validated origin entity/record IDs, never an arbitrary return URL.
 
+Faster Record Work — inline primitive-field editing:
+
+- The entity records table (`entity-records-table.tsx`) supports inline, click-to-edit editing of `text`, `number`, `date`, and `boolean` fields directly from the table, via a new `updateRecordField` server action in `app/actions.ts` and a `EditableTableCell`/`EditableCellForm` client component pair in `app/components/editable-table-cell.tsx`.
+- Relation fields and the identity/display field remain read-only inline in v1; they keep their existing badge/link rendering. Archived records and archived entities disable inline editing entirely (same `recordEditPathBase` gate the Edit link already uses).
+- Interaction model is consistent across all four supported types: an explicit click/button opens edit mode; Enter or an explicit Save control commits; Escape cancels and returns focus to the triggering cell control; blur outside the cell's own form also cancels — it never silently saves. Boolean fields use the same explicit-commit model (toggle the checkbox, then Enter/Save), not autosave-on-click.
+- After a successful save, the page calls `router.refresh()` to re-render from the server; there is no optimistic client-side record state in v1.
+- Because `update_entity_record_with_relations` replaces the entire primitive `values` object rather than patching one key, `updateRecordField` always merges the edited value into the full current active-field value snapshot before validating and writing — it reuses `validateRecordFormData` and `updateEntityRecordInRepository` unchanged, so required-field validation is identical to the full edit form.
+- A no-op inline edit (submitted value equal to the persisted value, via the same `valuesAreEqual` equality used for watched-field change detection) short-circuits before the repository write and before workflow execution — no DB write, no `record_updated` workflow event.
+- A real inline edit follows the exact same previous-snapshot/write/reload-next-snapshot/`getChangedFieldDefinitionIds`/`executeRecordUpdatedWorkflows` sequence as `updateRecord`, so `changed`/`changed_from`/`changed_to`/`changed_from_to` and watched-field semantics behave identically whether the edit came from the full Edit form or an inline cell.
+- If validation fails on the edited field, the cell stays in edit mode with an inline field-level error. If a save is blocked by a different (typically hidden, view-filtered-out) field on the record, the cell shows a concise fallback ("This record needs additional changes. Open full edit.") linking to the full Edit route, rather than reproducing full-record validation inside the table.
+- No migration, repository, RLS, or domain-model change was required — the feature is additive at the server-action and UI layer only.
+
 ## Workflow System
 
 Workflow domain types are in `lib/domain/workflow-types.ts`; validation is in `lib/domain/workflow-validation.ts`; execution is in `lib/domain/workflow-engine.ts`; persistence is in `lib/domain/workflow-repository.ts`.
@@ -326,7 +338,7 @@ Important directories/files:
 - `app/entities/new/page.tsx` handles entity creation.
 - `app/workflows/page.tsx`, `app/workflows/new/page.tsx`, and `app/workflows/[workflowId]/edit/page.tsx` handle workflow listing, creation, editing, toggling, deletion, and log display.
 - `app/components/entity-navigation.tsx` is the shared workspace navigation for Home, entities, Workflows, Create Entity, archived-entity management, and the compact record-search entry point.
-- `app/components/record-create-form.tsx`, `record-edit-form.tsx`, `record-detail-view.tsx`, and `entity-records-table.tsx` are generic metadata-driven record UI.
+- `app/components/record-create-form.tsx`, `record-edit-form.tsx`, `record-detail-view.tsx`, and `entity-records-table.tsx` are generic metadata-driven record UI. `entity-records-table.tsx` delegates eligible cells to `editable-table-cell.tsx` for inline text/number/date/boolean editing.
 - `app/components/entity-views-panel.tsx` manages saved table views.
 - `app/components/workflow-create-form.tsx` is the reusable workflow definition form for create/edit.
 - `app/components/field-*` and `entity-*` components handle metadata management.
@@ -364,6 +376,7 @@ Current spec files:
 - `workflow-multiple-actions.spec.ts`
 - `workspace-onboarding.spec.ts`
 - `operational-ux.spec.ts`
+- `inline-record-edit.spec.ts`
 
 Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
 
@@ -377,7 +390,7 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Global setup creates an ordinary authenticated E2E browser session and stores it at the ignored stable path `tests/e2e/.auth/e2e-auth.json`, outside Playwright-managed output directories. The auth/RLS security spec deliberately uses empty storage state. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current full-suite baseline after Operational UX Polish: 103 tests passing. The Auth/RLS security suite (`auth-workspace-security.spec.ts`) has 3 tests covering sign-in/no-access, active-workspace cookie validation, two-user/two-workspace RLS, immutable workspace ownership, raw grant boundaries, authorized wrappers, and cleanup. The onboarding suite (`workspace-onboarding.spec.ts`) has 5 tests covering empty versus archived-only workspace behavior, approved starter schemas/relations, display fields, custom setup, atomic rollback and concurrent setup, authenticated/anonymous/non-member wrapper access, Home shortcuts, secondary setup navigation, and explicit entity management. The operational UX suite (`operational-ux.spec.ts`) has 2 tests covering the table-first entity workspace, intentional record creation, empty states, secondary saved-view configuration, and secondary lifecycle actions.
+Current full-suite baseline after Faster Record Work: 111 tests passing. The Auth/RLS security suite (`auth-workspace-security.spec.ts`) has 3 tests covering sign-in/no-access, active-workspace cookie validation, two-user/two-workspace RLS, immutable workspace ownership, raw grant boundaries, authorized wrappers, and cleanup. The onboarding suite (`workspace-onboarding.spec.ts`) has 5 tests covering empty versus archived-only workspace behavior, approved starter schemas/relations, display fields, custom setup, atomic rollback and concurrent setup, authenticated/anonymous/non-member wrapper access, Home shortcuts, secondary setup navigation, and explicit entity management. The operational UX suite (`operational-ux.spec.ts`) has 2 tests covering the table-first entity workspace, intentional record creation, empty states, secondary saved-view configuration, and secondary lifecycle actions. The inline-record-edit suite (`inline-record-edit.spec.ts`) has 9 tests covering text/number/date/boolean inline edit and persistence, invalid-input inline error without persistence, Escape cancellation, identity/relation cells staying read-only inline, archived-record/archived-entity inline-edit disablement, no-op edits not triggering `record_updated` workflows, and a real inline edit firing transition-condition workflow semantics identically to the full edit form.
 
 ## Intentional Limitations
 
@@ -483,7 +496,8 @@ Complete major capabilities:
 - Transition-aware record_updated conditions (`changed`, `changed_from`, `changed_to`, `changed_from_to`) evaluated against the previous/current values from the original user-edit event, with a save-time-and-execution-time-enforced invariant that a transition condition's field must also be watched.
 - A consistent light UI theme: the app shell is pinned to its light palette regardless of OS/browser dark-mode preference, matching the hardcoded light-card design used throughout, so text never renders on a mismatched background.
 - Entity hard deletion is blocked when a workflow's `create_record` action still targets that entity, alongside the existing record-count and relation-field checks — deletion is blocked, never cascaded, and the dependent workflow is left untouched.
-- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, record-updated transition conditions, update-record, update-related-record, multiple-ordered-actions, and dark-mode-contrast behavior.
+- Faster Record Work: inline click-to-edit editing of text/number/date/boolean fields directly from the entity table, with explicit commit/cancel semantics, no autosave-on-blur, `router.refresh()`-based UI sync, a no-op short-circuit, and full reuse of the canonical record-update validation/repository/workflow path — inline edits fire `record_updated` workflows (including transition-aware conditions) exactly as the full edit form does. Relation and identity/display fields remain read-only inline; no migration or repository change was required.
+- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, record-updated transition conditions, update-record, update-related-record, multiple-ordered-actions, dark-mode-contrast, and inline record-editing behavior.
 - Supabase Auth email/password sign-in, protected workspace access, explicit memberships, active-workspace selection, RLS tenant isolation, immutable workspace ownership, and authorized record mutation wrappers.
 
 Sensible next areas, without committing to architecture yet:

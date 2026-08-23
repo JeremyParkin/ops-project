@@ -3,7 +3,9 @@ import {
   archiveRecord,
   deleteRecord,
   restoreRecord,
+  updateRecordField,
 } from "@/app/actions";
+import { EditableTableCell } from "@/app/components/editable-table-cell";
 import { RecordRowActions } from "@/app/components/record-row-actions";
 import type {
   EntityRecord,
@@ -55,6 +57,13 @@ function formatFieldValue(
         : "—";
   }
 }
+
+const INLINE_EDITABLE_FIELD_TYPES = new Set<FieldDefinition["type"]>([
+  "text",
+  "number",
+  "date",
+  "boolean",
+]);
 
 function formatTableCell(
   field: FieldDefinition,
@@ -147,6 +156,12 @@ export function EntityRecordsTable({
                       recordId: record.id,
                     }
                   : undefined;
+                const updateFieldAction = actionContext
+                  ? updateRecordField.bind(null, actionContext)
+                  : undefined;
+                const recordEditHref = recordEditPathBase
+                  ? `${recordEditPathBase}/${record.id}/edit`
+                  : undefined;
 
                 return (
                 <tr
@@ -159,6 +174,14 @@ export function EntityRecordsTable({
                       record.values[field.key],
                       relationLabelsByFieldKey,
                     );
+                    const inlineEditProps =
+                      updateFieldAction &&
+                      recordEditHref &&
+                      !record.archivedAt &&
+                      field.id !== identityField?.id &&
+                      INLINE_EDITABLE_FIELD_TYPES.has(field.type)
+                        ? { updateFieldAction, recordEditHref }
+                        : undefined;
 
                     return (
                     <td key={field.id} className="px-4 py-3 align-middle">
@@ -169,6 +192,18 @@ export function EntityRecordsTable({
                           >
                             {cell}
                           </Link>
+                        ) : inlineEditProps ? (
+                          <EditableTableCell
+                            field={field}
+                            value={record.values[field.key]}
+                            displayValue={formatFieldValue(
+                              field,
+                              record.values[field.key],
+                              relationLabelsByFieldKey,
+                            )}
+                            recordEditHref={inlineEditProps.recordEditHref}
+                            updateFieldAction={inlineEditProps.updateFieldAction}
+                          />
                         ) : (
                           cell
                         )}
