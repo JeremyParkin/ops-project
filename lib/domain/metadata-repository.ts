@@ -1,6 +1,10 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createFieldKey, createSlug, createUniqueSlug } from "./slug";
 import type { EntityType, FieldDefinition, FieldType } from "./types";
+import {
+  serializeStarterEntities,
+  type StarterEntity,
+} from "./workspace-onboarding";
 import { listWorkflows } from "./workflow-repository";
 
 type EntityTypeRow = {
@@ -250,6 +254,33 @@ export async function createEntityTypeWithFields({
   }
 
   return data;
+}
+
+export async function createEntityTypesWithFieldsAuthorized({
+  workspaceId,
+  entities,
+}: {
+  workspaceId: string;
+  entities: StarterEntity[];
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc(
+    "create_entity_types_with_fields_authorized",
+    {
+      p_workspace_id: workspaceId,
+      p_entities: serializeStarterEntities(entities),
+    },
+  );
+
+  if (error) {
+    throw new Error(`Unable to create workspace structure: ${error.message}`);
+  }
+
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("Unable to create workspace structure: unexpected RPC response.");
+  }
+
+  return data as Record<string, string>;
 }
 
 export async function createFieldDefinition({

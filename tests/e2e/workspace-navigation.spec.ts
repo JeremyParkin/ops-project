@@ -107,8 +107,10 @@ test("home provides shared navigation and keeps the entity card on its default v
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Home", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Workflows", exact: true })).toHaveCount(0);
+  await page.getByText("Workspace setup", { exact: true }).click();
   await expect(page.getByRole("link", { name: "Workflows", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create Entity", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create entity", exact: true })).toBeVisible();
 
   const card = entityCard(page, entity);
   await expect(card.getByRole("link", { name: "All Records" })).toBeVisible();
@@ -126,9 +128,10 @@ test("home provides shared navigation and keeps the entity card on its default v
   await expect(page).toHaveURL(new RegExp(`/entities/${entity.id}\\?view=all$`));
   await expect(rowForText(page, `${run.label} Draft`)).toBeVisible();
 
+  await page.getByText("Workspace setup", { exact: true }).click();
   await page.getByRole("link", { name: "Workflows", exact: true }).click();
   await expect(page).toHaveURL(/\/workflows$/);
-  await page.getByRole("link", { name: "Create Entity", exact: true }).click();
+  await page.getByRole("link", { name: "Create entity", exact: true }).click();
   await expect(page).toHaveURL(/\/entities\/new$/);
 });
 
@@ -149,7 +152,8 @@ test("archived entities stay out of normal home navigation but remain available 
 
   await page.goto("/");
   await expect(page.getByRole("link", { name: entity.name, exact: true })).toHaveCount(0);
-  await page.getByRole("link", { name: "Show archived entities" }).click();
+  await page.getByText("Workspace setup", { exact: true }).click();
+  await page.getByRole("link", { name: "Archived entities" }).click();
   await expect(page).toHaveURL(/showArchivedEntities=true/);
   await expect(page.getByRole("heading", { name: entity.name, exact: true })).toBeVisible();
   await expect(

@@ -737,7 +737,7 @@ test("an entity targeted by a create_record action cannot be hard-deleted until 
 
   // fixture.task has zero records — the only reason it can't be deleted is
   // that a workflow action still creates records in it.
-  await page.goto(`/entities/${fixture.task.id}`);
+  await page.goto(`/entities/${fixture.task.id}?manage=true`);
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete Entity" }).click();
   await expect(page.getByText(/Cannot delete/)).toBeVisible();
@@ -753,7 +753,7 @@ test("an entity targeted by a create_record action cannot be hard-deleted until 
   await workflowRow.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByRole("link", { name: workflowName })).toHaveCount(0);
 
-  await page.goto(`/entities/${fixture.task.id}`);
+  await page.goto(`/entities/${fixture.task.id}?manage=true`);
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete Entity" }).click();
   await expect(page).toHaveURL("/");

@@ -185,7 +185,7 @@ test("duplicate field names resolve configured display field by id", async ({
   await expect(rowForText(page, `${run.label} Duplicate`)).toContainText(
     `${run.label} Secondary`,
   );
-  await gotoEntity(page, client);
+  await gotoEntity(page, client, true);
   await expect(page.getByLabel("Display field")).toContainText("Name (field 1)");
   await expect(page.getByLabel("Display field")).toContainText("Name (field 2)");
 });
@@ -224,7 +224,7 @@ test("no display field option keeps fallback behavior explicit", async ({
     await createClientDeliverableScenario(run);
   await setDisplayField(client, client.fields.code);
 
-  await gotoEntity(page, client);
+  await gotoEntity(page, client, true);
   await selectReactOption(page.getByLabel("Display field"), { value: "" });
   await page.getByRole("button", { name: "Save Entity" }).click();
   await expect(page.getByText("Entity updated.")).toBeVisible();
@@ -251,7 +251,7 @@ test("archiving configured display field is blocked", async ({ page }) => {
   const { client } = await createClientDeliverableScenario(run);
   await setDisplayField(client, client.fields.code);
 
-  await gotoEntity(page, client);
+  await gotoEntity(page, client, true);
   const fieldRow = page
     .locator("form")
     .filter({ has: page.locator('input[name="fieldName"][value="Code"]') })

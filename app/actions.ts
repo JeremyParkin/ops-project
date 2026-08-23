@@ -39,6 +39,7 @@ import {
   archiveFieldDefinition,
   archiveEntityType,
   createFieldDefinition,
+  createEntityTypesWithFieldsAuthorized,
   createEntityTypeWithFields,
   deleteFieldDefinition,
   deleteEntityType,
@@ -52,6 +53,11 @@ import {
   updateEntityTypeMetadata,
   updateFieldDefinition as updateFieldDefinitionInRepository,
 } from "@/lib/domain/metadata-repository";
+import {
+  buildStarterEntities,
+  parseStarterOptionIds,
+  type WorkspaceSetupFormState,
+} from "@/lib/domain/workspace-onboarding";
 import {
   archiveEntityRecord,
   countEntityRecords,
@@ -625,6 +631,56 @@ export async function createEntityDefinition(
   revalidatePath("/");
   revalidatePath("/entities");
   redirect(`/entities/${entityTypeId}`);
+}
+
+export async function createWorkspaceStarterStructure(
+  _previousState: WorkspaceSetupFormState,
+  formData: FormData,
+): Promise<WorkspaceSetupFormState> {
+  const selectedOptionIds = parseStarterOptionIds(formData.getAll("starterOption"));
+
+  if (selectedOptionIds.length === 0) {
+    return {
+      success: false,
+      message: "Choose at least one starting structure.",
+      selectedOptionIds,
+    };
+  }
+
+  const { workspaceId } = await getActiveWorkspaceId();
+  const existingEntities = await listEntityTypes({
+    workspaceId,
+    includeArchived: true,
+  });
+
+  if (existingEntities.length > 0) {
+    return {
+      success: false,
+      message: "Workspace setup is only available before any entity has been created.",
+      selectedOptionIds,
+    };
+  }
+
+  try {
+    await createEntityTypesWithFieldsAuthorized({
+      workspaceId,
+      entities: buildStarterEntities(selectedOptionIds),
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to create the workspace structure. No changes were saved.",
+      selectedOptionIds,
+    };
+  }
+
+  revalidatePath("/");
+
+  return {
+    success: true,
+    message: "Workspace structure created.",
+    selectedOptionIds,
+  };
 }
 
 export async function addFieldDefinition(

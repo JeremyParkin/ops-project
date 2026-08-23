@@ -254,6 +254,8 @@ test("existing UI friendly validation still prevents adding required fields afte
   await submitAddRecord(page, entity);
   await expect(page.getByText(`${entity.name} created.`)).toBeVisible();
 
+  await gotoEntity(page, entity, true);
+
   const addFieldSection = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Add Field", exact: true }),
   });

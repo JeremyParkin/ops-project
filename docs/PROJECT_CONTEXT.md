@@ -83,6 +83,14 @@ Record display labels are centralized in `lib/domain/record-repository.ts`: use 
 
 Workspace record search is centralized in the same repository. It searches active text fields on active records in active entities, groups results by entity, and uses the centralized label resolver for every result.
 
+Workspace onboarding and Home:
+
+- A workspace is new only when it has zero entity types, including archived entities. An archived-only workspace remains established and never re-enters onboarding.
+- New workspaces receive a two-step Home setup flow. Users can select Clients, Projects, Tasks, and/or Sales / Opportunities, review the resulting metadata and inferred direct relations, then create everything atomically. “Start from scratch” opens the existing entity-definition form and creates no template metadata.
+- Starter structures are ordinary editable metadata, not persistent product modes. Relations are added only when both selected endpoints exist: `Project.Client`, `Task.Project`, and `Opportunity.Client`.
+- Established Home is operational: entity cards are primary and show their active record count, Open and Add shortcuts, and capped saved-view links. The Add shortcut targets the existing `#add-record` form.
+- Workspace navigation prioritizes Home, Search, and active entities. Workflows, Create entity, and archived-entity management live under the secondary Workspace setup disclosure. Active entity pages are records/views/add-record first; schema and lifecycle controls are available through explicit `?manage=true` mode.
+
 `EntityView` represents a saved table view for one entity. Saved views live in `entity_views` with `name`, `position`, `isDefault`, JSONB filters/sorts/column field IDs, and ISO timestamps. They configure table presentation only; they do not copy schema or records.
 
 ## Data Integrity And Lifecycle Rules
@@ -260,11 +268,11 @@ Execution logs:
 
 Migrations live in `supabase/migrations/` and are currently applied manually through the Supabase SQL Editor. The latest migration is:
 
-- `0025_authorized_safe_delete_wrappers.sql`
+- `0026_workspace_onboarding_setup.sql`
 
 `0019_workflow_multiple_actions.sql` added the ordered `actions` JSONB column (backfilling every pre-existing single-action workflow into a one-element array before enforcing `NOT NULL`/non-empty-array constraints), narrowed `action_config` to `{ triggerConfig, conditions }`, dropped the legacy `action_type`/`action_target_entity_type_id` columns and their constraints/FK, added `action_results` JSONB to `workflow_execution_logs`, and rewrote `delete_field_definition_if_safe` to scan all of `actions[]`. `0020_entity_delete_blocks_create_record_targets.sql` followed up: dropping `action_target_entity_type_id` also removed the composite FK that used to structurally block deleting an entity still targeted by a `create_record` action, so `delete_entity_type_if_safe` was rewritten (drop + recreate, since its `TABLE` return shape gained a column) to explicitly block that case instead.
 
-`0021_auth_workspace_rls.sql` introduced Supabase Auth memberships and RLS for every workspace-scoped table. `0022_workspace_ownership_and_mutation_grants.sql` makes `workspace_id` immutable on every persisted workspace-scoped domain row. `0023_record_mutation_rpc_wrappers.sql` adds membership-checking, fixed-search-path SECURITY DEFINER wrappers for canonical record create/update/delete, allowing raw record/relation writes to be revoked. `0024_entity_create_display_field_grant.sql` restores the narrowly required display-field update permission for the still-SECURITY-INVOKER entity-creation RPC. `0025_authorized_safe_delete_wrappers.sql` revokes PUBLIC execution from privileged wrappers and adds equivalent authorized wrappers for safe entity/field deletion, allowing raw authenticated DELETE to be revoked for both tables.
+`0021_auth_workspace_rls.sql` introduced Supabase Auth memberships and RLS for every workspace-scoped table. `0022_workspace_ownership_and_mutation_grants.sql` makes `workspace_id` immutable on every persisted workspace-scoped domain row. `0023_record_mutation_rpc_wrappers.sql` adds membership-checking, fixed-search-path SECURITY DEFINER wrappers for canonical record create/update/delete, allowing raw record/relation writes to be revoked. `0024_entity_create_display_field_grant.sql` restores the narrowly required display-field update permission for the still-SECURITY-INVOKER entity-creation RPC. `0025_authorized_safe_delete_wrappers.sql` revokes PUBLIC execution from privileged wrappers and adds equivalent authorized wrappers for safe entity/field deletion, allowing raw authenticated DELETE to be revoked for both tables. `0026_workspace_onboarding_setup.sql` adds a membership-checked, fixed-search-path SECURITY DEFINER bulk metadata wrapper for atomic first-run setup. It serializes setup attempts with a workspace advisory lock, rejects any workspace that already has an entity (including archived entities), revokes PUBLIC execution, and grants only authenticated/service-role execution.
 
 Authenticated mutation grants are intentionally split:
 
@@ -351,6 +359,7 @@ Current spec files:
 - `dark-mode-contrast.spec.ts`
 - `record-updated-transition-conditions.spec.ts`
 - `workflow-multiple-actions.spec.ts`
+- `workspace-onboarding.spec.ts`
 
 Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
 
@@ -364,7 +373,7 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Global setup creates an ordinary authenticated E2E browser session and stores it at the ignored stable path `tests/e2e/.auth/e2e-auth.json`, outside Playwright-managed output directories. The auth/RLS security spec deliberately uses empty storage state. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current full-suite baseline after Auth & Workspace Foundation: 96 tests passing. The Auth/RLS security suite (`auth-workspace-security.spec.ts`) has 3 tests covering sign-in/no-access, active-workspace cookie validation, two-user/two-workspace RLS, immutable workspace ownership, raw grant boundaries, authorized wrappers, and cleanup.
+Current full-suite baseline after Workspace Onboarding & Simplified Home: 101 tests passing. The Auth/RLS security suite (`auth-workspace-security.spec.ts`) has 3 tests covering sign-in/no-access, active-workspace cookie validation, two-user/two-workspace RLS, immutable workspace ownership, raw grant boundaries, authorized wrappers, and cleanup. The onboarding suite (`workspace-onboarding.spec.ts`) has 5 tests covering empty versus archived-only workspace behavior, approved starter schemas/relations, display fields, custom setup, atomic rollback and concurrent setup, authenticated/anonymous/non-member wrapper access, Home shortcuts, secondary setup navigation, and explicit entity management.
 
 ## Intentional Limitations
 
@@ -458,6 +467,7 @@ Complete major capabilities:
 - Configurable entity display fields.
 - Saved table views with filters, sorts, visible columns, and default view selection.
 - Workspace home and shared navigation with active entity cards and capped saved-view shortcuts.
+- First-run workspace onboarding with small editable Clients, Projects, Tasks, and Opportunities starter structures, atomically created through the authorized metadata setup wrapper; established Home and navigation emphasize operational record work while configuration is progressively disclosed.
 - Workspace record search across active entities and records, with deterministic per-entity result caps and detail-page links.
 - Record detail pages with outgoing links and derived reverse relationship visibility.
 - Create related records from reverse relationship groups using the standard record-create form and validated origin-detail return navigation.

@@ -93,18 +93,6 @@ export async function WorkspaceNavigation({
         <Link href={homeHref} className={navigationLinkClass(activeSection === "home")}>
           Home
         </Link>
-        <Link
-          href="/workflows"
-          className={navigationLinkClass(activeSection === "workflows")}
-        >
-          Workflows
-        </Link>
-        <Link
-          href={createEntityHref}
-          className={navigationLinkClass(activeSection === "create-entity")}
-        >
-          Create Entity
-        </Link>
       </nav>
       <div className="my-4 border-t border-slate-100" />
       <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -141,12 +129,31 @@ export async function WorkspaceNavigation({
         })}
       </nav>
       <div className="mt-4 border-t border-slate-100 pt-4">
-        <Link
-          href={archiveToggleHref}
-          className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
-        >
-          {showArchivedEntities ? "Hide archived entities" : "Show archived entities"}
-        </Link>
+        <details open={activeSection === "workflows" || activeSection === "create-entity"}>
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+            Workspace setup
+          </summary>
+          <nav className="mt-2 flex flex-col gap-1" aria-label="Workspace setup">
+            <Link
+              href="/workflows"
+              className={navigationLinkClass(activeSection === "workflows")}
+            >
+              Workflows
+            </Link>
+            <Link
+              href={createEntityHref}
+              className={navigationLinkClass(activeSection === "create-entity")}
+            >
+              Create entity
+            </Link>
+            <Link
+              href={archiveToggleHref}
+              className="px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              {showArchivedEntities ? "Hide archived entities" : "Archived entities"}
+            </Link>
+          </nav>
+        </details>
         <form action={signOut} className="mt-3">
           <button type="submit" className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline">
             Sign out

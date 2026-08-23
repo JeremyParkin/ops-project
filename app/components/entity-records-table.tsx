@@ -93,15 +93,6 @@ export function EntityRecordsTable({
 
   return (
     <section className="mx-auto w-full max-w-6xl">
-      <div className="mb-6">
-        <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
-          Entity Type
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-950">
-          {entityType.name}
-        </h1>
-      </div>
-
       <div className="overflow-hidden border border-slate-200 bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">

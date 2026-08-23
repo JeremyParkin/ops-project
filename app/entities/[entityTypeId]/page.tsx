@@ -223,6 +223,7 @@ export default async function EntityPage({
     prefillRelationFieldId?: string;
     originEntityTypeId?: string;
     originRecordId?: string;
+    manage?: string;
   }>;
 }) {
   const { entityTypeId } = await params;
@@ -234,6 +235,7 @@ export default async function EntityPage({
     prefillRelationFieldId,
     originEntityTypeId,
     originRecordId,
+    manage: manageParam,
   } = await searchParams;
   const showArchivedRecords = showArchivedParam === "true";
   const showArchivedEntities = showArchivedEntitiesParam === "true";
@@ -278,6 +280,7 @@ export default async function EntityPage({
     records,
   });
   const isArchivedEntity = Boolean(entityType.archivedAt);
+  const isManaging = manageParam === "true" || isArchivedEntity;
   const entityNameById = Object.fromEntries(
     allEntityTypes.map((listedEntityType) => [
       listedEntityType.id,
@@ -334,6 +337,16 @@ export default async function EntityPage({
     showArchivedRecords ? "showArchived=true" : "",
     archivedEntityQuery,
   ]);
+  const manageEntityHref = entityPageHref(entityType.id, [
+    "manage=true",
+    showArchivedRecords ? "showArchived=true" : "",
+    archivedEntityQuery,
+    archivedFieldsQuery,
+  ]);
+  const recordsHref = entityPageHref(entityType.id, [
+    showArchivedRecords ? "showArchived=true" : "",
+    archivedEntityQuery,
+  ]);
 
   return (
     <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
@@ -343,15 +356,38 @@ export default async function EntityPage({
         showArchivedEntities={showArchivedEntities}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-8">
-        <EntitySettingsForm
-          entityType={entityType}
-          fields={fields}
-          updateEntityMetadataAction={updateEntity}
-          archiveEntityAction={archiveCurrentEntity}
-          restoreEntityAction={restoreCurrentEntity}
-          deleteEntityAction={deleteCurrentEntity}
-        />
-        {!isArchivedEntity ? (
+        <section className="mx-auto flex w-full max-w-6xl flex-wrap items-start justify-between gap-4 border border-slate-200 bg-white p-5">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
+              Entity
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold text-slate-950">
+              {entityType.name}
+            </h1>
+            {entityType.description ? (
+              <p className="mt-2 text-sm text-slate-600">{entityType.description}</p>
+            ) : null}
+          </div>
+          {!isArchivedEntity ? (
+            <Link
+              href={isManaging ? recordsHref : manageEntityHref}
+              className="border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+            >
+              {isManaging ? "Return to records" : "Manage entity"}
+            </Link>
+          ) : null}
+        </section>
+        {isManaging ? (
+          <EntitySettingsForm
+            entityType={entityType}
+            fields={fields}
+            updateEntityMetadataAction={updateEntity}
+            archiveEntityAction={archiveCurrentEntity}
+            restoreEntityAction={restoreCurrentEntity}
+            deleteEntityAction={deleteCurrentEntity}
+          />
+        ) : null}
+        {isManaging && !isArchivedEntity ? (
           <>
             <FieldCreateForm
               entityTypes={activeEntityTypes}
@@ -379,18 +415,20 @@ export default async function EntityPage({
                   : "Show archived fields"}
               </Link>
             </div>
-            <RecordCreateForm
-              entityType={entityType}
-              fields={fields}
-              relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
-              entityNameById={entityNameById}
-              initialValues={relatedCreateMode?.initialValues}
-              cancelHref={relatedCreateMode?.cancelHref}
-              createRecordAction={createEntityRecord}
-            />
           </>
         ) : null}
-        {!isArchivedEntity ? (
+        {!isArchivedEntity && !isManaging ? (
+          <RecordCreateForm
+            entityType={entityType}
+            fields={fields}
+            relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            entityNameById={entityNameById}
+            initialValues={relatedCreateMode?.initialValues}
+            cancelHref={relatedCreateMode?.cancelHref}
+            createRecordAction={createEntityRecord}
+          />
+        ) : null}
+        {!isArchivedEntity && !isManaging ? (
           <EntityViewsPanel
             entityType={entityType}
             views={views}

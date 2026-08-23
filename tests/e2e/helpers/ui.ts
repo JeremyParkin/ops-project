@@ -1,8 +1,8 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { TestEntity, TestField } from "./supabase-test-data";
 
-export async function gotoEntity(page: Page, entity: TestEntity) {
-  await page.goto(`/entities/${entity.id}`);
+export async function gotoEntity(page: Page, entity: TestEntity, manage = false) {
+  await page.goto(`/entities/${entity.id}${manage ? "?manage=true" : ""}`);
   await page.waitForLoadState("networkidle");
   await expect(
     page.getByRole("heading", { name: entity.name, exact: true }),

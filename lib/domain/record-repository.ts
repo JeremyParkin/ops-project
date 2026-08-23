@@ -87,6 +87,35 @@ export type WorkspaceRecordSearchGroup = {
   results: WorkspaceRecordSearchResult[];
 };
 
+export async function countActiveEntityRecordsByEntityType({
+  workspaceId,
+  entityTypeIds,
+}: {
+  workspaceId: string;
+  entityTypeIds: string[];
+}) {
+  if (entityTypeIds.length === 0) return new Map<string, number>();
+
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("entity_records")
+    .select("entity_type_id")
+    .eq("workspace_id", workspaceId)
+    .in("entity_type_id", entityTypeIds)
+    .is("archived_at", null);
+
+  if (error) {
+    throw new Error(`Unable to count entity records: ${error.message}`);
+  }
+
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    counts.set(row.entity_type_id, (counts.get(row.entity_type_id) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
 function mapEntityRecord(row: EntityRecordRow): EntityRecord {
   return {
     id: row.id,
