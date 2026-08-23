@@ -3,16 +3,19 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import type { ProcessTemplateFormState } from "@/lib/domain/process-validation";
+import type { WorkspaceMemberIdentity } from "@/lib/domain/process-types";
 import type { EntityType } from "@/lib/domain/types";
 
 type LocalStep = {
   key: string;
   nodeId: string;
   name: string;
+  assigneeUserId: string;
 };
 
 type ProcessTemplateFormProps = {
   entityTypes: EntityType[];
+  members: WorkspaceMemberIdentity[];
   saveProcessTemplateAction: (
     state: ProcessTemplateFormState,
     formData: FormData,
@@ -39,6 +42,7 @@ function FieldError({ message }: { message?: string }) {
 
 export function ProcessTemplateForm({
   entityTypes,
+  members,
   saveProcessTemplateAction,
   initialState,
   isEditing,
@@ -52,6 +56,7 @@ export function ProcessTemplateForm({
       key: createStepKey(),
       nodeId: step.nodeId,
       name: step.name,
+      assigneeUserId: step.assigneeUserId,
     })),
   );
 
@@ -61,8 +66,17 @@ export function ProcessTemplateForm({
     );
   }
 
+  function updateStepAssignee(key: string, assigneeUserId: string) {
+    setSteps((current) =>
+      current.map((step) => (step.key === key ? { ...step, assigneeUserId } : step)),
+    );
+  }
+
   function addStep() {
-    setSteps((current) => [...current, { key: createStepKey(), nodeId: "", name: "" }]);
+    setSteps((current) => [
+      ...current,
+      { key: createStepKey(), nodeId: "", name: "", assigneeUserId: "" },
+    ]);
   }
 
   function removeStep(key: string) {
@@ -232,6 +246,28 @@ export function ProcessTemplateForm({
                   >
                     Remove
                   </button>
+                </div>
+                <div className="mt-2 max-w-xs">
+                  <label
+                    htmlFor={`step-assignee-${step.key}`}
+                    className="block text-xs font-medium uppercase tracking-wide text-slate-500"
+                  >
+                    Assignee
+                  </label>
+                  <select
+                    id={`step-assignee-${step.key}`}
+                    name="stepAssigneeUserId"
+                    value={step.assigneeUserId}
+                    onChange={(event) => updateStepAssignee(step.key, event.target.value)}
+                    className="mt-1 block h-9 w-full border border-slate-300 bg-white px-2 text-sm text-slate-950 outline-none focus:border-slate-950"
+                  >
+                    <option value="">Unassigned</option>
+                    {members.map((member) => (
+                      <option key={member.userId} value={member.userId}>
+                        {member.email}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             ))}

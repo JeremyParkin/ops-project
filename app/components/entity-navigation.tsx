@@ -6,7 +6,7 @@ import type { EntityType } from "@/lib/domain/types";
 type WorkspaceNavigationProps = {
   entityTypes: EntityType[];
   activeEntityTypeId?: string;
-  activeSection?: "home" | "workflows" | "processes" | "create-entity";
+  activeSection?: "home" | "my-work" | "workflows" | "processes" | "create-entity";
   showArchivedEntities?: boolean;
 };
 
@@ -92,6 +92,9 @@ export async function WorkspaceNavigation({
       <nav className="flex flex-col gap-1" aria-label="Workspace navigation">
         <Link href={homeHref} className={navigationLinkClass(activeSection === "home")}>
           Home
+        </Link>
+        <Link href="/my-work" className={navigationLinkClass(activeSection === "my-work")}>
+          My Work
         </Link>
       </nav>
       <div className="my-5 border-t border-slate-100" />

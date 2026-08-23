@@ -8,6 +8,7 @@ type ProcessRunDetailViewProps = {
   run: ProcessRunWithSteps;
   originLabel: string;
   originHref: string;
+  currentUserId: string;
   completeProcessStepRunAction: (
     state: ProcessActionState,
     formData: FormData,
@@ -30,6 +31,7 @@ export function ProcessRunDetailView({
   run,
   originLabel,
   originHref,
+  currentUserId,
   completeProcessStepRunAction,
 }: ProcessRunDetailViewProps) {
   const completedCount = run.steps.filter((step) => step.status === "completed").length;
@@ -83,8 +85,12 @@ export function ProcessRunDetailView({
                 <p className="mt-1 text-sm font-medium text-slate-950">
                   {step.stepIndex}. {step.name}
                 </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {step.assigneeLabel ? `Assigned to ${step.assigneeLabel}` : "Unassigned"}
+                </p>
               </div>
-              {step.status === "active" ? (
+              {step.status === "active" &&
+              (!step.assigneeUserId || step.assigneeUserId === currentUserId) ? (
                 <CompleteStepButton
                   stepRunId={step.id}
                   completeProcessStepRunAction={completeProcessStepRunAction}

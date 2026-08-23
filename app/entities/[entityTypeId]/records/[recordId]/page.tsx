@@ -93,6 +93,7 @@ async function loadProcessSectionEntries({
           completed,
           total: runWithSteps.steps.length,
           currentStepName: currentStep?.name,
+          currentStepAssigneeLabel: currentStep?.assigneeLabel,
         },
         startProcessRunAction: startProcessRunActionForTemplate,
       };

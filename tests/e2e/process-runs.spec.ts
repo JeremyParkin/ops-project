@@ -13,6 +13,7 @@ import {
   type TestRun,
 } from "./helpers/supabase-test-data";
 import { requireE2eEnv } from "./helpers/env";
+import { selectReactOption } from "./helpers/ui";
 
 test.describe.configure({ mode: "serial" });
 
@@ -43,6 +44,62 @@ async function createAuthenticatedTestClient() {
   return client;
 }
 
+// A second disposable authenticated workspace member, needed only for
+// assignment tests (assignee-only completion, membership-removal lifecycle,
+// My Work cross-user filtering). Scoped to this spec only — global-setup.ts
+// and its single E2E runner user are untouched.
+const secondMemberUserIds: string[] = [];
+
+async function createSecondWorkspaceMember(label: string) {
+  const admin = createSupabaseTestClient();
+  const { supabaseUrl, supabasePublishableKey } = requireE2eEnv();
+  const email = `e2e-second-${label}@ops-project.test`;
+  const password = "E2E-second-password-2026";
+
+  const { data: existingUsers } = await admin.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+
+  for (const existingUser of (existingUsers?.users ?? []).filter(
+    (candidate) => candidate.email === email,
+  )) {
+    await admin.auth.admin.deleteUser(existingUser.id);
+  }
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+
+  if (error || !data.user) {
+    throw new Error(`Unable to create second test user: ${error?.message ?? "unknown error"}`);
+  }
+
+  secondMemberUserIds.push(data.user.id);
+
+  const { error: membershipError } = await admin.from("workspace_memberships").insert({
+    workspace_id: DEMO_WORKSPACE_ID,
+    user_id: data.user.id,
+  });
+
+  if (membershipError) {
+    throw new Error(`Unable to add second test user membership: ${membershipError.message}`);
+  }
+
+  const client = createClient(supabaseUrl, supabasePublishableKey, {
+    auth: { persistSession: false },
+  });
+  const { error: signInError } = await client.auth.signInWithPassword({ email, password });
+
+  if (signInError) {
+    throw new Error(`Unable to sign in as second test user: ${signInError.message}`);
+  }
+
+  return { userId: data.user.id, email, client };
+}
+
 test.beforeAll(async () => {
   await cleanupStaleE2eData();
 });
@@ -50,6 +107,14 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   for (const run of runs) {
     await cleanupE2eRun(run);
+  }
+
+  if (secondMemberUserIds.length > 0) {
+    const admin = createSupabaseTestClient();
+
+    for (const userId of secondMemberUserIds) {
+      await admin.auth.admin.deleteUser(userId);
+    }
   }
 });
 
@@ -63,6 +128,7 @@ async function createProcessTemplateFixture(
   run: TestRun,
   entity: TestEntity,
   stepNames: string[],
+  assigneeUserIds: Array<string | null> = [],
 ) {
   const supabase = createSupabaseTestClient();
   const templateId = randomUUID();
@@ -87,6 +153,7 @@ async function createProcessTemplateFixture(
       process_template_id: templateId,
       node_type: "human_task",
       name,
+      assignee_user_id: assigneeUserIds[index] ?? null,
     })),
   );
 
@@ -132,6 +199,30 @@ function processCard(page: Page, templateName: string): Locator {
 
 function stepRow(page: Page, stepName: string): Locator {
   return page.locator("li").filter({ hasText: stepName });
+}
+
+function stepAssigneeSelect(page: Page, index: number): Locator {
+  return page.getByLabel("Assignee").nth(index);
+}
+
+async function selectedOptionText(select: Locator) {
+  return select.evaluate(
+    (element) => (element as HTMLSelectElement).selectedOptions[0]?.textContent ?? "",
+  );
+}
+
+function stepNameInput(page: Page, index: number): Locator {
+  return page.locator('input[name="stepName"]').nth(index);
+}
+
+async function fillTemplateBasics(
+  page: Page,
+  { name, appliesTo }: { name: string; appliesTo: TestEntity },
+) {
+  await page.locator("#process-template-name").fill(name);
+  await selectReactOption(page.locator("#process-template-applies-to"), {
+    value: appliesTo.id,
+  });
 }
 
 test.describe("process runs", () => {
@@ -643,5 +734,366 @@ test.describe("process runs", () => {
       const { error } = await anonClient.rpc(fn, params);
       expect(error, `${fn} should be denied to an anonymous caller`).not.toBeNull();
     }
+  });
+
+  test("assigns, reassigns, and clears step assignees using only current workspace members, surviving rename and reorder", async ({
+    page,
+  }) => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const secondMember = await createSecondWorkspaceMember("assign-ui");
+    const templateName = `${run.label} Assignment Lifecycle Template`;
+
+    await page.goto("/processes/new");
+    await fillTemplateBasics(page, { name: templateName, appliesTo: entity });
+    await stepNameInput(page, 0).fill("Prepare Data");
+    await stepNameInput(page, 1).fill("Review");
+
+    // The shared dev workspace may have other real memberships beyond the
+    // two this test controls (e.g. the developer's own account), so assert
+    // membership inclusion rather than an exact closed option set.
+    const optionLabels = await stepAssigneeSelect(page, 0).locator("option").allTextContents();
+    expect(optionLabels).toContain("Unassigned");
+    expect(optionLabels).toContain(E2E_RUNNER_EMAIL);
+    expect(optionLabels).toContain(secondMember.email);
+
+    await selectReactOption(stepAssigneeSelect(page, 0), { label: E2E_RUNNER_EMAIL });
+    await selectReactOption(stepAssigneeSelect(page, 1), { label: secondMember.email });
+    await page.getByRole("button", { name: "Save Process Template" }).click();
+    await expect(page.getByRole("link", { name: templateName })).toBeVisible();
+
+    await page.getByRole("link", { name: templateName }).click();
+    await expect(page.getByRole("heading", { name: "Edit Process Template" })).toBeVisible();
+    expect(await selectedOptionText(stepAssigneeSelect(page, 0))).toBe(E2E_RUNNER_EMAIL);
+    expect(await selectedOptionText(stepAssigneeSelect(page, 1))).toBe(secondMember.email);
+
+    // Reassign step 0 to the second member, clear step 1, rename step 0, and
+    // move it after step 1 — node identity/order must not disturb assignment.
+    await stepNameInput(page, 0).fill("Prepare Source Data");
+    await selectReactOption(stepAssigneeSelect(page, 0), { label: secondMember.email });
+    await selectReactOption(stepAssigneeSelect(page, 1), { label: "Unassigned" });
+    await page.getByRole("button", { name: "Move Down" }).first().click();
+    await page.getByRole("button", { name: "Save Process Template" }).click();
+    await expect(page.getByRole("link", { name: templateName })).toBeVisible();
+
+    await page.getByRole("link", { name: templateName }).click();
+    await expect(stepNameInput(page, 0)).toHaveValue("Review");
+    expect(await selectedOptionText(stepAssigneeSelect(page, 0))).toBe("Unassigned");
+    await expect(stepNameInput(page, 1)).toHaveValue("Prepare Source Data");
+    expect(await selectedOptionText(stepAssigneeSelect(page, 1))).toBe(secondMember.email);
+  });
+
+  test("assigning a non-member user ID to a template step is rejected server-side", async () => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const template = await createProcessTemplateFixture(run, entity, ["Only Step"]);
+    const authenticatedClient = await createAuthenticatedTestClient();
+
+    const { error } = await authenticatedClient.rpc("save_process_template_authorized", {
+      p_workspace_id: DEMO_WORKSPACE_ID,
+      p_process_template_id: template.id,
+      p_name: template.name,
+      p_description: null,
+      p_applies_to_entity_type_id: entity.id,
+      p_steps: [
+        { node_id: template.nodeIds[0], name: "Only Step", assignee_user_id: randomUUID() },
+      ],
+    });
+
+    expect(error?.message).toContain("Assignee is not a member of this workspace");
+
+    const { data: nodeRow } = await supabase
+      .from("process_nodes")
+      .select("assignee_user_id")
+      .eq("id", template.nodeIds[0])
+      .single();
+    expect(nodeRow?.assignee_user_id).toBeNull();
+  });
+
+  test("starting a run snapshots the assignee and label, and later template reassignment does not rewrite the run", async ({
+    page,
+  }) => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const secondMember = await createSecondWorkspaceMember("snapshot");
+    const authenticatedClient = await createAuthenticatedTestClient();
+    const { data: userData } = await authenticatedClient.auth.getUser();
+    const runnerUserId = userData.user?.id as string;
+    const template = await createProcessTemplateFixture(run, entity, ["Only Step"], [
+      runnerUserId,
+    ]);
+    const recordId = await createEntityRecord({
+      entity,
+      valuesBySlug: { name: "Snapshot Assignee Record" },
+    });
+
+    await page.goto(`/entities/${entity.id}/records/${recordId}`);
+    await processCard(page, template.name).getByRole("button", { name: "Start process" }).click();
+    await page.waitForURL(/\/process-runs\//);
+
+    const { data: stepRunRow } = await supabase
+      .from("process_step_runs")
+      .select("assignee_user_id, assignee_label")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("source_node_id", template.nodeIds[0])
+      .single();
+    expect(stepRunRow?.assignee_user_id).toBe(runnerUserId);
+    expect(stepRunRow?.assignee_label).toBe(E2E_RUNNER_EMAIL);
+
+    const { error: reassignError } = await authenticatedClient.rpc(
+      "save_process_template_authorized",
+      {
+        p_workspace_id: DEMO_WORKSPACE_ID,
+        p_process_template_id: template.id,
+        p_name: template.name,
+        p_description: null,
+        p_applies_to_entity_type_id: entity.id,
+        p_steps: [
+          {
+            node_id: template.nodeIds[0],
+            name: "Only Step",
+            assignee_user_id: secondMember.userId,
+          },
+        ],
+      },
+    );
+    expect(reassignError).toBeNull();
+
+    const { data: stepRunAfterReassign } = await supabase
+      .from("process_step_runs")
+      .select("assignee_user_id, assignee_label")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("source_node_id", template.nodeIds[0])
+      .single();
+    expect(stepRunAfterReassign?.assignee_user_id).toBe(runnerUserId);
+    expect(stepRunAfterReassign?.assignee_label).toBe(E2E_RUNNER_EMAIL);
+  });
+
+  test("an assigned active step can only be completed by its assignee; unassigned steps remain open to any member", async () => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const secondMember = await createSecondWorkspaceMember("completion");
+    const authenticatedClient = await createAuthenticatedTestClient();
+    const { data: userData } = await authenticatedClient.auth.getUser();
+    const runnerUserId = userData.user?.id as string;
+    const template = await createProcessTemplateFixture(
+      run,
+      entity,
+      ["Open Step", "Runner Step"],
+      [null, runnerUserId],
+    );
+    const recordId = await createEntityRecord({
+      entity,
+      valuesBySlug: { name: "Completion Guard Record" },
+    });
+    const { data: startData, error: startError } = await authenticatedClient.rpc(
+      "start_process_run_authorized",
+      {
+        p_workspace_id: DEMO_WORKSPACE_ID,
+        p_process_template_id: template.id,
+        p_origin_entity_type_id: entity.id,
+        p_origin_record_id: recordId,
+      },
+    );
+    expect(startError).toBeNull();
+    const runId = startData as string;
+
+    const { data: openStep } = await supabase
+      .from("process_step_runs")
+      .select("id")
+      .eq("process_run_id", runId)
+      .eq("step_index", 1)
+      .single();
+
+    const { error: openCompleteError } = await secondMember.client.rpc(
+      "complete_process_step_run_authorized",
+      { p_workspace_id: DEMO_WORKSPACE_ID, p_process_run_id: runId, p_step_run_id: openStep!.id },
+    );
+    expect(openCompleteError).toBeNull();
+
+    const { data: assignedStep } = await supabase
+      .from("process_step_runs")
+      .select("id")
+      .eq("process_run_id", runId)
+      .eq("step_index", 2)
+      .single();
+
+    const { error: wrongMemberError } = await secondMember.client.rpc(
+      "complete_process_step_run_authorized",
+      {
+        p_workspace_id: DEMO_WORKSPACE_ID,
+        p_process_run_id: runId,
+        p_step_run_id: assignedStep!.id,
+      },
+    );
+    expect(wrongMemberError?.message).toContain("This step is assigned to another member");
+
+    const { error: assigneeCompleteError } = await authenticatedClient.rpc(
+      "complete_process_step_run_authorized",
+      {
+        p_workspace_id: DEMO_WORKSPACE_ID,
+        p_process_run_id: runId,
+        p_step_run_id: assignedStep!.id,
+      },
+    );
+    expect(assigneeCompleteError).toBeNull();
+  });
+
+  test("removing a membership is blocked while a template node still assigns that member, but historical step-run assignments alone do not block it", async () => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const secondMember = await createSecondWorkspaceMember("removal");
+    const authenticatedClient = await createAuthenticatedTestClient();
+    const template = await createProcessTemplateFixture(run, entity, ["Only Step"], [
+      secondMember.userId,
+    ]);
+    const recordId = await createEntityRecord({
+      entity,
+      valuesBySlug: { name: "Removal Guard Record" },
+    });
+
+    const { data: startData, error: startError } = await authenticatedClient.rpc(
+      "start_process_run_authorized",
+      {
+        p_workspace_id: DEMO_WORKSPACE_ID,
+        p_process_template_id: template.id,
+        p_origin_entity_type_id: entity.id,
+        p_origin_record_id: recordId,
+      },
+    );
+    expect(startError).toBeNull();
+    const runId = startData as string;
+    const { data: stepRun } = await supabase
+      .from("process_step_runs")
+      .select("id")
+      .eq("process_run_id", runId)
+      .single();
+    const { error: completeError } = await secondMember.client.rpc(
+      "complete_process_step_run_authorized",
+      { p_workspace_id: DEMO_WORKSPACE_ID, p_process_run_id: runId, p_step_run_id: stepRun!.id },
+    );
+    expect(completeError).toBeNull();
+
+    const { error: blockedError } = await supabase
+      .from("workspace_memberships")
+      .delete()
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("user_id", secondMember.userId);
+    expect(blockedError).not.toBeNull();
+
+    const { error: clearError } = await authenticatedClient.rpc(
+      "save_process_template_authorized",
+      {
+        p_workspace_id: DEMO_WORKSPACE_ID,
+        p_process_template_id: template.id,
+        p_name: template.name,
+        p_description: null,
+        p_applies_to_entity_type_id: entity.id,
+        p_steps: [{ node_id: template.nodeIds[0], name: "Only Step", assignee_user_id: null }],
+      },
+    );
+    expect(clearError).toBeNull();
+
+    const { error: allowedError } = await supabase
+      .from("workspace_memberships")
+      .delete()
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("user_id", secondMember.userId);
+    expect(allowedError).toBeNull();
+
+    const { data: historicalStepRun } = await supabase
+      .from("process_step_runs")
+      .select("assignee_user_id, assignee_label, status")
+      .eq("id", stepRun!.id)
+      .single();
+    expect(historicalStepRun?.status).toBe("completed");
+    expect(historicalStepRun?.assignee_user_id).toBe(secondMember.userId);
+    expect(historicalStepRun?.assignee_label).toBe(secondMember.email);
+  });
+
+  test("My Work shows only the current user's steps from active runs, split into Ready now and Upcoming", async ({
+    page,
+  }) => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const secondMember = await createSecondWorkspaceMember("my-work");
+    const authenticatedClient = await createAuthenticatedTestClient();
+    const { data: userData } = await authenticatedClient.auth.getUser();
+    const runnerUserId = userData.user?.id as string;
+    const template = await createProcessTemplateFixture(
+      run,
+      entity,
+      ["Runner Active Step", "Runner Pending Step", "Second Member Step"],
+      [runnerUserId, runnerUserId, secondMember.userId],
+    );
+    const recordId = await createEntityRecord({
+      entity,
+      valuesBySlug: { name: "My Work Record" },
+    });
+
+    await page.goto(`/entities/${entity.id}/records/${recordId}`);
+    await processCard(page, template.name).getByRole("button", { name: "Start process" }).click();
+    await page.waitForURL(/\/process-runs\//);
+
+    await page.goto("/my-work");
+    const readyNowSection = page.locator("section").filter({ hasText: "Ready now" });
+    const upcomingSection = page.locator("section").filter({ hasText: "Upcoming" });
+    await expect(readyNowSection.getByText("Runner Active Step")).toBeVisible();
+    await expect(upcomingSection.getByText("Runner Pending Step")).toBeVisible();
+    await expect(page.getByText("Second Member Step")).toHaveCount(0);
+
+    const { data: runRow } = await supabase
+      .from("process_runs")
+      .select("id")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_template_id", template.id)
+      .single();
+    const { data: stepRuns } = await supabase
+      .from("process_step_runs")
+      .select("id, step_index")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_run_id", runRow!.id)
+      .order("step_index", { ascending: true });
+    const runnerActiveStep = stepRuns?.find((stepRunRow) => stepRunRow.step_index === 1);
+    const runnerPendingStep = stepRuns?.find((stepRunRow) => stepRunRow.step_index === 2);
+    const secondMemberStep = stepRuns?.find((stepRunRow) => stepRunRow.step_index === 3);
+
+    await authenticatedClient.rpc("complete_process_step_run_authorized", {
+      p_workspace_id: DEMO_WORKSPACE_ID,
+      p_process_run_id: runRow!.id,
+      p_step_run_id: runnerActiveStep!.id,
+    });
+    await authenticatedClient.rpc("complete_process_step_run_authorized", {
+      p_workspace_id: DEMO_WORKSPACE_ID,
+      p_process_run_id: runRow!.id,
+      p_step_run_id: runnerPendingStep!.id,
+    });
+    await secondMember.client.rpc("complete_process_step_run_authorized", {
+      p_workspace_id: DEMO_WORKSPACE_ID,
+      p_process_run_id: runRow!.id,
+      p_step_run_id: secondMemberStep!.id,
+    });
+
+    await page.goto("/my-work");
+    await expect(page.getByText("Runner Active Step")).toHaveCount(0);
+    await expect(page.getByText("Runner Pending Step")).toHaveCount(0);
   });
 });

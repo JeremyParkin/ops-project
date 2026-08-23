@@ -1,3 +1,6 @@
+import { getCurrentUser } from "@/lib/auth/workspace";
+import { getEntityContext } from "./metadata-repository";
+import { getEntityRecord, getRecordLabel } from "./record-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
   ProcessEdge,
@@ -10,6 +13,7 @@ import type {
   ProcessStepRunStatus,
   ProcessTemplate,
   ProcessTemplateWithSteps,
+  WorkspaceMemberIdentity,
 } from "./process-types";
 
 type ProcessTemplateRow = {
@@ -29,6 +33,7 @@ type ProcessNodeRow = {
   process_template_id: string;
   node_type: ProcessNodeType;
   name: string;
+  assignee_user_id: string | null;
   config: Record<string, never>;
   created_at: string;
   updated_at: string;
@@ -68,11 +73,14 @@ type ProcessStepRunRow = {
   status: ProcessStepRunStatus;
   started_at: string | null;
   completed_at: string | null;
+  assignee_user_id: string | null;
+  assignee_label: string | null;
 };
 
 export type ProcessTemplateStepInput = {
   nodeId: string | null;
   name: string;
+  assigneeUserId: string | null;
 };
 
 function mapProcessTemplate(row: ProcessTemplateRow): ProcessTemplate {
@@ -95,6 +103,7 @@ function mapProcessNode(row: ProcessNodeRow): ProcessNode {
     processTemplateId: row.process_template_id,
     nodeType: row.node_type,
     name: row.name,
+    assigneeUserId: row.assignee_user_id ?? undefined,
     config: row.config,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -129,6 +138,8 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     status: row.status,
     startedAt: row.started_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
+    assigneeUserId: row.assignee_user_id ?? undefined,
+    assigneeLabel: row.assignee_label ?? undefined,
   };
 }
 
@@ -300,7 +311,11 @@ export async function saveProcessTemplate({
     p_name: name,
     p_description: description ?? null,
     p_applies_to_entity_type_id: appliesToEntityTypeId,
-    p_steps: steps.map((step) => ({ node_id: step.nodeId, name: step.name })),
+    p_steps: steps.map((step) => ({
+      node_id: step.nodeId,
+      name: step.name,
+      assignee_user_id: step.assigneeUserId,
+    })),
   });
 
   if (error) {
@@ -553,5 +568,145 @@ export async function getRecordProcessRunSummary({
   return {
     total: data.length,
     references: data.map((run) => ({ templateName: run.process_template_name })),
+  };
+}
+
+export async function listWorkspaceMemberIdentities({
+  workspaceId,
+}: {
+  workspaceId: string;
+}): Promise<WorkspaceMemberIdentity[]> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc(
+    "list_workspace_member_identities_authorized",
+    { p_workspace_id: workspaceId },
+  );
+
+  if (error) {
+    throw new Error(`Unable to load workspace members: ${error.message}`);
+  }
+
+  const rows = data as Array<{ user_id: string; email: string }> | null;
+
+  return (rows ?? []).map((row) => ({ userId: row.user_id, email: row.email }));
+}
+
+export type MyWorkItem = {
+  stepRun: ProcessStepRun;
+  run: ProcessRun;
+  originRecordLabel: string;
+  originHref: string;
+};
+
+export type MyWorkSummary = {
+  readyNow: MyWorkItem[];
+  upcoming: MyWorkItem[];
+};
+
+// "My Work" is a convenience filter over data every workspace member can
+// already see (via Process Run detail), not a new visibility boundary — the
+// current user is always resolved server-side via getCurrentUser(), never
+// accepted from the caller, so this can never be used to look up someone
+// else's assignments.
+export async function listMyWorkItems({
+  workspaceId,
+}: {
+  workspaceId: string;
+}): Promise<MyWorkSummary> {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return { readyNow: [], upcoming: [] };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("process_step_runs")
+    .select("*, process_runs!inner(*)")
+    .eq("workspace_id", workspaceId)
+    .eq("assignee_user_id", user.id)
+    .in("status", ["active", "pending"])
+    .eq("process_runs.status", "active")
+    .order("started_at", { foreignTable: "process_runs", ascending: true })
+    .order("step_index", { ascending: true })
+    .returns<Array<ProcessStepRunRow & { process_runs: ProcessRunRow }>>();
+
+  if (error) {
+    throw new Error(`Unable to load My Work: ${error.message}`);
+  }
+
+  const entries = data.map((row) => ({
+    stepRun: mapProcessStepRun(row),
+    run: mapProcessRun(row.process_runs),
+  }));
+
+  if (entries.length === 0) {
+    return { readyNow: [], upcoming: [] };
+  }
+
+  const uniqueOrigins = new Map<string, { entityTypeId: string; recordId: string }>();
+
+  entries.forEach((entry) => {
+    const key = `${entry.run.originEntityTypeId}:${entry.run.originRecordId}`;
+    uniqueOrigins.set(key, {
+      entityTypeId: entry.run.originEntityTypeId,
+      recordId: entry.run.originRecordId,
+    });
+  });
+
+  const entityTypeIds = [
+    ...new Set([...uniqueOrigins.values()].map((origin) => origin.entityTypeId)),
+  ];
+  const entityContextByTypeId = new Map(
+    await Promise.all(
+      entityTypeIds.map(async (entityTypeId) => {
+        const context = await getEntityContext({ workspaceId, entityTypeId });
+        return [entityTypeId, context] as const;
+      }),
+    ),
+  );
+
+  const labelByOriginKey = new Map(
+    await Promise.all(
+      [...uniqueOrigins.entries()].map(async ([key, origin]) => {
+        const context = entityContextByTypeId.get(origin.entityTypeId);
+
+        if (!context) {
+          return [key, "Record"] as const;
+        }
+
+        try {
+          const record = await getEntityRecord({
+            workspaceId,
+            entityTypeId: origin.entityTypeId,
+            recordId: origin.recordId,
+            fields: context.fields,
+          });
+
+          return [
+            key,
+            getRecordLabel({ entityType: context.entityType, fields: context.fields, record }),
+          ] as const;
+        } catch {
+          return [key, "Record"] as const;
+        }
+      }),
+    ),
+  );
+
+  const items: MyWorkItem[] = entries.map((entry) => {
+    const key = `${entry.run.originEntityTypeId}:${entry.run.originRecordId}`;
+
+    return {
+      stepRun: entry.stepRun,
+      run: entry.run,
+      originRecordLabel: labelByOriginKey.get(key) ?? "Record",
+      originHref: `/entities/${entry.run.originEntityTypeId}/records/${entry.run.originRecordId}`,
+    };
+  });
+
+  return {
+    readyNow: items.filter((item) => item.stepRun.status === "active"),
+    upcoming: items.filter((item) => item.stepRun.status === "pending"),
   };
 }

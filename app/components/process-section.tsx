@@ -11,6 +11,7 @@ export type ProcessSectionEntry = {
     completed: number;
     total: number;
     currentStepName?: string;
+    currentStepAssigneeLabel?: string;
   };
   startProcessRunAction: (
     state: ProcessActionState,
@@ -55,6 +56,9 @@ export function ProcessSection({ entries }: ProcessSectionProps) {
                     {stepSummary?.currentStepName ? (
                       <p className="text-sm text-slate-500">
                         Current: {stepSummary.currentStepName}
+                        {stepSummary.currentStepAssigneeLabel
+                          ? ` · ${stepSummary.currentStepAssigneeLabel}`
+                          : ""}
                       </p>
                     ) : null}
                   </div>

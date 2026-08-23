@@ -44,7 +44,7 @@ export default async function ProcessRunPage({
   params: Promise<{ processRunId: string }>;
 }) {
   const { processRunId } = await params;
-  const { workspaceId } = await getActiveWorkspaceId();
+  const { workspaceId, user } = await getActiveWorkspaceId();
   const pageData = await loadProcessRunPageData(workspaceId, processRunId);
 
   if (!pageData) {
@@ -61,6 +61,7 @@ export default async function ProcessRunPage({
         run={run}
         originLabel={originLabel}
         originHref={originHref}
+        currentUserId={user.id}
         completeProcessStepRunAction={completeProcessStepRunAction.bind(null, {
           workspaceId,
           processRunId,

@@ -78,6 +78,7 @@ export async function saveProcessTemplateAction(
       steps: validation.steps.map((step) => ({
         nodeId: step.nodeId || null,
         name: step.name,
+        assigneeUserId: step.assigneeUserId || null,
       })),
     });
   } catch (error) {

@@ -3,13 +3,17 @@ import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { ProcessTemplateForm } from "@/app/components/process-template-form";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
+import { listWorkspaceMemberIdentities } from "@/lib/domain/process-repository";
 import { initialProcessTemplateFormState } from "@/lib/domain/process-validation";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewProcessTemplatePage() {
   const { workspaceId } = await getActiveWorkspaceId();
-  const entityTypes = await listEntityTypes({ workspaceId });
+  const [entityTypes, members] = await Promise.all([
+    listEntityTypes({ workspaceId }),
+    listWorkspaceMemberIdentities({ workspaceId }),
+  ]);
   const createProcessTemplate = saveProcessTemplateAction.bind(null, { workspaceId });
 
   return (
@@ -18,6 +22,7 @@ export default async function NewProcessTemplatePage() {
       <div className="flex min-w-0 flex-1 flex-col gap-8">
         <ProcessTemplateForm
           entityTypes={entityTypes}
+          members={members}
           saveProcessTemplateAction={createProcessTemplate}
           initialState={initialProcessTemplateFormState}
           isEditing={false}

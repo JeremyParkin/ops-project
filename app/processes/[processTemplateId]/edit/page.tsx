@@ -4,19 +4,23 @@ import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { ProcessTemplateForm } from "@/app/components/process-template-form";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
-import { getProcessTemplateWithSteps } from "@/lib/domain/process-repository";
+import {
+  getProcessTemplateWithSteps,
+  listWorkspaceMemberIdentities,
+} from "@/lib/domain/process-repository";
 import type { ProcessTemplateFormState } from "@/lib/domain/process-validation";
 
 export const dynamic = "force-dynamic";
 
 async function loadEditPageData(workspaceId: string, processTemplateId: string) {
   try {
-    const [entityTypes, template] = await Promise.all([
+    const [entityTypes, template, members] = await Promise.all([
       listEntityTypes({ workspaceId, includeArchived: true }),
       getProcessTemplateWithSteps({ workspaceId, processTemplateId }),
+      listWorkspaceMemberIdentities({ workspaceId }),
     ]);
 
-    return { entityTypes, template };
+    return { entityTypes, template, members };
   } catch {
     return null;
   }
@@ -35,7 +39,7 @@ export default async function EditProcessTemplatePage({
     notFound();
   }
 
-  const { entityTypes, template } = pageData;
+  const { entityTypes, template, members } = pageData;
   const updateProcessTemplate = saveProcessTemplateAction.bind(null, {
     workspaceId,
     processTemplateId,
@@ -48,7 +52,11 @@ export default async function EditProcessTemplatePage({
       name: template.name,
       description: template.description ?? "",
       appliesToEntityTypeId: template.appliesToEntityTypeId,
-      steps: template.steps.map((step) => ({ nodeId: step.id, name: step.name })),
+      steps: template.steps.map((step) => ({
+        nodeId: step.id,
+        name: step.name,
+        assigneeUserId: step.assigneeUserId ?? "",
+      })),
     },
   };
 
@@ -67,6 +75,7 @@ export default async function EditProcessTemplatePage({
         ) : null}
         <ProcessTemplateForm
           entityTypes={entityTypes}
+          members={members}
           saveProcessTemplateAction={updateProcessTemplate}
           initialState={initialState}
           isEditing

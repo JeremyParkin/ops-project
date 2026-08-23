@@ -21,9 +21,18 @@ export type ProcessNode = {
   processTemplateId: string;
   nodeType: ProcessNodeType;
   name: string;
+  // Fixed v1 assignment: no assignee, or exactly one current workspace
+  // member. Structurally guaranteed (composite FK) to be a member of this
+  // same workspace whenever set.
+  assigneeUserId?: string;
   config: Record<string, never>;
   createdAt: IsoUtcTimestamp;
   updatedAt: IsoUtcTimestamp;
+};
+
+export type WorkspaceMemberIdentity = {
+  userId: string;
+  email: string;
 };
 
 export type ProcessEdge = {
@@ -70,6 +79,12 @@ export type ProcessStepRun = {
   status: ProcessStepRunStatus;
   startedAt?: IsoUtcTimestamp;
   completedAt?: IsoUtcTimestamp;
+  // Snapshotted at run start: assigneeUserId is used for completion
+  // authorization (compared against the acting user), assigneeLabel (the
+  // assignee's email at that moment) is what historical UI displays — it
+  // never depends on the membership row still existing.
+  assigneeUserId?: string;
+  assigneeLabel?: string;
 };
 
 export type ProcessRunWithSteps = ProcessRun & {

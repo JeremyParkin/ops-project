@@ -1,6 +1,7 @@
 export type ProcessTemplateStepFormValue = {
   nodeId: string;
   name: string;
+  assigneeUserId: string;
 };
 
 export type ProcessTemplateFormValues = {
@@ -26,8 +27,8 @@ export const initialProcessTemplateFormState: ProcessTemplateFormState = {
     description: "",
     appliesToEntityTypeId: "",
     steps: [
-      { nodeId: "", name: "" },
-      { nodeId: "", name: "" },
+      { nodeId: "", name: "", assigneeUserId: "" },
+      { nodeId: "", name: "", assigneeUserId: "" },
     ],
   },
 };
@@ -62,9 +63,13 @@ export function validateProcessTemplateFormData(
   const appliesToEntityTypeId = getString(formData, "appliesToEntityTypeId");
   const nodeIds = formData.getAll("stepNodeId").map((value) => String(value));
   const stepNames = formData.getAll("stepName").map((value) => String(value).trim());
+  const stepAssigneeUserIds = formData
+    .getAll("stepAssigneeUserId")
+    .map((value) => String(value).trim());
   const submittedSteps = nodeIds.map((nodeId, index) => ({
     nodeId,
     name: stepNames[index] ?? "",
+    assigneeUserId: stepAssigneeUserIds[index] ?? "",
   }));
   const submittedValues: ProcessTemplateFormValues = {
     name,
