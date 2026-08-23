@@ -671,6 +671,7 @@ export async function deleteEntityType({
     record_count: number;
     relation_field_count: number;
     workflow_target_count: number;
+    process_template_count: number;
   }> | null;
   const result = resultRows?.[0];
 
@@ -683,5 +684,6 @@ export async function deleteEntityType({
     recordCount: result.record_count,
     relationFieldCount: result.relation_field_count,
     workflowTargetCount: result.workflow_target_count,
+    processTemplateCount: result.process_template_count,
   };
 }

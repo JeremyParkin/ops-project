@@ -6,7 +6,7 @@ import type { EntityType } from "@/lib/domain/types";
 type WorkspaceNavigationProps = {
   entityTypes: EntityType[];
   activeEntityTypeId?: string;
-  activeSection?: "home" | "workflows" | "create-entity";
+  activeSection?: "home" | "workflows" | "processes" | "create-entity";
   showArchivedEntities?: boolean;
 };
 
@@ -129,7 +129,13 @@ export async function WorkspaceNavigation({
         })}
       </nav>
       <div className="mt-4 border-t border-slate-100 pt-4">
-        <details open={activeSection === "workflows" || activeSection === "create-entity"}>
+        <details
+          open={
+            activeSection === "workflows" ||
+            activeSection === "processes" ||
+            activeSection === "create-entity"
+          }
+        >
           <summary className="cursor-pointer text-sm font-semibold text-slate-700">
             Workspace setup
           </summary>
@@ -139,6 +145,12 @@ export async function WorkspaceNavigation({
               className={navigationLinkClass(activeSection === "workflows")}
             >
               Workflows
+            </Link>
+            <Link
+              href="/processes"
+              className={navigationLinkClass(activeSection === "processes")}
+            >
+              Processes
             </Link>
             <Link
               href={createEntityHref}

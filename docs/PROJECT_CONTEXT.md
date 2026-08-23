@@ -111,7 +111,7 @@ Records:
 - Archived records do not appear as new relation dropdown options.
 - Existing relationships to archived records remain valid and displayable.
 - When editing a record that already references an archived target, that archived target remains selectable as the current value so unrelated edits are not destructive.
-- Hard deletion is blocked if any incoming relation references the target record. If unreferenced, deletion removes the record; source-side relation rows cascade through existing constraints/RPC behavior.
+- Hard deletion is blocked if any incoming relation references the target record, or if any Process Run (any status) originated from it. If unreferenced, deletion removes the record; source-side relation rows cascade through existing constraints/RPC behavior.
 
 Entities:
 
@@ -119,7 +119,7 @@ Entities:
 - Archived entities are hidden from normal navigation/selectors by default.
 - Direct entity URLs remain viewable, but archived entities are read-only except restore/safe delete actions.
 - Entity rename updates user-facing name/slug while preserving entity ID.
-- Hard deletion is allowed only when the entity has zero records, including archived records; no field in the workspace has `related_entity_type_id` equal to that entity ID (self-relations count and block deletion); and no workflow's `create_record` action still targets that entity. The workflow check has no FK backing it (the entity-target relationship lives inside `actions[]` JSONB, not a column) — it is an explicit application-level `EXISTS` scan inside `delete_entity_type_if_safe`, deliberately blocking rather than cascading, matching the field-deletion dependency pattern below.
+- Hard deletion is allowed only when the entity has zero records, including archived records; no field in the workspace has `related_entity_type_id` equal to that entity ID (self-relations count and block deletion); no workflow's `create_record` action still targets that entity; and no Process Template (active or archived) applies to it. The workflow check has no FK backing it (the entity-target relationship lives inside `actions[]` JSONB, not a column) — it is an explicit application-level `EXISTS` scan inside `delete_entity_type_if_safe`, deliberately blocking rather than cascading, matching the field-deletion dependency pattern below. The process-template check *is* additionally backed by a structural FK (`process_templates.applies_to_entity_type_id ... on delete restrict`), since that relationship lives in a real column, not JSONB.
 
 Fields:
 
@@ -279,15 +279,44 @@ Execution logs:
 - Action entity/record log fields intentionally do not have FKs so audit/history semantics are not undermined by future hard deletes.
 - Deleting a workflow currently cascades its execution logs. This is acceptable for the prototype; audit preservation may change later.
 
+## Process System
+
+The first foundation for a reusable human-process orchestration engine, deliberately distinct from the other three subsystems: Entities are business data, Views are ways of seeing records, Workflows are event-driven automation ("when X happens, do Y"), Processes are repeatable sequences of human/operational work ("to accomplish X, these steps need to happen"). Domain types are in `lib/domain/process-types.ts`; persistence is in `lib/domain/process-repository.ts`; form-shape validation is in `lib/domain/process-validation.ts`; server actions are in `app/process-actions.ts` (a separate file from `app/actions.ts`, kept out of that already-large file).
+
+Persistence model — graph-capable from day one, even though v1 only supports one linear chain:
+
+- `ProcessTemplate` (`process_templates`): `name`, optional `description`, immutable `appliesToEntityTypeId` (set once at creation, never editable), `archivedAt`-only lifecycle (matching `EntityType`/`FieldDefinition`, not the `workflows.enabled` boolean pattern — a template creates durable historical dependents the way records do, unlike workflows).
+- `ProcessNode` (`process_nodes`): one step definition, `nodeType` (`'human_task'` only in v1, CHECK-constrained), `name`, reserved `config` JSONB (unused in v1). Node IDs are stable across ordinary template edits.
+- `ProcessEdge` (`process_edges`): a real adjacency table (`sourceNodeId` -> `targetNodeId`), not a position column on nodes. `unique(workspace_id, source_node_id)` and `unique(workspace_id, target_node_id)` structurally forbid branching/merging for v1 without ruling it out later — allowing multiple outgoing edges per node is how a future milestone adds branching, additively.
+- `ProcessRun` (`process_runs`): one started instance, `status` (`active`/`completed`), `originEntityTypeId`/`originRecordId`, and a **snapshot** of `processTemplateName`/`processTemplateDescription` taken at start time — a later template rename never rewrites a run's historical display. `processTemplateId` is retained for traceability/dependency checks only.
+- `ProcessStepRun` (`process_step_runs`): one instantiated step, fully snapshotting `nodeType`/`name`/`config` from its node at start time, plus `status` (`pending`/`active`/`completed`) and a `stepIndex` (1-based) recording that *run's* realized linear order. `sourceNodeId` is a soft reference (no FK), matching the existing `workflow_execution_logs` precedent of not FK-constraining audit fields — a step run's correctness never depends on its originating node still existing.
+
+Template editing preserves node identity: `save_process_template_authorized` updates existing `process_nodes` rows in place for steps resubmitted by ID (rename/reorder/config edits never change the ID), inserts new rows for null-ID steps, deletes rows omitted from the submission, and always fully rebuilds `process_edges` from the final submitted order (edges have no independent identity or history value to preserve). Submitted existing node IDs are validated server-side to actually belong to the same workspace/template.
+
+Process-run lifecycle:
+
+- Manual start only in v1 (`start_process_run_authorized`): validates the template is active and applies to the origin record's entity type, the origin record is active, then serializes on a per-origin-record advisory lock and rejects a second concurrent active run for the same template+origin record (also backed by a partial unique index, `where status = 'active'`, as a structural backstop). Walks the template's node/edge chain from its start node, creates the run plus one snapshotted step run per node, activates the first, leaves the rest pending.
+- A template + origin record combination may have unlimited *historical* runs, but at most one *active* run at a time — once a run completes, starting another is allowed and record detail offers "Start another run."
+- Completion (`complete_process_step_run_authorized`): atomically marks the given step run completed only if it is currently `active` (otherwise rejected), activates the step with `stepIndex + 1` on the same run if one exists, or marks the run `completed` if none remains. Rejects cross-workspace/foreign run/step IDs by simply not finding the row.
+- Process runs never write to `entity_records` and never interact with the workflow engine — there is no shared write path, so no recursion risk exists between the two systems in v1. A future workflow action calling `start_process_run_authorized`'s underlying repository function is expected to reuse this same canonical operation unmodified.
+
+UI: `/processes` (list), `/processes/new`, `/processes/[processTemplateId]/edit` (the step editor — Add/Move Up/Move Down/Remove, no drag-and-drop, no canvas) live under the "Workspace setup" navigation disclosure next to Workflows. `/process-runs/[processRunId]` is a flat top-level route (not nested under the origin entity) showing the ordered step list with a Complete action gated to the active step only. Record detail shows a concise "Processes" section per applicable template: not-started shows Start process; an active run shows progress/current step and Open process (no duplicate Start); a completed-with-no-active-run state shows the last completion and Start another run. **Starting a process redirects immediately to its `/process-runs/[id]` page** rather than staying on record detail — worth knowing when writing E2E flows that need to return to record detail afterward.
+
+Security model: all five process tables are RLS-enabled and grant **select-only** to `authenticated` — there is no raw authenticated insert/update/delete path on any of them, unlike the older entity/workflow tables' incrementally-tightened grants. Every write goes through a membership-checked, fixed-search-path `SECURITY DEFINER` `_authorized` RPC from the start (`save_process_template_authorized`, `archive_/restore_process_template_authorized`, `delete_process_template_if_safe_authorized`, `start_process_run_authorized`, `complete_process_step_run_authorized`), and `workspace_id` is immutable on all five tables via the same `private.reject_workspace_id_change()` trigger every other workspace-scoped table uses.
+
+Safe-delete integration: `delete_entity_type_if_safe`/`delete_entity_record_if_unreferenced` (and their `_authorized` wrappers) were extended with a `process_template_count`/`process_run_count` column respectively (required a drop+recreate, matching how migration 0020 handled the same return-shape change) — an entity type cannot be hard-deleted while any process template (active or archived) applies to it, and a record cannot be hard-deleted while any process run (any status) originates from it. Both checks surface a friendly message through the existing `deleteEntity`/`deleteRecord` actions, matching the existing relation/workflow-target message pattern. Process templates/runs/step-runs are never cascade-deleted when their business object is deleted — deletion is blocked, not cascaded, same philosophy as the relation-field and workflow-target checks.
+
 ## Database And Migrations
 
 Migrations live in `supabase/migrations/` and are currently applied manually through the Supabase SQL Editor. The latest migration is:
 
-- `0026_workspace_onboarding_setup.sql`
+- `0027_process_templates_and_runs.sql`
 
 `0019_workflow_multiple_actions.sql` added the ordered `actions` JSONB column (backfilling every pre-existing single-action workflow into a one-element array before enforcing `NOT NULL`/non-empty-array constraints), narrowed `action_config` to `{ triggerConfig, conditions }`, dropped the legacy `action_type`/`action_target_entity_type_id` columns and their constraints/FK, added `action_results` JSONB to `workflow_execution_logs`, and rewrote `delete_field_definition_if_safe` to scan all of `actions[]`. `0020_entity_delete_blocks_create_record_targets.sql` followed up: dropping `action_target_entity_type_id` also removed the composite FK that used to structurally block deleting an entity still targeted by a `create_record` action, so `delete_entity_type_if_safe` was rewritten (drop + recreate, since its `TABLE` return shape gained a column) to explicitly block that case instead.
 
 `0021_auth_workspace_rls.sql` introduced Supabase Auth memberships and RLS for every workspace-scoped table. `0022_workspace_ownership_and_mutation_grants.sql` makes `workspace_id` immutable on every persisted workspace-scoped domain row. `0023_record_mutation_rpc_wrappers.sql` adds membership-checking, fixed-search-path SECURITY DEFINER wrappers for canonical record create/update/delete, allowing raw record/relation writes to be revoked. `0024_entity_create_display_field_grant.sql` restores the narrowly required display-field update permission for the still-SECURITY-INVOKER entity-creation RPC. `0025_authorized_safe_delete_wrappers.sql` revokes PUBLIC execution from privileged wrappers and adds equivalent authorized wrappers for safe entity/field deletion, allowing raw authenticated DELETE to be revoked for both tables. `0026_workspace_onboarding_setup.sql` adds a membership-checked, fixed-search-path SECURITY DEFINER bulk metadata wrapper for atomic first-run setup. It serializes setup attempts with a workspace advisory lock, rejects any workspace that already has an entity (including archived entities), revokes PUBLIC execution, and grants only authenticated/service-role execution.
+
+`0027_process_templates_and_runs.sql` adds the whole Process System (see above): five new tables (`process_templates`, `process_nodes`, `process_edges`, `process_runs`, `process_step_runs`), all RLS-enabled and select-only for `authenticated`; six new membership-checked SECURITY DEFINER RPCs for every write; the `private.reject_workspace_id_change()` immutability trigger applied to all five; and a drop+recreate of `delete_entity_type_if_safe`/`delete_entity_record_if_unreferenced` (plus their `_authorized` wrappers) to add the new `process_template_count`/`process_run_count` dependency columns. This migration exposed a gap in the shared E2E cleanup helper (`tests/e2e/helpers/supabase-test-data.ts`'s `cleanupEntitiesById`): its raw `entity_records`/`entity_types` deletes now need `process_runs`/`process_templates` cleared first, since both carry an `on delete restrict` FK back to entities/records — fixed alongside this migration so any future spec that starts a process against a test entity still cleans up correctly.
 
 Authenticated mutation grants are intentionally split:
 
@@ -295,6 +324,7 @@ Authenticated mutation grants are intentionally split:
 - Entity types and field definitions: raw create/update writes remain available inside a member's own workspace because their canonical create/update RPCs are still SECURITY INVOKER and need those table privileges. Safe deletion is now wrapper-only. This preserves RLS tenant isolation but leaves technical same-workspace users able to bypass some app-layer entity/field create/update validation; wrapping those RPCs is future hardening.
 - Entity views and workflows: direct member insert/update/delete remains because their repositories have no canonical mutation RPC. Workflow execution logs allow direct insert only.
 - `workspace_memberships` is select-only to authenticated users; membership administration is privileged/bootstrap-only.
+- Process tables: select-only to `authenticated` from day one, with zero direct write grants ever — every mutation is a membership-checked authorized RPC. This is a stricter posture than every other table above, adopted deliberately for this new subsystem rather than repeating the incremental grant-then-wrap pattern documented for entity types/fields.
 
 Major tables:
 
@@ -306,6 +336,11 @@ Major tables:
 - `entity_views`
 - `workflows`
 - `workflow_execution_logs`
+- `process_templates`
+- `process_nodes`
+- `process_edges`
+- `process_runs`
+- `process_step_runs`
 
 Important RPCs/functions:
 
@@ -316,9 +351,14 @@ Important RPCs/functions:
 - `update_field_definition` renames fields and changes required status with transactional required-field validation.
 - `set_entity_display_field` sets or clears the configured display field, enforcing active same-entity text fields.
 - `set_entity_default_view` sets or clears the default saved table view without a circular entity/view FK.
-- `delete_entity_record_if_unreferenced` blocks hard deletion when incoming references exist.
-- `delete_entity_type_if_safe` blocks hard deletion for entities with records, entities with another field's relation pointing to them, or entities still targeted by any workflow's `create_record` action (scans `actions[]` across all workflows in the workspace). Never modifies or deletes the dependent workflow — deletion is blocked, not cascaded.
+- `delete_entity_record_if_unreferenced` blocks hard deletion when incoming relation references exist or any process run originates from the record.
+- `delete_entity_type_if_safe` blocks hard deletion for entities with records, entities with another field's relation pointing to them, entities still targeted by any workflow's `create_record` action (scans `actions[]` across all workflows in the workspace), or entities a process template (active or archived) applies to. Never modifies or deletes the dependent workflow/template — deletion is blocked, not cascaded.
 - `delete_field_definition_if_safe` blocks hard deletion for primitive JSON values, relation rows, workflow JSON references (scanning workflow-level `triggerConfig`/`conditions` plus every action's `relatedFieldDefinitionId`/`fieldMappings` across `actions[]`), display-field configuration, or saved table-view configuration.
+- `save_process_template_authorized` atomically creates or replaces a process template's name/description/steps, preserving node IDs for resubmitted steps and rebuilding `process_edges` from the submitted order.
+- `start_process_run_authorized` validates an active compatible template/origin record, rejects a duplicate active run, walks the template's node/edge chain, and creates a snapshotted run with its first step active.
+- `complete_process_step_run_authorized` atomically completes the active step and activates the next by `stepIndex`, or completes the run if none remains.
+- `archive_process_template_authorized`/`restore_process_template_authorized` toggle a template's `archived_at`.
+- `delete_process_template_if_safe_authorized` blocks hard deletion while any process run (any status) references the template.
 
 Important structural constraints include workspace-scoped uniqueness/foreign keys, relation contract constraints, field position > 0, relation target metadata requirements, workflow trigger/action check constraints, and indexes for common workspace/entity/trigger lookups.
 
@@ -337,15 +377,17 @@ Important directories/files:
 - `app/entities/[entityTypeId]/records/[recordId]/edit/page.tsx` handles metadata-driven record editing.
 - `app/entities/new/page.tsx` handles entity creation.
 - `app/workflows/page.tsx`, `app/workflows/new/page.tsx`, and `app/workflows/[workflowId]/edit/page.tsx` handle workflow listing, creation, editing, toggling, deletion, and log display.
-- `app/components/entity-navigation.tsx` is the shared workspace navigation for Home, entities, Workflows, Create Entity, archived-entity management, and the compact record-search entry point.
+- `app/processes/page.tsx`, `app/processes/new/page.tsx`, and `app/processes/[processTemplateId]/edit/page.tsx` handle process template listing, creation, editing, archiving/restoring, and deletion. `app/process-runs/[processRunId]/page.tsx` is the flat process-run detail route. `app/process-actions.ts` holds the process server-action layer, kept separate from `app/actions.ts`.
+- `app/components/entity-navigation.tsx` is the shared workspace navigation for Home, entities, Workflows, Processes, Create Entity, archived-entity management, and the compact record-search entry point.
 - `app/components/record-create-form.tsx`, `record-edit-form.tsx`, `record-detail-view.tsx`, and `entity-records-table.tsx` are generic metadata-driven record UI. `entity-records-table.tsx` delegates eligible cells to `editable-table-cell.tsx` for inline text/number/date/boolean editing.
 - `app/components/entity-views-panel.tsx` manages saved table views.
 - `app/components/workflow-create-form.tsx` is the reusable workflow definition form for create/edit.
+- `app/components/process-template-form.tsx` is the process template step editor (Add/Move Up/Move Down/Remove, no canvas). `app/components/process-section.tsx` is the record-detail "Processes" summary. `app/components/process-run-detail-view.tsx` is the process-run detail page body. `app/components/process-row-actions.tsx`, `start-process-button.tsx`, and `complete-step-button.tsx` are the process lifecycle/action buttons.
 - `app/components/field-*` and `entity-*` components handle metadata management.
-- `lib/domain/types.ts` and `workflow-types.ts` define domain shapes.
-- `lib/domain/metadata-repository.ts`, `record-repository.ts`, `view-repository.ts`, and `workflow-repository.ts` encapsulate Supabase access.
+- `lib/domain/types.ts`, `workflow-types.ts`, and `process-types.ts` define domain shapes.
+- `lib/domain/metadata-repository.ts`, `record-repository.ts`, `view-repository.ts`, `workflow-repository.ts`, and `process-repository.ts` encapsulate Supabase access.
 - `lib/domain/view-types.ts`, `view-engine.ts`, and `view-validation.ts` own saved-view behavior.
-- `lib/domain/record-validation.ts`, `entity-definition-validation.ts`, `field-definition-validation.ts`, `field-edit-validation.ts`, and `workflow-validation.ts` own authoritative validation/parsing.
+- `lib/domain/record-validation.ts`, `entity-definition-validation.ts`, `field-definition-validation.ts`, `field-edit-validation.ts`, `workflow-validation.ts`, and `process-validation.ts` own authoritative validation/parsing.
 - `lib/domain/workflow-engine.ts`, `workflow-conditions.ts`, `workflow-change-detection.ts`, `workflow-template.ts`, and `workflow-field-labels.ts` own workflow behavior.
 - `lib/supabase/server.ts` creates the server-only Supabase client.
 - `supabase/seed.sql` seeds the demo workspace/client-style starting data.
@@ -377,8 +419,12 @@ Current spec files:
 - `workspace-onboarding.spec.ts`
 - `operational-ux.spec.ts`
 - `inline-record-edit.spec.ts`
+- `process-templates.spec.ts`
+- `process-runs.spec.ts`
 
-Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
+Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project; `cleanupEntitiesById` clears `process_runs`/`process_templates` scoped to those entity types *before* deleting `entity_records`/`entity_types`, since both carry an `on delete restrict` FK back to entities/records (added alongside migration 0027).
+
+`process-runs.spec.ts` introduces one new pattern: a handful of its tests (rejecting a non-active-step completion, a duplicate active run, or a cross-workspace/foreign ID) call the process RPCs directly the way `required-field-*-rpc-safety.spec.ts` does for records — but since every process RPC is a membership-checked SECURITY DEFINER function with no raw unauthenticated twin (by design, see Process System above), those direct calls need a genuinely authenticated Supabase client, not the service-role admin client `createSupabaseTestClient()` provides. The spec signs in as the same disposable `e2e-runner@ops-project.test` user the browser session already uses (see `global-setup.ts`) via `supabase.auth.signInWithPassword`, scoped to that one spec file; it does not persist a session (`persistSession: false`) and needs no separate cleanup since the user itself is created/destroyed per-run by `global-setup.ts`, not by this pattern.
 
 This first E2E setup intentionally uses the development Supabase project with namespaced disposable data. Before CI or broader team use, prefer a separate Supabase test project or local Supabase.
 
@@ -390,7 +436,9 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Global setup creates an ordinary authenticated E2E browser session and stores it at the ignored stable path `tests/e2e/.auth/e2e-auth.json`, outside Playwright-managed output directories. The auth/RLS security spec deliberately uses empty storage state. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current full-suite baseline after Faster Record Work: 111 tests passing. The Auth/RLS security suite (`auth-workspace-security.spec.ts`) has 3 tests covering sign-in/no-access, active-workspace cookie validation, two-user/two-workspace RLS, immutable workspace ownership, raw grant boundaries, authorized wrappers, and cleanup. The onboarding suite (`workspace-onboarding.spec.ts`) has 5 tests covering empty versus archived-only workspace behavior, approved starter schemas/relations, display fields, custom setup, atomic rollback and concurrent setup, authenticated/anonymous/non-member wrapper access, Home shortcuts, secondary setup navigation, and explicit entity management. The operational UX suite (`operational-ux.spec.ts`) has 2 tests covering the table-first entity workspace, intentional record creation, empty states, secondary saved-view configuration, and secondary lifecycle actions. The inline-record-edit suite (`inline-record-edit.spec.ts`) has 9 tests covering text/number/date/boolean inline edit and persistence, invalid-input inline error without persistence, Escape cancellation, identity/relation cells staying read-only inline, archived-record/archived-entity inline-edit disablement, no-op edits not triggering `record_updated` workflows, and a real inline edit firing transition-condition workflow semantics identically to the full edit form.
+Current full-suite baseline after Process Templates + Manual Process Runs (migration 0027 applied): 127 tests passing. The Auth/RLS security suite (`auth-workspace-security.spec.ts`) has 3 tests covering sign-in/no-access, active-workspace cookie validation, two-user/two-workspace RLS, immutable workspace ownership, raw grant boundaries, authorized wrappers, and cleanup. The onboarding suite (`workspace-onboarding.spec.ts`) has 5 tests covering empty versus archived-only workspace behavior, approved starter schemas/relations, display fields, custom setup, atomic rollback and concurrent setup, authenticated/anonymous/non-member wrapper access, Home shortcuts, secondary setup navigation, and explicit entity management. The operational UX suite (`operational-ux.spec.ts`) has 2 tests covering the table-first entity workspace, intentional record creation, empty states, secondary saved-view configuration, and secondary lifecycle actions. The inline-record-edit suite (`inline-record-edit.spec.ts`) has 9 tests covering text/number/date/boolean inline edit and persistence, invalid-input inline error without persistence, Escape cancellation, identity/relation cells staying read-only inline, archived-record/archived-entity inline-edit disablement, no-op edits not triggering `record_updated` workflows, and a real inline edit firing transition-condition workflow semantics identically to the full edit form.
+
+The `process-templates.spec.ts` suite (4 tests) covers ordered step creation, stable node-ID rename/reorder (verified by direct DB query before/after), archive/restore read-only lifecycle, template safe-delete blocked-while-referenced-then-succeeding once unreferenced, and entity safe-delete blocked by an applicable template then restored once the template is removed. The `process-runs.spec.ts` suite (12 tests) covers: first-step activation with the rest pending and record-detail's independent active-run summary; full cascade-to-completion; starting another run after completion; duplicate-active-run rejection; non-active-step-completion rejection; cross-workspace/foreign-ID rejection; template-rename-does-not-rewrite-run-history; record safe-delete blocked by a process run; an archived template rejecting new runs with restore re-enabling starting; a template update rejecting both a node ID stolen from another template and a wholly forged node ID, with neither template's name/nodes mutated (proves the RPC's per-statement work rolls back atomically on the later exception, not just that nothing appeared to change); the `applies_to_entity_type_id` immutability invariant rejected via a direct tampering RPC call with the original value confirmed unchanged in the database; and a security/grants test confirming SELECT stays available while INSERT is denied on all five process tables, UPDATE/DELETE are denied on the representative `process_templates` table, and all six mutation RPCs are denied to an anonymous (unauthenticated) caller. `process-runs.spec.ts` requires a genuinely authenticated Supabase client (not the service-role admin client) for its direct-RPC rejection tests — see the note above.
 
 ## Intentional Limitations
 
@@ -418,6 +466,11 @@ Current full-suite baseline after Faster Record Work: 111 tests passing. The Aut
 - Workflow logs are basic execution records, not a durable audit ledger.
 - No deep DB-level JSON-schema validation of individual `workflows.actions[]` elements; the DB only enforces a non-empty array, and per-action shape (action type, target, mappings) is validated entirely at the application layer. Noted as a future hardening candidate.
 - Entity/field create/update RPCs remain SECURITY INVOKER, so a technical member can still use retained same-workspace raw create/update grants to bypass app-layer validation. Safe entity/field deletion and record/relation mutation bypasses are closed through authorized wrappers.
+- Process Templates support one node type (`human_task`) in a single linear acyclic chain only — no branches, parallel paths, loops, gateways, automated nodes, wait/timer nodes, or subprocesses.
+- No process assignment (no assignee field of any kind) and no due dates in v1; no "My Work" view, reminders, or notifications.
+- Processes can only be started manually from a compatible record; workflows cannot trigger a process start yet.
+- No process run skip/reopen/cancel/rework, and no deletion of process runs/step runs — history is permanent and unedited in v1.
+- No visual process builder/canvas; the template editor is a plain ordered list with Move Up/Move Down.
 
 ## Development Principles
 
@@ -497,11 +550,18 @@ Complete major capabilities:
 - A consistent light UI theme: the app shell is pinned to its light palette regardless of OS/browser dark-mode preference, matching the hardcoded light-card design used throughout, so text never renders on a mismatched background.
 - Entity hard deletion is blocked when a workflow's `create_record` action still targets that entity, alongside the existing record-count and relation-field checks — deletion is blocked, never cascaded, and the dependent workflow is left untouched.
 - Faster Record Work: inline click-to-edit editing of text/number/date/boolean fields directly from the entity table, with explicit commit/cancel semantics, no autosave-on-blur, `router.refresh()`-based UI sync, a no-op short-circuit, and full reuse of the canonical record-update validation/repository/workflow path — inline edits fire `record_updated` workflows (including transition-aware conditions) exactly as the full edit form does. Relation and identity/display fields remain read-only inline; no migration or repository change was required.
-- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, record-updated transition conditions, update-record, update-related-record, multiple-ordered-actions, dark-mode-contrast, and inline record-editing behavior.
+- Process Templates + Manual Process Runs (v1 foundation): reusable linear human-task templates (`ProcessTemplate`/`ProcessNode`/`ProcessEdge`, graph-capable persistence), manually started per compatible record into a `ProcessRun`/`ProcessStepRun` with full template/step snapshotting, sequential step completion with atomic activation cascade, at-most-one-active-run-per-template-per-record enforcement, and safe-delete integration blocking entity/record hard deletion while a template applies/run references. Five new select-only-for-authenticated tables, six new membership-checked SECURITY DEFINER RPCs, no raw mutation path. Assignment, due dates, reminders, workflow-triggered start, and branching/parallelism are all explicitly deferred.
+- Automated Playwright E2E harness covering representative entity, relation, archived-relation edit preservation, display-field, saved-view, record-detail, related-record creation, workspace navigation/search, workflow, record-updated, record-updated transition conditions, update-record, update-related-record, multiple-ordered-actions, dark-mode-contrast, inline record-editing, and process template/run behavior.
 - Supabase Auth email/password sign-in, protected workspace access, explicit memberships, active-workspace selection, RLS tenant isolation, immutable workspace ownership, and authorized record mutation wrappers.
 
 Sensible next areas, without committing to architecture yet:
 
+- Process assignment and a "My Work" view (deliberately deferred — the plan considered fixed-assignee-via-relation and record-relation-resolved assignee, but neither was adopted for v1 to avoid solving users-vs-team-member-records before the process engine itself was proven).
+- Process due dates (e.g. a relative "+N days from activation" offset), once something actually consumes them.
+- Process reminders/notifications.
+- A workflow action that starts a process (the manual-start repository function is already shaped for this; no v1 accommodation was needed).
+- Process branching/parallelism/gateway/timer/automated/subprocess node types — the graph-capable schema (`process_edges` as a real adjacency table) is intended to make these additive later.
+- A visual process builder/canvas (v1 is deliberately a plain vertical step list).
 - Future hardening of the remaining SECURITY-INVOKER entity/field create/update RPCs so their raw same-workspace mutation grants can be removed.
 - Better workflow observability/history and possibly durable background execution.
 - Richer record detail capabilities such as layouts, comments, attachments, and activity.

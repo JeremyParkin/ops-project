@@ -7,12 +7,19 @@ import {
 } from "@/app/actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkspacePageLayout } from "@/app/components/page-primitives";
+import type { ProcessSectionEntry } from "@/app/components/process-section";
 import { RecordDetailView } from "@/app/components/record-detail-view";
+import { startProcessRunAction } from "@/app/process-actions";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import {
   getEntityContext,
   listEntityTypes,
 } from "@/lib/domain/metadata-repository";
+import {
+  getProcessRunWithSteps,
+  listApplicableProcessTemplatesForEntityType,
+  listProcessRunsForOrigin,
+} from "@/lib/domain/process-repository";
 import {
   getEntityRecord,
   getRelationLookups,
@@ -20,6 +27,78 @@ import {
 } from "@/lib/domain/record-repository";
 
 export const dynamic = "force-dynamic";
+
+async function loadProcessSectionEntries({
+  workspaceId,
+  entityTypeId,
+  recordId,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+  recordId: string;
+}): Promise<ProcessSectionEntry[]> {
+  const [applicableTemplates, runsForRecord] = await Promise.all([
+    listApplicableProcessTemplatesForEntityType({ workspaceId, entityTypeId }),
+    listProcessRunsForOrigin({
+      workspaceId,
+      originEntityTypeId: entityTypeId,
+      originRecordId: recordId,
+    }),
+  ]);
+
+  if (applicableTemplates.length === 0) {
+    return [];
+  }
+
+  // runsForRecord is ordered newest-first, so the first match per template is
+  // that template's latest run.
+  const latestRunByTemplateId = new Map<string, (typeof runsForRecord)[number]>();
+
+  runsForRecord.forEach((run) => {
+    if (!latestRunByTemplateId.has(run.processTemplateId)) {
+      latestRunByTemplateId.set(run.processTemplateId, run);
+    }
+  });
+
+  return Promise.all(
+    applicableTemplates.map(async (template) => {
+      const latestRun = latestRunByTemplateId.get(template.id);
+      const startProcessRunActionForTemplate = startProcessRunAction.bind(null, {
+        workspaceId,
+        processTemplateId: template.id,
+        originEntityTypeId: entityTypeId,
+        originRecordId: recordId,
+      });
+
+      if (!latestRun) {
+        return {
+          template,
+          startProcessRunAction: startProcessRunActionForTemplate,
+        };
+      }
+
+      const runWithSteps = await getProcessRunWithSteps({
+        workspaceId,
+        processRunId: latestRun.id,
+      });
+      const completed = runWithSteps.steps.filter(
+        (step) => step.status === "completed",
+      ).length;
+      const currentStep = runWithSteps.steps.find((step) => step.status === "active");
+
+      return {
+        template,
+        latestRun,
+        stepSummary: {
+          completed,
+          total: runWithSteps.steps.length,
+          currentStepName: currentStep?.name,
+        },
+        startProcessRunAction: startProcessRunActionForTemplate,
+      };
+    }),
+  );
+}
 
 async function loadRecordDetailPageData(
   workspaceId: string,
@@ -41,7 +120,7 @@ async function loadRecordDetailPageData(
       recordId,
       fields: entityContext.fields,
     });
-    const [relationLookups, incomingRelationGroups] = await Promise.all([
+    const [relationLookups, incomingRelationGroups, processSectionEntries] = await Promise.all([
       getRelationLookups({
         workspaceId,
         fields: entityContext.fields,
@@ -52,6 +131,7 @@ async function loadRecordDetailPageData(
         targetEntityTypeId: entityTypeId,
         targetRecordId: recordId,
       }),
+      loadProcessSectionEntries({ workspaceId, entityTypeId, recordId }),
     ]);
 
     return {
@@ -61,6 +141,7 @@ async function loadRecordDetailPageData(
       record,
       relationLookups,
       incomingRelationGroups,
+      processSectionEntries,
     };
   } catch {
     return null;
@@ -90,6 +171,7 @@ export default async function RecordDetailPage({
     record,
     relationLookups,
     incomingRelationGroups,
+    processSectionEntries,
   } = pageData;
   const actionContext = {
     ...context,
@@ -115,6 +197,7 @@ export default async function RecordDetailPage({
           record={record}
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
           incomingRelationGroups={incomingRelationGroups}
+          processSectionEntries={record.archivedAt ? [] : processSectionEntries}
           editHref={
             entityType.archivedAt
               ? undefined

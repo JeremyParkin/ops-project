@@ -74,6 +74,7 @@ import {
   type RecordActionState,
   updateEntityRecord as updateEntityRecordInRepository,
 } from "@/lib/domain/record-repository";
+import { getEntityTypeProcessTemplateSummary, getRecordProcessRunSummary } from "@/lib/domain/process-repository";
 import {
   createWorkflowDefinition,
   deleteWorkflowDefinition,
@@ -423,13 +424,29 @@ export async function deleteRecord(
     const result = await deleteEntityRecord(context);
 
     if (!result.deleted) {
-      const summary = await getIncomingReferenceSummary(context);
+      if (result.referenceCount > 0) {
+        const summary = await getIncomingReferenceSummary(context);
+
+        return {
+          success: false,
+          message: formatReferenceSummary(entityType.name, {
+            ...summary,
+            total: result.referenceCount,
+          }),
+        };
+      }
+
+      const processRunSummary = await getRecordProcessRunSummary({
+        workspaceId: context.workspaceId,
+        entityTypeId: context.entityTypeId,
+        recordId: context.recordId,
+      });
 
       return {
         success: false,
-        message: formatReferenceSummary(entityType.name, {
-          ...summary,
-          total: result.referenceCount,
+        message: formatProcessRunReferenceMessage(entityType.name, {
+          total: result.processRunCount,
+          references: processRunSummary.references,
         }),
       };
     }
@@ -446,6 +463,19 @@ export async function deleteRecord(
     success: true,
     message: "Record deleted.",
   };
+}
+
+function formatProcessRunReferenceMessage(
+  entityName: string,
+  summary: { total: number; references: Array<{ templateName: string }> },
+) {
+  const templateNames = [...new Set(summary.references.map((reference) => reference.templateName))]
+    .slice(0, 3)
+    .join(", ");
+
+  return `Cannot delete this ${entityName} because ${summary.total} process run${
+    summary.total === 1 ? "" : "s"
+  } reference it${templateNames ? `: ${templateNames}` : ""}.`;
 }
 
 export async function deleteRecordFromDetail(
@@ -1585,6 +1615,8 @@ function formatEntityDeleteBlockMessage({
   relationReferences,
   workflowTargetCount,
   workflowReferences,
+  processTemplateCount,
+  processTemplateReferences,
 }: {
   entityName: string;
   recordCount: number;
@@ -1595,6 +1627,8 @@ function formatEntityDeleteBlockMessage({
   }>;
   workflowTargetCount: number;
   workflowReferences: Array<{ workflowName: string }>;
+  processTemplateCount: number;
+  processTemplateReferences: Array<{ templateName: string }>;
 }) {
   if (recordCount > 0) {
     return `Cannot delete ${entityName} because it contains ${recordCount} record${
@@ -1613,15 +1647,28 @@ function formatEntityDeleteBlockMessage({
     } reference it${referenceNames ? `: ${referenceNames}` : ""}.`;
   }
 
-  const workflowNames = workflowReferences
+  if (workflowTargetCount > 0) {
+    const workflowNames = workflowReferences
+      .slice(0, 3)
+      .map((reference) => reference.workflowName)
+      .join(", ");
+
+    return `Cannot delete ${entityName} because ${workflowTargetCount} workflow${
+      workflowTargetCount === 1 ? "" : "s"
+    } create${workflowTargetCount === 1 ? "s" : ""} records in it${
+      workflowNames ? `: ${workflowNames}` : ""
+    }.`;
+  }
+
+  const templateNames = processTemplateReferences
     .slice(0, 3)
-    .map((reference) => reference.workflowName)
+    .map((reference) => reference.templateName)
     .join(", ");
 
-  return `Cannot delete ${entityName} because ${workflowTargetCount} workflow${
-    workflowTargetCount === 1 ? "" : "s"
-  } create${workflowTargetCount === 1 ? "s" : ""} records in it${
-    workflowNames ? `: ${workflowNames}` : ""
+  return `Cannot delete ${entityName} because ${processTemplateCount} process template${
+    processTemplateCount === 1 ? "" : "s"
+  } appl${processTemplateCount === 1 ? "ies" : "y"} to it${
+    templateNames ? `: ${templateNames}` : ""
   }.`;
 }
 
@@ -1647,6 +1694,10 @@ export async function deleteEntity(
         result.workflowTargetCount > 0
           ? await getEntityTypeWorkflowTargetSummary(context)
           : { references: [] };
+      const processTemplateSummary =
+        result.processTemplateCount > 0
+          ? await getEntityTypeProcessTemplateSummary(context)
+          : { references: [] };
 
       return {
         success: false,
@@ -1657,6 +1708,8 @@ export async function deleteEntity(
           relationReferences: relationSummary.references,
           workflowTargetCount: result.workflowTargetCount,
           workflowReferences: workflowSummary.references,
+          processTemplateCount: result.processTemplateCount,
+          processTemplateReferences: processTemplateSummary.references,
         }),
       };
     }

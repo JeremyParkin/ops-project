@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { RecordDetailActions } from "@/app/components/record-detail-actions";
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
+import { ProcessSection, type ProcessSectionEntry } from "@/app/components/process-section";
 import type {
   IncomingRelationGroup,
   RelationLabelsByFieldKey,
@@ -14,6 +15,7 @@ type RecordDetailViewProps = {
   record: EntityRecord;
   relationLabelsByFieldKey: RelationLabelsByFieldKey;
   incomingRelationGroups: IncomingRelationGroup[];
+  processSectionEntries: ProcessSectionEntry[];
   editHref?: string;
   archiveRecordAction: Parameters<typeof RecordDetailActions>[0]["archiveRecordAction"];
   restoreRecordAction: Parameters<typeof RecordDetailActions>[0]["restoreRecordAction"];
@@ -49,6 +51,7 @@ export function RecordDetailView({
   record,
   relationLabelsByFieldKey,
   incomingRelationGroups,
+  processSectionEntries,
   editHref,
   archiveRecordAction,
   restoreRecordAction,
@@ -115,6 +118,8 @@ export function RecordDetailView({
           })}
         </dl>
       </section>
+
+      <ProcessSection entries={processSectionEntries} />
 
       {incomingRelationGroups.length > 0 ? (
         <section className="border border-slate-200 bg-white p-5">
