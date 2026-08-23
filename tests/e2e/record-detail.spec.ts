@@ -323,15 +323,25 @@ test("archive, restore, and safe delete actions work from detail", async ({
 }) => {
   const run = createScenarioRun();
   const { client, acmeId } = await createDetailScenario(run);
+  const recordActions = page.locator("details").filter({
+    has: page.getByText("Record actions", { exact: true }),
+  });
 
   await page.goto(`/entities/${client.id}/records/${acmeId}`);
+  await recordActions.locator("summary").click();
   await page.getByRole("button", { name: "Archive" }).click();
   await expect(page.getByText("Record archived.")).toBeVisible();
   await expect(page.locator("span").filter({ hasText: /^Archived$/ })).toBeVisible();
+  if (!(await page.getByRole("button", { name: "Restore" }).isVisible())) {
+    await recordActions.locator("summary").click();
+  }
   await page.getByRole("button", { name: "Restore" }).click();
   await expect(page.getByText("Record restored.")).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
+  if (!(await page.getByRole("button", { name: "Delete" }).isVisible())) {
+    await recordActions.locator("summary").click();
+  }
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText(/Cannot delete this/)).toBeVisible();
 });

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { updateRecord } from "@/app/actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
+import { WorkspacePageLayout } from "@/app/components/page-primitives";
 import { RecordEditForm } from "@/app/components/record-edit-form";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import {
@@ -98,12 +99,12 @@ export default async function RecordEditPage({
   });
 
   return (
-    <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
-      <WorkspaceNavigation
+    <WorkspacePageLayout
+      navigation={<WorkspaceNavigation
         entityTypes={entityTypes}
         activeEntityTypeId={entityType.id}
-      />
-      <div className="flex min-w-0 flex-1 flex-col gap-6">
+      />}
+    >
         <Link
           href={`/entities/${entityType.id}`}
           className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
@@ -119,7 +120,6 @@ export default async function RecordEditPage({
           updateRecordAction={updateEntityRecord}
           returnTo={returnTo === "detail" ? "detail" : undefined}
         />
-      </div>
-    </main>
+    </WorkspacePageLayout>
   );
 }

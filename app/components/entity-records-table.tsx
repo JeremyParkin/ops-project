@@ -25,6 +25,10 @@ type EntityRecordsTableProps = {
     workspaceId: string;
     entityTypeId: string;
   };
+  emptyState?: {
+    title: string;
+    description: string;
+  };
 };
 
 function formatFieldValue(
@@ -82,6 +86,7 @@ export function EntityRecordsTable({
   relationLabelsByFieldKey = {},
   recordEditPathBase,
   recordActionContext,
+  emptyState,
 }: EntityRecordsTableProps) {
   const identityField = getRecordIdentityField({
     entityType,
@@ -91,12 +96,29 @@ export function EntityRecordsTable({
     (field) => field.id === identityField?.id,
   );
 
+  if (records.length === 0 && emptyState) {
+    return (
+      <section className="mx-auto w-full max-w-6xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
+        <h2 className="text-lg font-semibold text-slate-950">{emptyState.title}</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
+          {emptyState.description}
+        </p>
+        <Link
+          href="#add-record"
+          className="mt-5 inline-flex h-10 items-center justify-center bg-slate-950 px-4 text-sm font-medium text-white hover:bg-slate-800"
+        >
+          Add {entityType.name}
+        </Link>
+      </section>
+    );
+  }
+
   return (
     <section className="mx-auto w-full max-w-6xl">
       <div className="overflow-hidden border border-slate-200 bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
               <tr>
                 {fields.map((field) => (
                   <th
@@ -139,7 +161,7 @@ export function EntityRecordsTable({
                     );
 
                     return (
-                      <td key={field.id} className="px-4 py-3">
+                    <td key={field.id} className="px-4 py-3 align-middle">
                         {field.id === identityField?.id && recordEditPathBase ? (
                           <Link
                             href={`${recordEditPathBase}/${record.id}`}
@@ -154,9 +176,8 @@ export function EntityRecordsTable({
                     );
                   })}
                   {recordEditPathBase ? (
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-3">
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                           {!identityFieldIsVisible ? (
                             <Link
                               href={`${recordEditPathBase}/${record.id}`}
@@ -176,23 +197,29 @@ export function EntityRecordsTable({
                               Archived
                             </span>
                           ) : null}
-                        </div>
                         {actionContext ? (
-                          <RecordRowActions
-                            isArchived={Boolean(record.archivedAt)}
-                            archiveRecordAction={archiveRecord.bind(
-                              null,
-                              actionContext,
-                            )}
-                            restoreRecordAction={restoreRecord.bind(
-                              null,
-                              actionContext,
-                            )}
-                            deleteRecordAction={deleteRecord.bind(
-                              null,
-                              actionContext,
-                            )}
-                          />
+                          <details className="text-sm">
+                            <summary className="cursor-pointer font-medium text-slate-700 underline-offset-4 hover:underline">
+                              Record actions
+                            </summary>
+                            <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3">
+                              <RecordRowActions
+                                isArchived={Boolean(record.archivedAt)}
+                                archiveRecordAction={archiveRecord.bind(
+                                  null,
+                                  actionContext,
+                                )}
+                                restoreRecordAction={restoreRecord.bind(
+                                  null,
+                                  actionContext,
+                                )}
+                                deleteRecordAction={deleteRecord.bind(
+                                  null,
+                                  actionContext,
+                                )}
+                              />
+                            </div>
+                          </details>
                         ) : null}
                       </div>
                     </td>

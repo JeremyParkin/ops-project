@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
 import type { RelationOptionsByFieldKey } from "@/lib/domain/record-repository";
 import {
@@ -39,6 +39,21 @@ function FieldError({ message }: { message?: string }) {
 }
 
 export function RecordCreateForm({
+  initialValues = {},
+  ...props
+}: RecordCreateFormProps) {
+  const formIdentity = JSON.stringify(initialValues);
+
+  return (
+    <RecordCreateFormContents
+      key={formIdentity}
+      {...props}
+      initialValues={initialValues}
+    />
+  );
+}
+
+function RecordCreateFormContents({
   entityType,
   fields,
   relationOptionsByFieldKey = {},
@@ -48,6 +63,7 @@ export function RecordCreateForm({
   createRecordAction,
 }: RecordCreateFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [state, formAction, pending] = useActionState(
     createRecordAction,
     {
@@ -58,6 +74,14 @@ export function RecordCreateForm({
   const orderedFields = [...fields].sort((left, right) => {
     return left.position - right.position;
   });
+  const [open, setOpen] = useState(
+    () =>
+      Boolean(cancelHref) ||
+      Object.keys(initialValues).length > 0 ||
+      (typeof window !== "undefined" && window.location.hash === "#add-record"),
+  );
+  const hasErrors = Object.keys(state.errors).length > 0;
+  const isOpen = open || hasErrors;
 
   useEffect(() => {
     if (state.success) {
@@ -65,29 +89,80 @@ export function RecordCreateForm({
     }
   }, [state.success]);
 
-  return (
-    <section
-      id="add-record"
-      className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5"
-    >
-      <div className="mb-5">
-        <h2 className="text-xl font-semibold text-slate-950">
-          Add {entityType.name}
-        </h2>
-        {state.message ? (
-          <p
-            className={`mt-2 text-sm ${
-              state.success ? "text-emerald-700" : "text-red-700"
-            }`}
-            role="status"
-          >
-            {state.message}
-          </p>
-        ) : null}
-        <FieldError message={state.errors._form} />
-      </div>
+  useEffect(() => {
+    function openFromHash() {
+      if (window.location.hash === "#add-record") {
+        setOpen(true);
+      }
+    }
 
-      <form ref={formRef} action={formAction} className="grid gap-4 md:grid-cols-2">
+    function openFromAddRecordLink(event: MouseEvent) {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      if (event.target.closest('a[href="#add-record"]')) {
+        setOpen(true);
+      }
+    }
+
+    window.addEventListener("hashchange", openFromHash);
+    window.addEventListener("click", openFromAddRecordLink);
+    return () => {
+      window.removeEventListener("hashchange", openFromHash);
+      window.removeEventListener("click", openFromAddRecordLink);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const shouldFocus =
+      window.location.hash === "#add-record" || Boolean(cancelHref);
+    if (shouldFocus) {
+      headingRef.current?.focus();
+    }
+  }, [cancelHref, isOpen]);
+
+  function closeForm() {
+    formRef.current?.reset();
+    setOpen(false);
+  }
+
+  return (
+    <details
+      id="add-record"
+      open={isOpen}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      className="mx-auto w-full max-w-6xl border border-slate-200 bg-white"
+    >
+      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-800 marker:text-slate-500">
+        Add {entityType.name}
+      </summary>
+      <div className="border-t border-slate-200 p-5">
+        <div className="mb-5">
+          <h2 ref={headingRef} tabIndex={-1} className="text-xl font-semibold text-slate-950">
+            Add {entityType.name}
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Fields marked <span className="font-semibold text-red-700">*</span> are required.
+          </p>
+          {state.message ? (
+            <p
+              className={`mt-2 text-sm ${
+                state.success ? "text-emerald-700" : "text-red-700"
+              }`}
+              role="status"
+            >
+              {state.message}
+            </p>
+          ) : null}
+          <FieldError message={state.errors._form} />
+        </div>
+
+      <form ref={formRef} action={formAction} className="grid gap-5 md:grid-cols-2">
         {orderedFields.map((field) => {
           const fieldId = `record-field-${field.key}`;
           const fieldValue = getFieldValue(state, field);
@@ -201,7 +276,7 @@ export function RecordCreateForm({
           );
         })}
 
-        <div className="md:col-span-2">
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4 md:col-span-2">
           <button
             type="submit"
             disabled={pending}
@@ -216,9 +291,18 @@ export function RecordCreateForm({
             >
               Cancel
             </Link>
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              onClick={closeForm}
+              className="h-10 px-2 text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </form>
-    </section>
+      </div>
+    </details>
   );
 }

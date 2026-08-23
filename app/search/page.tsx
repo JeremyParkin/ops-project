@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
+import { PageHeader, WorkspacePageLayout } from "@/app/components/page-primitives";
 import { searchWorkspaceRecords } from "@/lib/domain/record-repository";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
@@ -20,12 +21,18 @@ export default async function SearchPage({
   ]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-7xl gap-6 p-6">
-      <WorkspaceNavigation entityTypes={entityTypes} />
-      <div className="min-w-0 flex-1">
+    <WorkspacePageLayout navigation={<WorkspaceNavigation entityTypes={entityTypes} />}>
+          <PageHeader
+            eyebrow="Workspace"
+            title="Search records"
+            description={
+              query
+                ? `${groups.reduce((count, group) => count + group.results.length, 0)} result${groups.reduce((count, group) => count + group.results.length, 0) === 1 ? "" : "s"} for “${query}”`
+                : "Find active records across your workspace."
+            }
+          />
         <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
-          <header className="mb-6 border-b border-slate-200 pb-6">
-            <h1 className="text-2xl font-semibold text-slate-950">Search records</h1>
+          <header className="border-b border-slate-200 pb-5">
             <form action="/search" method="get" className="mt-4 flex max-w-xl gap-2">
               <label className="sr-only" htmlFor="search-query">
                 Search records
@@ -48,15 +55,25 @@ export default async function SearchPage({
           </header>
 
           {!query ? (
-            <p className="text-slate-600">Enter a search term to find active records.</p>
+            <div className="py-8 text-center">
+              <p className="text-sm text-slate-600">Enter a search term to find active records.</p>
+            </div>
           ) : groups.length === 0 ? (
-            <p className="text-slate-600">No active records match “{query}”.</p>
+            <div className="py-8 text-center">
+              <h2 className="text-lg font-semibold text-slate-950">No matching records</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                No active records match “{query}”. Try a different name or text value.
+              </p>
+            </div>
           ) : (
             <div className="space-y-8">
               {groups.map((group) => (
                 <section key={group.entityType.id}>
                   <h2 className="text-lg font-semibold text-slate-950">
-                    {group.entityType.name}
+                    {group.entityType.name}{" "}
+                    <span aria-hidden="true" className="text-sm font-normal text-slate-500">
+                      ({group.results.length})
+                    </span>
                   </h2>
                   <ul className="mt-3 divide-y divide-slate-200 border-y border-slate-200">
                     {group.results.map((result) => (
@@ -80,7 +97,6 @@ export default async function SearchPage({
             </div>
           )}
         </section>
-      </div>
-    </main>
+    </WorkspacePageLayout>
   );
 }

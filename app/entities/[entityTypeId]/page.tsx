@@ -18,6 +18,10 @@ import { EntityViewsPanel } from "@/app/components/entity-views-panel";
 import { FieldCreateForm } from "@/app/components/field-create-form";
 import { FieldManagementList } from "@/app/components/field-management-list";
 import { RecordCreateForm } from "@/app/components/record-create-form";
+import {
+  PageHeader,
+  WorkspacePageLayout,
+} from "@/app/components/page-primitives";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import {
   getEntityContext,
@@ -348,35 +352,40 @@ export default async function EntityPage({
     archivedEntityQuery,
   ]);
 
+  const emptyState =
+    evaluatedView.records.length === 0
+      ? selectedView && records.length > 0
+        ? {
+            title: `No records match ${selectedView.name}.`,
+            description: "Try another view or add a record that matches this view.",
+          }
+        : {
+            title: `No ${entityType.name.toLowerCase()} records yet.`,
+            description: `Add the first ${entityType.name.toLowerCase()} to get started.`,
+          }
+      : undefined;
+
   return (
-    <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
-      <WorkspaceNavigation
+    <WorkspacePageLayout
+      navigation={<WorkspaceNavigation
         entityTypes={navigationEntityTypes}
         activeEntityTypeId={entityType.id}
         showArchivedEntities={showArchivedEntities}
-      />
-      <div className="flex min-w-0 flex-1 flex-col gap-8">
-        <section className="mx-auto flex w-full max-w-6xl flex-wrap items-start justify-between gap-4 border border-slate-200 bg-white p-5">
-          <div>
-            <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
-              Entity
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-950">
-              {entityType.name}
-            </h1>
-            {entityType.description ? (
-              <p className="mt-2 text-sm text-slate-600">{entityType.description}</p>
-            ) : null}
-          </div>
-          {!isArchivedEntity ? (
+      />}
+    >
+        <PageHeader
+          eyebrow="Entity"
+          title={entityType.name}
+          description={entityType.description}
+          actions={!isArchivedEntity ? (
             <Link
               href={isManaging ? recordsHref : manageEntityHref}
-              className="border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+              className="inline-flex h-10 items-center justify-center border border-slate-300 px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"
             >
               {isManaging ? "Return to records" : "Manage entity"}
             </Link>
-          ) : null}
-        </section>
+          ) : undefined}
+        />
         {isManaging ? (
           <EntitySettingsForm
             entityType={entityType}
@@ -418,21 +427,11 @@ export default async function EntityPage({
           </>
         ) : null}
         {!isArchivedEntity && !isManaging ? (
-          <RecordCreateForm
-            entityType={entityType}
-            fields={fields}
-            relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
-            entityNameById={entityNameById}
-            initialValues={relatedCreateMode?.initialValues}
-            cancelHref={relatedCreateMode?.cancelHref}
-            createRecordAction={createEntityRecord}
-          />
-        ) : null}
-        {!isArchivedEntity && !isManaging ? (
           <EntityViewsPanel
             entityType={entityType}
             views={views}
             selectedView={selectedView}
+            recordCount={evaluatedView.records.length}
             activeFields={fields}
             allFields={allFields}
             relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
@@ -441,6 +440,17 @@ export default async function EntityPage({
             createViewAction={createEntityView}
             updateViewAction={updateEntityView}
             deleteViewAction={deleteEntityView}
+          />
+        ) : null}
+        {!isArchivedEntity && !isManaging ? (
+          <RecordCreateForm
+            entityType={entityType}
+            fields={fields}
+            relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            entityNameById={entityNameById}
+            initialValues={relatedCreateMode?.initialValues}
+            cancelHref={relatedCreateMode?.cancelHref}
+            createRecordAction={createEntityRecord}
           />
         ) : null}
         <EntityRecordsTable
@@ -453,6 +463,7 @@ export default async function EntityPage({
             isArchivedEntity ? undefined : `/entities/${entityType.id}/records`
           }
           recordActionContext={isArchivedEntity ? undefined : context}
+          emptyState={isArchivedEntity ? undefined : emptyState}
         />
         <div className="mx-auto w-full max-w-6xl bg-white">
           <Link
@@ -466,7 +477,6 @@ export default async function EntityPage({
             {showArchivedRecords ? "Hide archived records" : "Show archived records"}
           </Link>
         </div>
-      </div>
-    </main>
+    </WorkspacePageLayout>
   );
 }

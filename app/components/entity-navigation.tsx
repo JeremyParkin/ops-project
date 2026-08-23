@@ -42,10 +42,10 @@ export async function WorkspaceNavigation({
         : "/entities/new?showArchivedEntities=true";
 
   return (
-    <aside className="w-full border border-slate-200 bg-white p-4 lg:w-64">
+    <aside className="w-full self-start border border-slate-200 bg-white p-4 lg:sticky lg:top-5 lg:w-64">
       <Link
         href={homeHref}
-        className="mb-4 block text-sm font-semibold uppercase tracking-wide text-slate-950"
+        className="mb-5 block text-sm font-semibold uppercase tracking-wide text-slate-950"
       >
         Workspace
       </Link>
@@ -71,7 +71,7 @@ export async function WorkspaceNavigation({
           </button>
         </form>
       ) : null}
-      <form action="/search" method="get" className="mb-4 flex gap-2">
+      <form action="/search" method="get" className="mb-5 flex gap-2">
         <label className="sr-only" htmlFor="workspace-record-search">
           Search records
         </label>
@@ -79,7 +79,7 @@ export async function WorkspaceNavigation({
           id="workspace-record-search"
           name="q"
           type="search"
-          className="min-w-0 flex-1 border border-slate-300 px-2 py-1.5 text-sm text-slate-950"
+          className="min-w-0 flex-1 border border-slate-300 px-2 py-1.5 text-sm text-slate-950 placeholder:text-slate-400"
           placeholder="Search records"
         />
         <button
@@ -94,8 +94,8 @@ export async function WorkspaceNavigation({
           Home
         </Link>
       </nav>
-      <div className="my-4 border-t border-slate-100" />
-      <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <div className="my-5 border-t border-slate-100" />
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
         Entities
       </div>
       <nav className="flex flex-col gap-1" aria-label="Entity navigation">

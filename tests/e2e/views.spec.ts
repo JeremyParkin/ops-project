@@ -173,6 +173,7 @@ test("creates a saved text-filtered view through the UI", async ({ page }) => {
   const { work } = await createViewsScenario(run);
 
   await gotoEntity(page, work);
+  await page.getByText("Manage views", { exact: true }).click();
   await page.getByLabel("View Name").fill(`${run.label} Needs QA`);
   await page.getByRole("button", { name: "Add Filter" }).click();
   await selectReactOption(page.locator('select[name="filterField:0"]'), {

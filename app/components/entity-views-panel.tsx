@@ -15,6 +15,7 @@ type EntityViewsPanelProps = {
   entityType: EntityType;
   views: EntityView[];
   selectedView?: EntityView;
+  recordCount: number;
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
   relationOptionsByFieldKey: RelationOptionsByFieldKey;
@@ -538,6 +539,7 @@ export function EntityViewsPanel({
   entityType,
   views,
   selectedView,
+  recordCount,
   activeFields,
   allFields,
   relationOptionsByFieldKey,
@@ -548,93 +550,120 @@ export function EntityViewsPanel({
   deleteViewAction,
 }: EntityViewsPanelProps) {
   const defaultView = views.find((view) => view.isDefault);
+  const selectedViewName = selectedView?.name ?? "All Records";
 
   return (
-    <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Link
-          href={`/entities/${entityType.id}?view=all`}
-          className={`border px-3 py-2 text-sm font-medium ${
-            !selectedView
-              ? "border-slate-950 bg-slate-950 text-white"
-              : "border-slate-300 text-slate-700"
-          }`}
-        >
-          All Records
-        </Link>
-        {views.map((view) => (
-          <Link
-            key={view.id}
-            href={`/entities/${entityType.id}?view=${view.id}`}
-            className={`border px-3 py-2 text-sm font-medium ${
-              selectedView?.id === view.id
-                ? "border-slate-950 bg-slate-950 text-white"
-                : "border-slate-300 text-slate-700"
-            }`}
-          >
-            {view.name}
-            {view.isDefault ? " · Default" : ""}
-          </Link>
-        ))}
-      </div>
-
-      {warnings.length > 0 ? (
-        <div className="mb-5 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-semibold">View needs repair.</p>
-          <ul className="mt-1 list-disc pl-5">
-            {warnings.map((warning) => (
-              <li key={warning}>{warning}</li>
-            ))}
-          </ul>
-          {invalidFilter ? (
-            <p className="mt-2">
-              This view cannot be evaluated correctly. Repair the filter or use
-              All Records.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="grid gap-3">
-        <div>
-          <h2 className="text-xl font-semibold text-slate-950">
-            {selectedView ? "Edit View" : "Create View"}
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {defaultView
-              ? `Default view: ${defaultView.name}`
-              : "No default saved view. Entity navigation opens All Records."}
+    <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Records
+          </p>
+          <p className="mt-1 text-sm text-slate-600">
+            {recordCount} record{recordCount === 1 ? "" : "s"} in {selectedViewName}
           </p>
         </div>
+        <Link
+          href="#add-record"
+          className="inline-flex h-10 items-center justify-center bg-slate-950 px-4 text-sm font-medium text-white hover:bg-slate-800"
+        >
+          Add {entityType.name}
+        </Link>
+      </div>
 
-        {selectedView && updateViewAction ? (
-          <>
+      <div className="border-t border-slate-200 px-4 py-3">
+        <nav className="flex flex-wrap gap-2" aria-label={`${entityType.name} views`}>
+          <Link
+            href={`/entities/${entityType.id}?view=all`}
+            aria-current={!selectedView ? "page" : undefined}
+            className={`border px-3 py-2 text-sm font-medium ${
+              !selectedView
+                ? "border-slate-950 bg-slate-950 text-white"
+                : "border-slate-300 text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            All Records
+          </Link>
+          {views.map((view) => (
+            <Link
+              key={view.id}
+              href={`/entities/${entityType.id}?view=${view.id}`}
+              aria-current={selectedView?.id === view.id ? "page" : undefined}
+              className={`border px-3 py-2 text-sm font-medium ${
+                selectedView?.id === view.id
+                  ? "border-slate-950 bg-slate-950 text-white"
+                  : "border-slate-300 text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {view.name}
+              {view.isDefault ? " · Default" : ""}
+            </Link>
+          ))}
+        </nav>
+      </div>
+
+      <details className="border-t border-slate-200 p-4" open={warnings.length > 0}>
+        <summary className="cursor-pointer text-sm font-medium text-slate-700">
+          Manage views
+        </summary>
+        <div className="mt-5 grid gap-4">
+          {warnings.length > 0 ? (
+            <div className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-semibold">View needs repair.</p>
+              <ul className="mt-1 list-disc pl-5">
+                {warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+              {invalidFilter ? (
+                <p className="mt-2">
+                  This view cannot be evaluated correctly. Repair the filter or use
+                  All Records.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">
+              {selectedView ? `Edit ${selectedView.name}` : "Create a saved view"}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {defaultView
+                ? `Default view: ${defaultView.name}`
+                : "No default saved view. Entity navigation opens All Records."}
+            </p>
+          </div>
+
+          {selectedView && updateViewAction ? (
+            <>
+              <ViewForm
+                key={selectedView.id}
+                mode="edit"
+                view={selectedView}
+                activeFields={activeFields}
+                allFields={allFields}
+                relationOptionsByFieldKey={relationOptionsByFieldKey}
+                action={updateViewAction}
+              />
+              {deleteViewAction ? (
+                <div className="border-t border-slate-200 pt-4">
+                  <DeleteViewForm deleteViewAction={deleteViewAction} />
+                </div>
+              ) : null}
+            </>
+          ) : (
             <ViewForm
-              key={selectedView.id}
-              mode="edit"
-              view={selectedView}
+              key="create-view"
+              mode="create"
               activeFields={activeFields}
               allFields={allFields}
               relationOptionsByFieldKey={relationOptionsByFieldKey}
-              action={updateViewAction}
+              action={createViewAction}
             />
-            {deleteViewAction ? (
-              <div className="border-t border-slate-200 pt-4">
-                <DeleteViewForm deleteViewAction={deleteViewAction} />
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <ViewForm
-            key="create-view"
-            mode="create"
-            activeFields={activeFields}
-            allFields={allFields}
-            relationOptionsByFieldKey={relationOptionsByFieldKey}
-            action={createViewAction}
-          />
-        )}
-      </div>
+          )}
+        </div>
+      </details>
     </section>
   );
 }

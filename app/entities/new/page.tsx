@@ -1,6 +1,7 @@
 import { createEntityDefinition } from "@/app/actions";
 import { EntityCreateForm } from "@/app/components/entity-create-form";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
+import { WorkspacePageLayout } from "@/app/components/page-primitives";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
 
@@ -26,16 +27,17 @@ export default async function NewEntityPage({
   ]);
 
   return (
-    <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
-      <WorkspaceNavigation
+    <WorkspacePageLayout
+      navigation={<WorkspaceNavigation
         entityTypes={navigationEntityTypes}
         activeSection="create-entity"
         showArchivedEntities={showArchivedEntities}
-      />
+      />}
+    >
       <EntityCreateForm
         entityTypes={activeEntityTypes}
         createEntityDefinitionAction={createEntityDefinition}
       />
-    </main>
+    </WorkspacePageLayout>
   );
 }

@@ -90,6 +90,7 @@ Workspace onboarding and Home:
 - Starter structures are ordinary editable metadata, not persistent product modes. Relations are added only when both selected endpoints exist: `Project.Client`, `Task.Project`, and `Opportunity.Client`.
 - Established Home is operational: entity cards are primary and show their active record count, Open and Add shortcuts, and capped saved-view links. The Add shortcut targets the existing `#add-record` form.
 - Workspace navigation prioritizes Home, Search, and active entities. Workflows, Create entity, and archived-entity management live under the secondary Workspace setup disclosure. Active entity pages are records/views/add-record first; schema and lifecycle controls are available through explicit `?manage=true` mode.
+- Operational UX Polish keeps the established workspace table-first: compact record/view controls precede the records table, Add Record is an inline native disclosure rather than a persistent form, and empty entity/view states explain whether the entity has no records or the selected view has no matches. No new record route, modal, domain capability, or persistence model was added.
 
 `EntityView` represents a saved table view for one entity. Saved views live in `entity_views` with `name`, `position`, `isDefault`, JSONB filters/sorts/column field IDs, and ISO timestamps. They configure table presentation only; they do not copy schema or records.
 
@@ -145,6 +146,7 @@ Saved views:
 - Stale column/sort references are surfaced as warnings; stale filter references fail closed.
 - Deleting a view never deletes records.
 - Workspace Home uses entity base links for primary navigation, preserving configured default-view behavior. Its secondary shortcuts use `?view=all` and `?view=<view-id>` routes.
+- Entity pages keep All Records and saved-view switching visible, while saved-view creation, editing, default selection, and deletion live under an explicit native Manage views disclosure. Stale-reference warnings still open and fail closed as before.
 
 Workspace search:
 
@@ -157,6 +159,7 @@ Record details and reverse relationships:
 
 - Stable detail route: `/entities/[entityTypeId]/records/[recordId]`.
 - Detail pages show active fields in schema order, human-readable primitive formatting, outgoing relation links, lifecycle actions, and derived incoming relationships.
+- Detail pages are identity-led: Edit is the primary action, while archive/restore/delete remain available through a secondary native Record actions disclosure. Details and Related Records retain their generic metadata-driven behavior.
 - Archived records remain directly viewable, show archived state, and can be restored or safely deleted.
 - Incoming/reverse relationships are derived from existing relation rows and metadata. They are not stored separately.
 - Reverse relationship groups exclude archived source records, archived relation fields, and archived source entities.
@@ -360,6 +363,7 @@ Current spec files:
 - `record-updated-transition-conditions.spec.ts`
 - `workflow-multiple-actions.spec.ts`
 - `workspace-onboarding.spec.ts`
+- `operational-ux.spec.ts`
 
 Shared helpers live in `tests/e2e/helpers/`, especially `supabase-test-data.ts`. E2E data ownership is centralized there. Each run gets a unique `E2E <suffix>` prefix/marker applied to test-created entity names, workflow names, and test record names where naming exists. Cleanup deletes prefixed workflows/entities and dependent records/relations from the current development Supabase project.
 
@@ -373,7 +377,7 @@ npm run build -- --webpack && npm run start:e2e
 
 The default test URL is `http://localhost:3100`, overridable with `E2E_BASE_URL`. Global setup creates an ordinary authenticated E2E browser session and stores it at the ignored stable path `tests/e2e/.auth/e2e-auth.json`, outside Playwright-managed output directories. The auth/RLS security spec deliberately uses empty storage state. Traces, screenshots, and videos are retained on failure. Tests should prefer accessible selectors and stable user-facing semantics. Avoid brittle CSS selectors and add `data-testid` only when accessible selection is genuinely insufficient.
 
-Current full-suite baseline after Workspace Onboarding & Simplified Home: 101 tests passing. The Auth/RLS security suite (`auth-workspace-security.spec.ts`) has 3 tests covering sign-in/no-access, active-workspace cookie validation, two-user/two-workspace RLS, immutable workspace ownership, raw grant boundaries, authorized wrappers, and cleanup. The onboarding suite (`workspace-onboarding.spec.ts`) has 5 tests covering empty versus archived-only workspace behavior, approved starter schemas/relations, display fields, custom setup, atomic rollback and concurrent setup, authenticated/anonymous/non-member wrapper access, Home shortcuts, secondary setup navigation, and explicit entity management.
+Current full-suite baseline after Operational UX Polish: 103 tests passing. The Auth/RLS security suite (`auth-workspace-security.spec.ts`) has 3 tests covering sign-in/no-access, active-workspace cookie validation, two-user/two-workspace RLS, immutable workspace ownership, raw grant boundaries, authorized wrappers, and cleanup. The onboarding suite (`workspace-onboarding.spec.ts`) has 5 tests covering empty versus archived-only workspace behavior, approved starter schemas/relations, display fields, custom setup, atomic rollback and concurrent setup, authenticated/anonymous/non-member wrapper access, Home shortcuts, secondary setup navigation, and explicit entity management. The operational UX suite (`operational-ux.spec.ts`) has 2 tests covering the table-first entity workspace, intentional record creation, empty states, secondary saved-view configuration, and secondary lifecycle actions.
 
 ## Intentional Limitations
 
@@ -468,6 +472,7 @@ Complete major capabilities:
 - Saved table views with filters, sorts, visible columns, and default view selection.
 - Workspace home and shared navigation with active entity cards and capped saved-view shortcuts.
 - First-run workspace onboarding with small editable Clients, Projects, Tasks, and Opportunities starter structures, atomically created through the authorized metadata setup wrapper; established Home and navigation emphasize operational record work while configuration is progressively disclosed.
+- Operational UX Polish: shared page primitives, a table-first entity workspace, inline Add Record disclosure, explicit Manage views disclosure, secondary row/detail lifecycle actions, clearer record-form hierarchy, and refined Home/search/navigation presentation. It adds no domain or persistence capability.
 - Workspace record search across active entities and records, with deterministic per-entity result caps and detail-page links.
 - Record detail pages with outgoing links and derived reverse relationship visibility.
 - Create related records from reverse relationship groups using the standard record-create form and validated origin-detail return navigation.

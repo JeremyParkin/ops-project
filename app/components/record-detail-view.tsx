@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RecordDetailActions } from "@/app/components/record-detail-actions";
+import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
 import type {
   IncomingRelationGroup,
   RelationLabelsByFieldKey,
@@ -58,23 +59,15 @@ export function RecordDetailView({
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <div className="flex flex-col gap-4 border border-slate-200 bg-white p-5">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
-          <div>
-            <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
-              {entityType.name}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-semibold text-slate-950">
-                {recordLabel}
-              </h1>
-              {record.archivedAt ? (
-                <span className="border border-slate-300 px-2 py-1 text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Archived
-                </span>
-              ) : null}
-            </div>
-          </div>
+      <PageHeader
+        eyebrow={entityType.name}
+        title={recordLabel}
+        actions={<>
+          {record.archivedAt ? (
+            <span className="border border-slate-300 px-2 py-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+              Archived
+            </span>
+          ) : null}
           <RecordDetailActions
             editHref={editHref}
             isArchived={Boolean(record.archivedAt)}
@@ -82,11 +75,11 @@ export function RecordDetailView({
             restoreRecordAction={restoreRecordAction}
             deleteRecordAction={deleteRecordAction}
           />
-        </div>
-      </div>
+        </>}
+      />
 
       <section className="border border-slate-200 bg-white p-5">
-        <h2 className="text-xl font-semibold text-slate-950">Details</h2>
+        <SectionHeader title="Details" />
         <dl className="mt-5 divide-y divide-slate-100">
           {orderedFields.map((field) => {
             const value = record.values[field.key];
@@ -125,9 +118,7 @@ export function RecordDetailView({
 
       {incomingRelationGroups.length > 0 ? (
         <section className="border border-slate-200 bg-white p-5">
-          <h2 className="text-xl font-semibold text-slate-950">
-            Related Records
-          </h2>
+          <SectionHeader title="Related Records" />
           <div className="mt-5 grid gap-6">
             {incomingRelationGroups.map((group) => (
               <div key={`${group.sourceEntityType.id}:${group.relationField.id}`}>

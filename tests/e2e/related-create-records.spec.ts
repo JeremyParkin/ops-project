@@ -117,9 +117,20 @@ test("each reverse relation field creates its own editable prefill", async ({ pa
   const { client, project, acmeId, betaId } = await createRelatedCreateScenario(run);
 
   await page.goto(`/entities/${client.id}/records/${acmeId}`);
-  const addProjectLinks = page.getByRole("link", { name: `Add ${project.name}` });
-  await expect(addProjectLinks).toHaveCount(2);
-  await addProjectLinks.nth(0).click();
+  const primaryClientGroup = page
+    .getByRole("heading", {
+      name: `${project.name}s via Primary Client`,
+    })
+    .locator("..");
+  const billingClientGroup = page
+    .getByRole("heading", {
+      name: `${project.name}s via Billing Client`,
+    })
+    .locator("..");
+  await primaryClientGroup.getByRole("link", { name: `Add ${project.name}` }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`prefillRelationFieldId=${project.fields["primary-client"].id}`),
+  );
 
   let createSection = addRecordSection(page, project);
   await expect(createSection.locator(`[name="${project.fields["primary-client"].key}"]`)).toHaveValue(
@@ -128,7 +139,10 @@ test("each reverse relation field creates its own editable prefill", async ({ pa
   await expect(createSection.locator(`[name="${project.fields["billing-client"].key}"]`)).toHaveValue("");
   await createSection.getByRole("link", { name: "Cancel" }).click();
 
-  await page.getByRole("link", { name: `Add ${project.name}` }).nth(1).click();
+  await billingClientGroup.getByRole("link", { name: `Add ${project.name}` }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`prefillRelationFieldId=${project.fields["billing-client"].id}`),
+  );
   createSection = addRecordSection(page, project);
   await expect(createSection.locator(`[name="${project.fields["primary-client"].key}"]`)).toHaveValue("");
   await expect(createSection.locator(`[name="${project.fields["billing-client"].key}"]`)).toHaveValue(

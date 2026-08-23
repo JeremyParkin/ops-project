@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import type {
   EntityRecord,
@@ -82,6 +83,9 @@ export function RecordEditForm({
         <h1 className="text-2xl font-semibold text-slate-950">
           Edit {entityType.name}
         </h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Fields marked <span className="font-semibold text-red-700">*</span> are required.
+        </p>
         {state.message ? (
           <p
             className={`mt-2 text-sm ${
@@ -95,7 +99,7 @@ export function RecordEditForm({
         <FieldError message={state.errors._form} />
       </div>
 
-      <form action={formAction} className="grid gap-4 md:grid-cols-2">
+      <form action={formAction} className="grid gap-5 md:grid-cols-2">
         {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
         {orderedFields.map((field) => {
           const fieldId = `edit-record-field-${field.key}`;
@@ -210,7 +214,7 @@ export function RecordEditForm({
           );
         })}
 
-        <div className="md:col-span-2">
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4 md:col-span-2">
           <button
             type="submit"
             disabled={pending}
@@ -218,6 +222,16 @@ export function RecordEditForm({
           >
             {pending ? "Saving..." : "Save Changes"}
           </button>
+          <Link
+            href={
+              returnTo === "detail"
+                ? `/entities/${entityType.id}/records/${record.id}`
+                : `/entities/${entityType.id}`
+            }
+            className="h-10 px-2 py-2 text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+          >
+            Cancel
+          </Link>
         </div>
       </form>
     </section>

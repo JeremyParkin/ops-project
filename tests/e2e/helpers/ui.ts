@@ -30,8 +30,8 @@ export async function waitForWorkflowFormReady(page: Page) {
 }
 
 export function addRecordSection(page: Page, entity: TestEntity) {
-  return page.locator("section").filter({
-    has: page.getByRole("heading", { name: `Add ${entity.name}`, exact: true }),
+  return page.locator("details#add-record").filter({
+    has: page.getByText(`Add ${entity.name}`, { exact: true }),
   });
 }
 
@@ -40,7 +40,11 @@ export async function fillRecordField(
   field: TestField,
   value: string,
 ) {
-  await section.locator(`[name="${field.key}"]`).fill(value);
+  const control = section.locator(`[name="${field.key}"]`);
+  if (!(await control.isVisible())) {
+    await section.locator("summary").click();
+  }
+  await control.fill(value);
 }
 
 export async function chooseRecordField(
@@ -49,6 +53,10 @@ export async function chooseRecordField(
   label: string,
 ) {
   const control = section.locator(`[name="${field.key}"]`);
+
+  if (!(await control.isVisible())) {
+    await section.locator("summary").click();
+  }
 
   await selectReactOption(control, { label });
 }

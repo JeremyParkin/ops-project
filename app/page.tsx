@@ -2,6 +2,10 @@ import Link from "next/link";
 import { createWorkspaceStarterStructure } from "@/app/actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkspaceOnboarding } from "@/app/components/workspace-onboarding";
+import {
+  PageHeader,
+  WorkspacePageLayout,
+} from "@/app/components/page-primitives";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
 import { countActiveEntityRecordsByEntityType } from "@/lib/domain/record-repository";
@@ -44,19 +48,14 @@ export default async function Home({
   });
 
   return (
-    <main className="flex flex-1 flex-col gap-6 bg-background px-6 py-8 text-foreground sm:px-10 lg:flex-row">
-      <WorkspaceNavigation
+    <WorkspacePageLayout
+      navigation={<WorkspaceNavigation
         entityTypes={entityTypes}
         activeSection="home"
         showArchivedEntities={showArchivedEntities}
-      />
-      <div className="flex min-w-0 flex-1 flex-col gap-6">
-        <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
-          <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
-            Workspace
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold text-slate-950">Home</h1>
-        </section>
+      />}
+    >
+        <PageHeader eyebrow="Workspace" title="Home" />
 
         {isNewWorkspace ? (
           <WorkspaceOnboarding
@@ -79,7 +78,7 @@ export default async function Home({
                 <section
                   key={entityType.id}
                   aria-labelledby={`workspace-entity-${entityType.id}`}
-                  className="border border-slate-200 bg-white p-5"
+                  className="flex min-h-52 flex-col border border-slate-200 bg-white p-5"
                 >
                   <Link
                     href={
@@ -108,28 +107,28 @@ export default async function Home({
                     {recordCounts.get(entityType.id) ?? 0} active record
                     {(recordCounts.get(entityType.id) ?? 0) === 1 ? "" : "s"}
                   </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-auto flex flex-wrap gap-2 pt-5">
                     <Link
                       href={
                         showArchivedEntities
                           ? `/entities/${entityType.id}?showArchivedEntities=true`
                           : `/entities/${entityType.id}`
                       }
-                      className="border border-slate-950 bg-slate-950 px-2 py-1 text-xs font-medium text-white underline-offset-4 hover:bg-slate-800 hover:underline"
+                      className="border border-slate-950 bg-slate-950 px-3 py-2 text-xs font-medium text-white underline-offset-4 hover:bg-slate-800 hover:underline"
                     >
                       Open
                     </Link>
                     {!entityType.archivedAt ? (
                       <Link
                         href={`/entities/${entityType.id}#add-record`}
-                        className="border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 underline-offset-4 hover:underline"
+                        className="border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 underline-offset-4 hover:bg-slate-50 hover:underline"
                       >
                         Add {entityType.name}
                       </Link>
                     ) : null}
                     <Link
                       href={`/entities/${entityType.id}?view=all`}
-                      className="border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 underline-offset-4 hover:underline"
+                      className="border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 underline-offset-4 hover:bg-slate-50 hover:underline"
                     >
                       All Records
                     </Link>
@@ -137,7 +136,7 @@ export default async function Home({
                       <Link
                         key={view.id}
                         href={`/entities/${entityType.id}?view=${view.id}`}
-                        className="border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 underline-offset-4 hover:underline"
+                        className="border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 underline-offset-4 hover:bg-slate-50 hover:underline"
                       >
                         {view.name}
                         {view.isDefault ? " · Default" : ""}
@@ -157,7 +156,6 @@ export default async function Home({
             </p>
           </section>
         )}
-      </div>
-    </main>
+    </WorkspacePageLayout>
   );
 }
