@@ -1226,6 +1226,7 @@ function formatFieldDeleteBlockMessage({
   workflowReferenceCount,
   displayFieldReferenceCount,
   viewReferenceCount,
+  processBranchReferenceCount,
 }: {
   entityName: string;
   field: Awaited<ReturnType<typeof getEntityContext>>["fields"][number];
@@ -1234,6 +1235,7 @@ function formatFieldDeleteBlockMessage({
   workflowReferenceCount: number;
   displayFieldReferenceCount: number;
   viewReferenceCount: number;
+  processBranchReferenceCount: number;
 }) {
   const reasons = [];
 
@@ -1269,6 +1271,14 @@ function formatFieldDeleteBlockMessage({
     reasons.push(
       `${viewReferenceCount} saved view reference${
         viewReferenceCount === 1 ? "" : "s"
+      }`,
+    );
+  }
+
+  if (processBranchReferenceCount > 0) {
+    reasons.push(
+      `${processBranchReferenceCount} process branch reference${
+        processBranchReferenceCount === 1 ? "" : "s"
       }`,
     );
   }

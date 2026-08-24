@@ -20,13 +20,17 @@ type ProcessRunDetailViewProps = {
 // Brass carries meaning here — the single current/actionable step — kept to
 // Brass Deep for text/border so it holds contrast on a Paper/white surface;
 // Brass itself is reserved for the step's left-edge accent below.
-function statusBadgeClass(status: "pending" | "active" | "completed") {
+function statusBadgeClass(status: "pending" | "active" | "completed" | "skipped") {
   if (status === "completed") {
     return "border-status-sage/40 bg-status-sage/10 text-status-sage";
   }
 
   if (status === "active") {
     return "border-brass-deep/50 bg-brass-light/20 text-brass-deep";
+  }
+
+  if (status === "skipped") {
+    return "border-grit bg-chalk text-stone";
   }
 
   return "border-grit bg-chalk text-stone";
@@ -40,6 +44,8 @@ export function ProcessRunDetailView({
   completeProcessStepRunAction,
 }: ProcessRunDetailViewProps) {
   const completedCount = run.steps.filter((step) => step.status === "completed").length;
+  const skippedCount = run.steps.filter((step) => step.status === "skipped").length;
+  const stepById = new Map(run.steps.map((step) => [step.id, step]));
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -63,7 +69,9 @@ export function ProcessRunDetailView({
       <section className="border border-grit bg-white p-5">
         <SectionHeader
           title="Overview"
-          description={`${completedCount} of ${run.steps.length} steps complete`}
+          description={`${completedCount} of ${run.steps.length} steps complete${
+            skippedCount > 0 ? `, ${skippedCount} skipped` : ""
+          }`}
         />
         <p className="mt-4 text-sm text-stone">
           Started from{" "}
@@ -100,6 +108,18 @@ export function ProcessRunDetailView({
                 {step.dueAt ? (
                   <p className="mt-1 text-xs text-stone">
                     <ProcessDueAt dueAt={step.dueAt} />
+                  </p>
+                ) : null}
+                {step.routingResult ? (
+                  <p className="mt-2 text-xs text-stone">
+                    {step.routingResult.outcome === "default_fallback"
+                      ? "Otherwise route"
+                      : step.routingResult.outcome === "matched_condition"
+                        ? "Conditional route matched"
+                        : "Continued to next step"}
+                    {stepById.get(step.routingResult.targetStepRunId)
+                      ? `: ${stepById.get(step.routingResult.targetStepRunId)?.name}`
+                      : ""}
                   </p>
                 ) : null}
               </div>

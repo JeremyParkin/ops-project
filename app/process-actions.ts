@@ -76,12 +76,14 @@ export async function saveProcessTemplateAction(
       description: validation.description,
       appliesToEntityTypeId: validation.appliesToEntityTypeId,
       steps: validation.steps.map((step) => ({
+        clientKey: step.clientKey,
         nodeId: step.nodeId || null,
         name: step.name,
         assigneeUserId: step.assigneeUserId || null,
         dueRule: step.dueAmount
           ? { amount: Number(step.dueAmount), unit: step.dueUnit }
           : undefined,
+        routes: step.routes,
       })),
     });
   } catch (error) {

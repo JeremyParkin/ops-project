@@ -93,7 +93,7 @@ test.describe("process templates", () => {
     ]);
   });
 
-  test("creates a template with ordered steps, then rename/reorder preserves stable node IDs", async ({
+  test("creates a template with ordered steps, then rename preserves stable node IDs", async ({
     page,
   }) => {
     const run = createScenarioRun();
@@ -137,9 +137,9 @@ test.describe("process templates", () => {
     const nodeIdsBefore = new Set((nodesBefore ?? []).map((node) => node.id as string));
     expect(nodeIdsBefore.size).toBe(3);
 
-    // Rename the first step and move it down one position.
+    // Rename the first step. Reordering this linear template would make its
+    // persisted edge point backward and is now intentionally rejected.
     await stepNameInput(page, 0).fill("Prepare Source Data");
-    await page.getByRole("button", { name: "Move Down" }).first().click();
     await page.getByRole("button", { name: "Save Process Template" }).click();
     await expect(page.getByRole("link", { name: templateName })).toBeVisible();
 
@@ -157,8 +157,8 @@ test.describe("process templates", () => {
     expect(renamedNode).toBeTruthy();
 
     await page.getByRole("link", { name: templateName }).click();
-    await expect(stepNameInput(page, 0)).toHaveValue("Draft Report");
-    await expect(stepNameInput(page, 1)).toHaveValue("Prepare Source Data");
+    await expect(stepNameInput(page, 0)).toHaveValue("Prepare Source Data");
+    await expect(stepNameInput(page, 1)).toHaveValue("Draft Report");
     await expect(stepNameInput(page, 2)).toHaveValue("Review");
   });
 

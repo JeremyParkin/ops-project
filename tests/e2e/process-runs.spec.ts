@@ -156,6 +156,7 @@ async function createProcessTemplateFixture(
       process_template_id: templateId,
       node_type: "human_task",
       name,
+      position: index + 1,
       assignee_user_id: assigneeUserIds[index] ?? null,
       config: dueRules[index]
         ? {
@@ -177,6 +178,8 @@ async function createProcessTemplateFixture(
     process_template_id: templateId,
     source_node_id: sourceNodeId,
     target_node_id: nodeIds[index + 1],
+    priority: 0,
+    is_default: true,
   }));
 
   if (edges.length > 0) {
@@ -209,7 +212,10 @@ function processCard(page: Page, templateName: string): Locator {
 }
 
 function stepRow(page: Page, stepName: string): Locator {
-  return page.locator("li").filter({ hasText: stepName });
+  const escapedStepName = stepName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return page
+    .locator("li")
+    .filter({ has: page.getByText(new RegExp(`^\\d+\\. ${escapedStepName}$`)) });
 }
 
 function stepAssigneeSelect(page: Page, index: number): Locator {
@@ -430,7 +436,15 @@ test.describe("process runs", () => {
         p_name: `${template.name} should not persist`,
         p_description: null,
         p_applies_to_entity_type_id: entity.id,
-        p_steps: [{ node_id: template.nodeIds[0], name: "Valid step", due_rule: dueRule }],
+        p_steps: [
+          {
+            client_key: "valid-step",
+            node_id: template.nodeIds[0],
+            name: "Valid step",
+            due_rule: dueRule,
+            routes: [],
+          },
+        ],
       });
       expect(error).not.toBeNull();
     }
@@ -773,7 +787,14 @@ test.describe("process runs", () => {
         p_name: "Should not persist (foreign node)",
         p_description: null,
         p_applies_to_entity_type_id: entityA.id,
-        p_steps: [{ node_id: templateB.nodeIds[0], name: "Hijacked Step" }],
+        p_steps: [
+          {
+            client_key: "hijacked-step",
+            node_id: templateB.nodeIds[0],
+            name: "Hijacked Step",
+            routes: [],
+          },
+        ],
       },
     );
     expect(foreignNodeError?.message).toContain("Submitted step does not belong to this template");
@@ -786,7 +807,14 @@ test.describe("process runs", () => {
         p_name: "Should not persist (forged node)",
         p_description: null,
         p_applies_to_entity_type_id: entityA.id,
-        p_steps: [{ node_id: randomUUID(), name: "Forged Step" }],
+        p_steps: [
+          {
+            client_key: "forged-step",
+            node_id: randomUUID(),
+            name: "Forged Step",
+            routes: [],
+          },
+        ],
       },
     );
     expect(forgedNodeError?.message).toContain("Submitted step does not belong to this template");
@@ -830,7 +858,14 @@ test.describe("process runs", () => {
       p_name: template.name,
       p_description: null,
       p_applies_to_entity_type_id: entityB.id,
-      p_steps: [{ node_id: template.nodeIds[0], name: "Only Step" }],
+      p_steps: [
+        {
+          client_key: "only-step",
+          node_id: template.nodeIds[0],
+          name: "Only Step",
+          routes: [],
+        },
+      ],
     });
     expect(error?.message).toContain("Applies-to entity type cannot be changed after creation");
 
@@ -860,6 +895,7 @@ test.describe("process runs", () => {
       "process_edges",
       "process_runs",
       "process_step_runs",
+      "process_step_run_routes",
     ] as const;
 
     for (const table of processTables) {
@@ -931,7 +967,7 @@ test.describe("process runs", () => {
     }
   });
 
-  test("assigns, reassigns, and clears step assignees using only current workspace members, surviving rename and reorder", async ({
+  test("assigns, reassigns, and clears step assignees using only current workspace members, surviving rename", async ({
     page,
   }) => {
     const run = createScenarioRun();
@@ -965,20 +1001,20 @@ test.describe("process runs", () => {
     expect(await selectedOptionText(stepAssigneeSelect(page, 0))).toBe(E2E_RUNNER_EMAIL);
     expect(await selectedOptionText(stepAssigneeSelect(page, 1))).toBe(secondMember.email);
 
-    // Reassign step 0 to the second member, clear step 1, rename step 0, and
-    // move it after step 1 — node identity/order must not disturb assignment.
+    // Reassign step 0 to the second member, clear step 1, and rename step 0.
+    // Reordering this two-node linear template would make its saved edge point
+    // backward, which conditional-routing validation now correctly rejects.
     await stepNameInput(page, 0).fill("Prepare Source Data");
     await selectReactOption(stepAssigneeSelect(page, 0), { label: secondMember.email });
     await selectReactOption(stepAssigneeSelect(page, 1), { label: "Unassigned" });
-    await page.getByRole("button", { name: "Move Down" }).first().click();
     await page.getByRole("button", { name: "Save Process Template" }).click();
     await expect(page.getByRole("link", { name: templateName })).toBeVisible();
 
     await page.getByRole("link", { name: templateName }).click();
-    await expect(stepNameInput(page, 0)).toHaveValue("Review");
-    expect(await selectedOptionText(stepAssigneeSelect(page, 0))).toBe("Unassigned");
-    await expect(stepNameInput(page, 1)).toHaveValue("Prepare Source Data");
-    expect(await selectedOptionText(stepAssigneeSelect(page, 1))).toBe(secondMember.email);
+    await expect(stepNameInput(page, 0)).toHaveValue("Prepare Source Data");
+    expect(await selectedOptionText(stepAssigneeSelect(page, 0))).toBe(secondMember.email);
+    await expect(stepNameInput(page, 1)).toHaveValue("Review");
+    expect(await selectedOptionText(stepAssigneeSelect(page, 1))).toBe("Unassigned");
   });
 
   test("assigning a non-member user ID to a template step is rejected server-side", async () => {
@@ -997,7 +1033,13 @@ test.describe("process runs", () => {
       p_description: null,
       p_applies_to_entity_type_id: entity.id,
       p_steps: [
-        { node_id: template.nodeIds[0], name: "Only Step", assignee_user_id: randomUUID() },
+        {
+          client_key: "only-step",
+          node_id: template.nodeIds[0],
+          name: "Only Step",
+          assignee_user_id: randomUUID(),
+          routes: [],
+        },
       ],
     });
 
@@ -1054,9 +1096,11 @@ test.describe("process runs", () => {
         p_applies_to_entity_type_id: entity.id,
         p_steps: [
           {
+            client_key: "only-step",
             node_id: template.nodeIds[0],
             name: "Only Step",
             assignee_user_id: secondMember.userId,
+            routes: [],
           },
         ],
       },
@@ -1199,7 +1243,15 @@ test.describe("process runs", () => {
         p_name: template.name,
         p_description: null,
         p_applies_to_entity_type_id: entity.id,
-        p_steps: [{ node_id: template.nodeIds[0], name: "Only Step", assignee_user_id: null }],
+        p_steps: [
+          {
+            client_key: "only-step",
+            node_id: template.nodeIds[0],
+            name: "Only Step",
+            assignee_user_id: null,
+            routes: [],
+          },
+        ],
       },
     );
     expect(clearError).toBeNull();

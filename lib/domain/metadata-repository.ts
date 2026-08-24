@@ -457,6 +457,7 @@ export async function deleteFieldDefinition({
     workflow_reference_count: number;
     display_field_reference_count?: number;
     view_reference_count?: number;
+    process_branch_reference_count?: number;
   }> | null;
   const result = resultRows?.[0];
 
@@ -471,6 +472,7 @@ export async function deleteFieldDefinition({
     workflowReferenceCount: result.workflow_reference_count,
     displayFieldReferenceCount: result.display_field_reference_count ?? 0,
     viewReferenceCount: result.view_reference_count ?? 0,
+    processBranchReferenceCount: result.process_branch_reference_count ?? 0,
   };
 }
 

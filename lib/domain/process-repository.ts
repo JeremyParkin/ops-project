@@ -3,6 +3,7 @@ import { getEntityContext } from "./metadata-repository";
 import { getEntityRecord, getRecordLabel } from "./record-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
+  ProcessBranchCondition,
   ProcessEdge,
   ProcessDueRule,
   ProcessNodeConfig,
@@ -12,6 +13,8 @@ import type {
   ProcessRunStatus,
   ProcessRunWithSteps,
   ProcessStepRun,
+  ProcessStepRunRoute,
+  ProcessStepRunRoutingResult,
   ProcessStepRunStatus,
   ProcessTemplate,
   ProcessTemplateWithSteps,
@@ -35,6 +38,7 @@ type ProcessNodeRow = {
   process_template_id: string;
   node_type: ProcessNodeType;
   name: string;
+  position: number;
   assignee_user_id: string | null;
   config: Record<string, unknown>;
   created_at: string;
@@ -47,6 +51,9 @@ type ProcessEdgeRow = {
   process_template_id: string;
   source_node_id: string;
   target_node_id: string;
+  priority: number;
+  condition_config: ProcessBranchCondition[] | null;
+  is_default: boolean;
   created_at: string;
 };
 
@@ -78,13 +85,34 @@ type ProcessStepRunRow = {
   completed_at: string | null;
   assignee_user_id: string | null;
   assignee_label: string | null;
+  routing_result: ProcessStepRunRoutingResult | null;
+};
+
+type ProcessStepRunRouteRow = {
+  id: string;
+  workspace_id: string;
+  process_run_id: string;
+  source_step_run_id: string;
+  target_step_run_id: string;
+  source_node_id: string | null;
+  target_node_id: string | null;
+  priority: number;
+  condition_config: ProcessBranchCondition[] | null;
+  condition_summary: string | null;
+  is_default: boolean;
 };
 
 export type ProcessTemplateStepInput = {
+  clientKey: string;
   nodeId: string | null;
   name: string;
   assigneeUserId: string | null;
   dueRule?: ProcessDueRule;
+  routes: Array<{
+    targetStepKey: string;
+    isDefault: boolean;
+    conditions: ProcessBranchCondition[];
+  }>;
 };
 
 function mapProcessNodeConfig(config: Record<string, unknown>): ProcessNodeConfig {
@@ -131,6 +159,7 @@ function mapProcessNode(row: ProcessNodeRow): ProcessNode {
     processTemplateId: row.process_template_id,
     nodeType: row.node_type,
     name: row.name,
+    position: row.position,
     assigneeUserId: row.assignee_user_id ?? undefined,
     config: mapProcessNodeConfig(row.config),
     createdAt: row.created_at,
@@ -169,40 +198,24 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     completedAt: row.completed_at ?? undefined,
     assigneeUserId: row.assignee_user_id ?? undefined,
     assigneeLabel: row.assignee_label ?? undefined,
+    routingResult: row.routing_result ?? undefined,
   };
 }
 
-// Walks process_edges from the node with no incoming edge to recover the
-// template's linear order. This is the one place template order is derived
-// rather than stored as an integer, matching the graph-capable persistence
-// model: process_nodes itself carries no position column.
-function linearizeNodes(nodes: ProcessNode[], edges: ProcessEdge[]) {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const targetsWithIncomingEdge = new Set(edges.map((edge) => edge.targetNodeId));
-  const nextNodeIdBySource = new Map(
-    edges.map((edge) => [edge.sourceNodeId, edge.targetNodeId]),
-  );
-  const startNode = nodes.find((node) => !targetsWithIncomingEdge.has(node.id));
-
-  if (!startNode) {
-    return [];
-  }
-
-  const ordered: ProcessNode[] = [];
-  let currentId: string | undefined = startNode.id;
-
-  while (currentId) {
-    const node = nodeById.get(currentId);
-
-    if (!node) {
-      break;
-    }
-
-    ordered.push(node);
-    currentId = nextNodeIdBySource.get(currentId);
-  }
-
-  return ordered;
+function mapProcessStepRunRoute(row: ProcessStepRunRouteRow): ProcessStepRunRoute {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    processRunId: row.process_run_id,
+    sourceStepRunId: row.source_step_run_id,
+    targetStepRunId: row.target_step_run_id,
+    sourceNodeId: row.source_node_id ?? undefined,
+    targetNodeId: row.target_node_id ?? undefined,
+    priority: row.priority,
+    conditions: row.condition_config ?? undefined,
+    conditionSummary: row.condition_summary ?? undefined,
+    isDefault: row.is_default,
+  };
 }
 
 export async function listProcessTemplates({
@@ -277,12 +290,14 @@ export async function getProcessTemplateWithSteps({
         .select("*")
         .eq("workspace_id", workspaceId)
         .eq("process_template_id", processTemplateId)
+        .order("position", { ascending: true })
         .returns<ProcessNodeRow[]>(),
       supabase
         .from("process_edges")
         .select("*")
         .eq("workspace_id", workspaceId)
         .eq("process_template_id", processTemplateId)
+        .order("priority", { ascending: true })
         .returns<ProcessEdgeRow[]>(),
     ]);
 
@@ -309,12 +324,16 @@ export async function getProcessTemplateWithSteps({
     processTemplateId: row.process_template_id,
     sourceNodeId: row.source_node_id,
     targetNodeId: row.target_node_id,
+    priority: row.priority,
+    conditionConfig: row.condition_config ?? undefined,
+    isDefault: row.is_default,
     createdAt: row.created_at,
   }));
 
   return {
     ...mapProcessTemplate(templateRow),
-    steps: linearizeNodes(nodes, edges),
+    steps: nodes,
+    edges,
   };
 }
 
@@ -341,12 +360,18 @@ export async function saveProcessTemplate({
     p_description: description ?? null,
     p_applies_to_entity_type_id: appliesToEntityTypeId,
     p_steps: steps.map((step) => ({
+      client_key: step.clientKey,
       node_id: step.nodeId,
       name: step.name,
       assignee_user_id: step.assigneeUserId,
       due_rule: step.dueRule
         ? { amount: step.dueRule.amount, unit: step.dueRule.unit }
         : null,
+      routes: step.routes.map((route) => ({
+        target_client_key: route.targetStepKey,
+        is_default: route.isDefault,
+        conditions: route.conditions,
+      })),
     })),
   });
 
@@ -494,7 +519,11 @@ export async function getProcessRunWithSteps({
   processRunId: string;
 }): Promise<ProcessRunWithSteps> {
   const supabase = await createServerSupabaseClient();
-  const [{ data: runRow, error: runError }, { data: stepRows, error: stepError }] =
+  const [
+    { data: runRow, error: runError },
+    { data: stepRows, error: stepError },
+    { data: routeRows, error: routeError },
+  ] =
     await Promise.all([
       supabase
         .from("process_runs")
@@ -509,6 +538,13 @@ export async function getProcessRunWithSteps({
         .eq("process_run_id", processRunId)
         .order("step_index", { ascending: true })
         .returns<ProcessStepRunRow[]>(),
+      supabase
+        .from("process_step_run_routes")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .eq("process_run_id", processRunId)
+        .order("priority", { ascending: true })
+        .returns<ProcessStepRunRouteRow[]>(),
     ]);
 
   if (runError) {
@@ -523,9 +559,14 @@ export async function getProcessRunWithSteps({
     throw new Error(`Unable to load process run steps: ${stepError.message}`);
   }
 
+  if (routeError) {
+    throw new Error(`Unable to load process run routes: ${routeError.message}`);
+  }
+
   return {
     ...mapProcessRun(runRow),
     steps: stepRows.map(mapProcessStepRun),
+    routes: routeRows.map(mapProcessStepRunRoute),
   };
 }
 
@@ -702,6 +743,70 @@ export async function listMyWorkItems({
     return { overdue: [], readyNow: [], upcoming: [] };
   }
 
+  const runIds = [...new Set(entries.map((entry) => entry.run.id))];
+  const [{ data: runStepRows, error: runStepError }, { data: routeRows, error: routeError }] =
+    await Promise.all([
+      supabase
+        .from("process_step_runs")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .in("process_run_id", runIds)
+        .returns<ProcessStepRunRow[]>(),
+      supabase
+        .from("process_step_run_routes")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .in("process_run_id", runIds)
+        .returns<ProcessStepRunRouteRow[]>(),
+    ]);
+
+  if (runStepError) {
+    throw new Error(`Unable to load process run paths for My Work: ${runStepError.message}`);
+  }
+
+  if (routeError) {
+    throw new Error(`Unable to load process run routes for My Work: ${routeError.message}`);
+  }
+
+  const allStepsByRunId = new Map<string, ProcessStepRun[]>();
+  runStepRows.forEach((row) => {
+    const steps = allStepsByRunId.get(row.process_run_id) ?? [];
+    steps.push(mapProcessStepRun(row));
+    allStepsByRunId.set(row.process_run_id, steps);
+  });
+  const routesBySourceStepRunId = new Map<string, ProcessStepRunRoute[]>();
+  routeRows.forEach((row) => {
+    const route = mapProcessStepRunRoute(row);
+    const routes = routesBySourceStepRunId.get(route.sourceStepRunId) ?? [];
+    routes.push(route);
+    routesBySourceStepRunId.set(route.sourceStepRunId, routes);
+  });
+  const deterministicUpcomingStepIds = new Set<string>();
+
+  allStepsByRunId.forEach((steps) => {
+    const stepById = new Map(steps.map((step) => [step.id, step]));
+    let currentStep = steps.find((step) => step.status === "active");
+
+    // A route becomes knowable only when it has one unconditional successor.
+    // At a conditional split, stop rather than advertising either possible branch.
+    while (currentStep) {
+      const routes = routesBySourceStepRunId.get(currentStep.id) ?? [];
+
+      if (routes.length !== 1 || !routes[0].isDefault) {
+        break;
+      }
+
+      const nextStep = stepById.get(routes[0].targetStepRunId);
+
+      if (!nextStep || nextStep.status !== "pending") {
+        break;
+      }
+
+      deterministicUpcomingStepIds.add(nextStep.id);
+      currentStep = nextStep;
+    }
+  });
+
   const uniqueOrigins = new Map<string, { entityTypeId: string; recordId: string }>();
 
   entries.forEach((entry) => {
@@ -752,7 +857,12 @@ export async function listMyWorkItems({
     ),
   );
 
-  const items: MyWorkItem[] = entries.map((entry) => {
+  const items: MyWorkItem[] = entries
+    .filter(
+      (entry) =>
+        entry.stepRun.status === "active" || deterministicUpcomingStepIds.has(entry.stepRun.id),
+    )
+    .map((entry) => {
     const key = `${entry.run.originEntityTypeId}:${entry.run.originRecordId}`;
 
     return {
@@ -761,7 +871,7 @@ export async function listMyWorkItems({
       originRecordLabel: labelByOriginKey.get(key) ?? "Record",
       originHref: `/entities/${entry.run.originEntityTypeId}/records/${entry.run.originRecordId}`,
     };
-  });
+    });
 
   const now = Date.now();
   const activeItems = items.filter((item) => item.stepRun.status === "active");

@@ -3,7 +3,8 @@ import { saveProcessTemplateAction } from "@/app/process-actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { ProcessTemplateForm } from "@/app/components/process-template-form";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
-import { listEntityTypes } from "@/lib/domain/metadata-repository";
+import { getEntityContext, listEntityTypes } from "@/lib/domain/metadata-repository";
+import { getRelationLookups } from "@/lib/domain/record-repository";
 import {
   getProcessTemplateWithSteps,
   listWorkspaceMemberIdentities,
@@ -20,7 +21,27 @@ async function loadEditPageData(workspaceId: string, processTemplateId: string) 
       listWorkspaceMemberIdentities({ workspaceId }),
     ]);
 
-    return { entityTypes, template, members };
+    const entityContexts = await Promise.all(
+      entityTypes.map(async (entityType) => {
+        const context = await getEntityContext({ workspaceId, entityTypeId: entityType.id });
+        const relationLookups = await getRelationLookups({
+          workspaceId,
+          fields: context.fields,
+        });
+
+        return {
+          entityType,
+          fields: context.fields,
+          relationOptionsByFieldId: Object.fromEntries(
+            context.fields
+              .filter((field) => field.type === "relation")
+              .map((field) => [field.id, relationLookups.optionsByFieldKey[field.key] ?? []]),
+          ),
+        };
+      }),
+    );
+
+    return { entityTypes, entityContexts, template, members };
   } catch {
     return null;
   }
@@ -39,7 +60,7 @@ export default async function EditProcessTemplatePage({
     notFound();
   }
 
-  const { entityTypes, template, members } = pageData;
+  const { entityTypes, entityContexts, template, members } = pageData;
   const updateProcessTemplate = saveProcessTemplateAction.bind(null, {
     workspaceId,
     processTemplateId,
@@ -53,11 +74,20 @@ export default async function EditProcessTemplatePage({
       description: template.description ?? "",
       appliesToEntityTypeId: template.appliesToEntityTypeId,
       steps: template.steps.map((step) => ({
+        clientKey: step.id,
         nodeId: step.id,
         name: step.name,
         assigneeUserId: step.assigneeUserId ?? "",
         dueAmount: step.config.dueRule ? String(step.config.dueRule.amount) : "",
         dueUnit: step.config.dueRule?.unit ?? "days",
+        routes: template.edges
+          .filter((edge) => edge.sourceNodeId === step.id)
+          .map((edge) => ({
+            id: edge.id,
+            targetStepKey: edge.targetNodeId,
+            isDefault: edge.isDefault,
+            conditions: edge.conditionConfig ?? [],
+          })),
       })),
     },
   };
@@ -76,7 +106,7 @@ export default async function EditProcessTemplatePage({
           </section>
         ) : null}
         <ProcessTemplateForm
-          entityTypes={entityTypes}
+          entityContexts={entityContexts}
           members={members}
           saveProcessTemplateAction={updateProcessTemplate}
           initialState={initialState}

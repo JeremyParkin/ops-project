@@ -100,6 +100,7 @@ async function createTemplate({
       process_template_id: id,
       node_type: "human_task",
       name: "Prepare",
+      position: 1,
       config: { due_rule: { amount: 4, unit: "hours" } },
     },
     {
@@ -108,6 +109,7 @@ async function createTemplate({
       process_template_id: id,
       node_type: "human_task",
       name: "Review",
+      position: 2,
       config: {},
     },
   ]);
@@ -121,6 +123,8 @@ async function createTemplate({
     process_template_id: id,
     source_node_id: firstNodeId,
     target_node_id: secondNodeId,
+    priority: 0,
+    is_default: true,
   });
 
   if (edgeError) {

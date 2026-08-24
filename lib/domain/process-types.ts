@@ -2,7 +2,7 @@ import type { EntityRecord, EntityType, IsoUtcTimestamp } from "./types";
 
 export type ProcessNodeType = "human_task";
 export type ProcessRunStatus = "active" | "completed";
-export type ProcessStepRunStatus = "pending" | "active" | "completed";
+export type ProcessStepRunStatus = "pending" | "active" | "completed" | "skipped";
 
 export type ProcessDueRule = {
   amount: number;
@@ -11,6 +11,26 @@ export type ProcessDueRule = {
 
 export type ProcessNodeConfig = {
   dueRule?: ProcessDueRule;
+};
+
+export type ProcessBranchConditionOperator =
+  | "equals"
+  | "not_equals"
+  | "contains"
+  | "not_contains"
+  | "greater_than"
+  | "greater_than_or_equal"
+  | "less_than"
+  | "less_than_or_equal"
+  | "before"
+  | "after"
+  | "is_set"
+  | "is_not_set";
+
+export type ProcessBranchCondition = {
+  sourceFieldDefinitionId: string;
+  operator: ProcessBranchConditionOperator;
+  value?: string | number | boolean | null;
 };
 
 export type ProcessTemplate = {
@@ -30,6 +50,7 @@ export type ProcessNode = {
   processTemplateId: string;
   nodeType: ProcessNodeType;
   name: string;
+  position: number;
   // Fixed v1 assignment: no assignee, or exactly one current workspace
   // member. Structurally guaranteed (composite FK) to be a member of this
   // same workspace whenever set.
@@ -50,14 +71,17 @@ export type ProcessEdge = {
   processTemplateId: string;
   sourceNodeId: string;
   targetNodeId: string;
+  priority: number;
+  conditionConfig?: ProcessBranchCondition[];
+  isDefault: boolean;
   createdAt: IsoUtcTimestamp;
 };
 
-// A template with its nodes already linearized by walking process_edges
-// from the node with no incoming edge. This is the shape the template
-// editor and process-start logic actually want to work with.
+// Nodes retain stable editor/topological position order; edges describe the
+// template graph. A started run snapshots those edges before execution.
 export type ProcessTemplateWithSteps = ProcessTemplate & {
   steps: ProcessNode[];
+  edges: ProcessEdge[];
 };
 
 export type ProcessRun = {
@@ -95,8 +119,38 @@ export type ProcessStepRun = {
   // never depends on the membership row still existing.
   assigneeUserId?: string;
   assigneeLabel?: string;
+  routingResult?: ProcessStepRunRoutingResult;
+};
+
+export type ProcessStepRunRoute = {
+  id: string;
+  workspaceId: string;
+  processRunId: string;
+  sourceStepRunId: string;
+  targetStepRunId: string;
+  sourceNodeId?: string;
+  targetNodeId?: string;
+  priority: number;
+  conditions?: ProcessBranchCondition[];
+  conditionSummary?: string;
+  isDefault: boolean;
+};
+
+export type ProcessStepRunRoutingResult = {
+  selectedRouteId: string;
+  targetStepRunId: string;
+  outcome: "unconditional" | "matched_condition" | "default_fallback";
+  evaluatedAt: IsoUtcTimestamp;
+  evaluatedConditions?: Array<{
+    fieldName: string;
+    operator: ProcessBranchConditionOperator;
+    expectedValue?: string | number | boolean | null;
+    actualValue?: string | number | boolean | null;
+    matched: boolean;
+  }>;
 };
 
 export type ProcessRunWithSteps = ProcessRun & {
   steps: ProcessStepRun[];
+  routes: ProcessStepRunRoute[];
 };
