@@ -11,6 +11,7 @@ export type ProcessSectionEntry = {
   stepSummary?: {
     completed: number;
     total: number;
+    activeStepCount: number;
     currentStepName?: string;
     currentStepAssigneeLabel?: string;
     currentStepDueAt?: string;
@@ -65,6 +66,11 @@ export function ProcessSection({ entries }: ProcessSectionProps) {
                         {stepSummary.currentStepAssigneeLabel
                           ? ` · ${stepSummary.currentStepAssigneeLabel}`
                           : ""}
+                      </p>
+                    ) : null}
+                    {stepSummary && stepSummary.activeStepCount > 1 ? (
+                      <p className="mt-0.5 text-sm text-stone">
+                        {stepSummary.activeStepCount} active steps
                       </p>
                     ) : null}
                     {stepSummary?.currentStepDueAt ? (

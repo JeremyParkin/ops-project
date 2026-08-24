@@ -84,7 +84,10 @@ async function loadProcessSectionEntries({
       const completed = runWithSteps.steps.filter(
         (step) => step.status === "completed",
       ).length;
-      const currentStep = runWithSteps.steps.find((step) => step.status === "active");
+      const activeSteps = runWithSteps.steps.filter(
+        (step) => step.status === "active" && step.nodeType === "human_task",
+      );
+      const currentStep = activeSteps.length === 1 ? activeSteps[0] : undefined;
 
       return {
         template,
@@ -92,6 +95,7 @@ async function loadProcessSectionEntries({
         stepSummary: {
           completed,
           total: runWithSteps.steps.length,
+          activeStepCount: activeSteps.length,
           currentStepName: currentStep?.name,
           currentStepAssigneeLabel: currentStep?.assigneeLabel,
           currentStepDueAt: currentStep?.dueAt,

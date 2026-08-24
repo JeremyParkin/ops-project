@@ -11,6 +11,7 @@ import {
 import type {
   ProcessBranchCondition,
   ProcessBranchConditionOperator,
+  ProcessNodeType,
 } from "@/lib/domain/process-types";
 import type {
   ProcessTemplateFormState,
@@ -37,12 +38,15 @@ type LocalRoute = {
   id: string;
   targetStepKey: string;
   isDefault: boolean;
+  isParallel: boolean;
   conditions: LocalCondition[];
 };
 
 type LocalStep = {
   key: string;
   nodeId: string;
+  nodeType: ProcessNodeType;
+  parallelGroupId: string;
   name: string;
   assigneeUserId: string;
   dueAmount: string;
@@ -63,6 +67,10 @@ type ProcessTemplateFormProps = {
 
 function createKey(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createParallelGroupId() {
+  return crypto.randomUUID();
 }
 
 function FieldError({ message }: { message?: string }) {
@@ -88,6 +96,7 @@ function toLocalRoute(route: ProcessTemplateRouteFormValue, index: number): Loca
     id: route.id || `route-${index}`,
     targetStepKey: route.targetStepKey,
     isDefault: route.isDefault,
+    isParallel: route.isParallel === true,
     conditions: route.conditions.map(toLocalCondition),
   };
 }
@@ -189,6 +198,8 @@ export function ProcessTemplateForm({
     state.values.steps.map((step, index) => ({
       key: step.clientKey || step.nodeId || `step-${index + 1}`,
       nodeId: step.nodeId,
+      nodeType: step.nodeType ?? "human_task",
+      parallelGroupId: step.parallelGroupId ?? "",
       name: step.name,
       assigneeUserId: step.assigneeUserId,
       dueAmount: step.dueAmount,
@@ -219,11 +230,13 @@ export function ProcessTemplateForm({
 
     setSteps((current) => {
       const previous = current.at(-1);
-      const next = [
+      const next: LocalStep[] = [
         ...current,
         {
           key: nextKey,
           nodeId: "",
+          nodeType: "human_task" as const,
+          parallelGroupId: "",
           name: "",
           assigneeUserId: "",
           dueAmount: "",
@@ -245,6 +258,7 @@ export function ProcessTemplateForm({
                   id: createKey("route"),
                   targetStepKey: nextKey,
                   isDefault: true,
+                  isParallel: false,
                   conditions: [],
                 },
               ],
@@ -254,17 +268,145 @@ export function ProcessTemplateForm({
     });
   }
 
+  function addParallelPaths() {
+    const splitKey = createKey("parallel-split");
+    const firstBranchKey = createKey("parallel-branch");
+    const secondBranchKey = createKey("parallel-branch");
+    const joinKey = createKey("parallel-join");
+    const parallelGroupId = createParallelGroupId();
+
+    setSteps((current) => {
+      const previous = current.at(-1);
+      const block: LocalStep[] = [
+        {
+          key: splitKey,
+          nodeId: "",
+          nodeType: "parallel_split",
+          parallelGroupId,
+          name: "Parallel paths",
+          assigneeUserId: "",
+          dueAmount: "",
+          dueUnit: "days",
+          routes: [
+            {
+              id: createKey("route"),
+              targetStepKey: firstBranchKey,
+              isDefault: false,
+              isParallel: true,
+              conditions: [],
+            },
+            {
+              id: createKey("route"),
+              targetStepKey: secondBranchKey,
+              isDefault: false,
+              isParallel: true,
+              conditions: [],
+            },
+          ],
+        },
+        {
+          key: firstBranchKey,
+          nodeId: "",
+          nodeType: "human_task",
+          parallelGroupId: "",
+          name: "First parallel task",
+          assigneeUserId: "",
+          dueAmount: "",
+          dueUnit: "days",
+          routes: [
+            {
+              id: createKey("route"),
+              targetStepKey: joinKey,
+              isDefault: true,
+              isParallel: false,
+              conditions: [],
+            },
+          ],
+        },
+        {
+          key: secondBranchKey,
+          nodeId: "",
+          nodeType: "human_task",
+          parallelGroupId: "",
+          name: "Second parallel task",
+          assigneeUserId: "",
+          dueAmount: "",
+          dueUnit: "days",
+          routes: [
+            {
+              id: createKey("route"),
+              targetStepKey: joinKey,
+              isDefault: true,
+              isParallel: false,
+              conditions: [],
+            },
+          ],
+        },
+        {
+          key: joinKey,
+          nodeId: "",
+          nodeType: "parallel_join",
+          parallelGroupId,
+          name: "Join parallel paths",
+          assigneeUserId: "",
+          dueAmount: "",
+          dueUnit: "days",
+          routes: [],
+        },
+      ];
+
+      const withPrevious =
+        previous && previous.routes.length === 0
+          ? current.map((step) =>
+              step.key === previous.key
+                ? {
+                    ...step,
+                    routes: [
+                      {
+                        id: createKey("route"),
+                        targetStepKey: splitKey,
+                        isDefault: true,
+                        isParallel: false,
+                        conditions: [],
+                      },
+                    ],
+                  }
+                : step,
+            )
+          : current;
+
+      return [...withPrevious, ...block];
+    });
+  }
+
   function removeStep(key: string) {
     setSteps((current) => {
       if (current.length <= 1) {
         return current;
       }
 
+      const groupId = current.find((step) => step.key === key)?.parallelGroupId;
+      const splitIndex = groupId
+        ? current.findIndex(
+            (step) => step.nodeType === "parallel_split" && step.parallelGroupId === groupId,
+          )
+        : -1;
+      const joinIndex = groupId
+        ? current.findIndex(
+            (step) => step.nodeType === "parallel_join" && step.parallelGroupId === groupId,
+          )
+        : -1;
+      const removedKeys = new Set(
+        splitIndex >= 0 && joinIndex >= splitIndex
+          ? current.slice(splitIndex, joinIndex + 1).map((step) => step.key)
+          : [key],
+      );
+
       return current
-        .filter((step) => step.key !== key)
+        .filter((step) => !removedKeys.has(step.key))
         .map((step) => ({
           ...step,
-          routes: step.routes.filter((route) => route.targetStepKey !== key),
+          routes: step.routes.filter((route) => !removedKeys.has(route.targetStepKey)),
         }));
     });
   }
@@ -292,12 +434,14 @@ export function ProcessTemplateForm({
         id: createKey("route"),
         targetStepKey: nextTargetStepKey,
         isDefault: true,
+        isParallel: false,
         conditions: [],
       };
       const conditionalRoute: LocalRoute = {
         id: createKey("route"),
         targetStepKey: nextTargetStepKey,
         isDefault: false,
+        isParallel: false,
         conditions: field
           ? [
               {
@@ -346,6 +490,8 @@ export function ProcessTemplateForm({
     steps.map((step) => ({
       clientKey: step.key,
       nodeId: step.nodeId,
+      nodeType: step.nodeType,
+      parallelGroupId: step.parallelGroupId,
       name: step.name,
       assigneeUserId: step.assigneeUserId,
       dueAmount: step.dueAmount,
@@ -354,6 +500,7 @@ export function ProcessTemplateForm({
         id: route.id,
         targetStepKey: route.targetStepKey,
         isDefault: route.isDefault,
+        isParallel: route.isParallel,
         conditions: route.conditions.map((condition) =>
           serializeCondition(condition, currentContext?.fields ?? []),
         ),
@@ -456,6 +603,13 @@ export function ProcessTemplateForm({
             >
               + Add step
             </button>
+            <button
+              type="button"
+              onClick={addParallelPaths}
+              className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
+            >
+              + Add parallel paths
+            </button>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -463,6 +617,31 @@ export function ProcessTemplateForm({
               const legalTargets = steps.slice(index + 1);
               const routeError = state.errors[`stepRoutes.${index}`];
               const hasConditionalRoutes = step.routes.some((route) => !route.isDefault);
+
+              if (step.nodeType !== "human_task") {
+                const isSplit = step.nodeType === "parallel_split";
+
+                return (
+                  <div key={step.key} className="border border-dashed border-brass-deep/50 bg-brass-light/10 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-brass-deep">
+                      {isSplit ? "Parallel paths" : "Join parallel paths"}
+                    </p>
+                    <p className="mt-1 text-sm text-stone">
+                      {isSplit
+                        ? "Activates every configured branch at once."
+                        : "Waits until every branch in this parallel group arrives."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => removeStep(step.key)}
+                      className="mt-3 text-xs font-medium text-stone underline-offset-4 hover:text-red-700 hover:underline"
+                    >
+                      Remove parallel paths
+                    </button>
+                    <FieldError message={routeError} />
+                  </div>
+                );
+              }
 
               return (
                 <div key={step.key} className="border border-grit p-4">

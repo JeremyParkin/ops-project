@@ -1,15 +1,18 @@
-import type { ProcessBranchCondition } from "./process-types";
+import type { ProcessBranchCondition, ProcessNodeType } from "./process-types";
 
 export type ProcessTemplateRouteFormValue = {
   id: string;
   targetStepKey: string;
   isDefault: boolean;
+  isParallel?: boolean;
   conditions: ProcessBranchCondition[];
 };
 
 export type ProcessTemplateStepFormValue = {
   clientKey: string;
   nodeId: string;
+  nodeType?: ProcessNodeType;
+  parallelGroupId?: string;
   name: string;
   assigneeUserId: string;
   dueAmount: string;
@@ -41,6 +44,8 @@ function emptyStep(clientKey: string): ProcessTemplateStepFormValue {
   return {
     clientKey,
     nodeId: "",
+    nodeType: "human_task",
+    parallelGroupId: "",
     name: "",
     assigneeUserId: "",
     dueAmount: "",
@@ -146,6 +151,7 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
               id: asString(routeRecord.id) || `route-${index}-${routeIndex}`,
               targetStepKey: asString(routeRecord.targetStepKey),
               isDefault: routeRecord.isDefault === true,
+              isParallel: routeRecord.isParallel === true,
               conditions: conditions as ProcessBranchCondition[],
             };
           })
@@ -154,6 +160,11 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
       return {
         clientKey: asString(record.clientKey) || `step-${index + 1}`,
         nodeId: asString(record.nodeId),
+        nodeType:
+          record.nodeType === "parallel_split" || record.nodeType === "parallel_join"
+            ? record.nodeType
+            : "human_task",
+        parallelGroupId: asString(record.parallelGroupId),
         name: asString(record.name).trim(),
         assigneeUserId: asString(record.assigneeUserId).trim(),
         dueAmount: asString(record.dueAmount).trim(),
@@ -188,6 +199,8 @@ function parseSubmittedSteps(formData: FormData) {
   return nodeIds.map((nodeId, index) => ({
     clientKey: nodeId || `step-${index + 1}`,
     nodeId,
+    nodeType: "human_task" as const,
+    parallelGroupId: "",
     name: stepNames[index] ?? "",
     assigneeUserId: stepAssigneeUserIds[index] ?? "",
     dueAmount: stepDueAmounts[index] ?? "",
@@ -222,7 +235,7 @@ export function validateProcessTemplateFormData(
 
   if (!submittedSteps || submittedSteps.length === 0) {
     errors._form = "At least one valid step is required.";
-  } else if (submittedSteps.some((step) => !step.name)) {
+  } else if (submittedSteps.some((step) => (step.nodeType ?? "human_task") === "human_task" && !step.name)) {
     errors._form = "Every step requires a name.";
   }
 
@@ -234,7 +247,25 @@ export function validateProcessTemplateFormData(
     }
     clientKeys.add(step.clientKey);
 
-    if (step.dueAmount) {
+    const nodeType = step.nodeType ?? "human_task";
+
+    if (
+      nodeType !== "human_task" &&
+      nodeType !== "parallel_split" &&
+      nodeType !== "parallel_join"
+    ) {
+      errors._form = "Every process node must have a supported type.";
+    }
+
+    if (nodeType !== "human_task" && !step.parallelGroupId) {
+      errors._form = "Parallel system nodes require a matching parallel group.";
+    }
+
+    if (nodeType !== "human_task" && (step.assigneeUserId || step.dueAmount)) {
+      errors[`stepRoutes.${index}`] = "Parallel system nodes cannot have an assignee or due rule.";
+    }
+
+    if (nodeType === "human_task" && step.dueAmount) {
       if (step.dueUnit !== "hours" && step.dueUnit !== "days") {
         errors[`stepDueAmount.${index}`] = "Due unit must be hours or days.";
       } else if (!/^[1-9]\d*$/.test(step.dueAmount)) {
@@ -258,15 +289,18 @@ export function validateProcessTemplateFormData(
       if (!route.targetStepKey) {
         errors[`stepRoutes.${index}`] = "Every route needs a target step.";
       }
+      if (route.isParallel && (route.isDefault || route.conditions.length > 0)) {
+        errors[`stepRoutes.${index}`] = "Parallel branch routes cannot have conditions or be default routes.";
+      }
       if (route.isDefault && route.conditions.length > 0) {
         errors[`stepRoutes.${index}`] = "The default route cannot have conditions.";
       }
-      if (!route.isDefault && route.conditions.length === 0) {
+      if (!route.isParallel && !route.isDefault && route.conditions.length === 0) {
         errors[`stepRoutes.${index}`] = "A conditional route needs at least one condition.";
       }
     });
 
-    if (step.routes.length > 1 && defaultRoutes.length !== 1) {
+    if (nodeType !== "parallel_split" && step.routes.length > 1 && defaultRoutes.length !== 1) {
       errors[`stepRoutes.${index}`] = "Conditional routing requires one Otherwise route.";
     }
   });

@@ -1,6 +1,6 @@
 import type { EntityRecord, EntityType, IsoUtcTimestamp } from "./types";
 
-export type ProcessNodeType = "human_task";
+export type ProcessNodeType = "human_task" | "parallel_split" | "parallel_join";
 export type ProcessRunStatus = "active" | "completed";
 export type ProcessStepRunStatus = "pending" | "active" | "completed" | "skipped";
 
@@ -51,6 +51,7 @@ export type ProcessNode = {
   nodeType: ProcessNodeType;
   name: string;
   position: number;
+  parallelGroupId?: string;
   // Fixed v1 assignment: no assignee, or exactly one current workspace
   // member. Structurally guaranteed (composite FK) to be a member of this
   // same workspace whenever set.
@@ -74,6 +75,7 @@ export type ProcessEdge = {
   priority: number;
   conditionConfig?: ProcessBranchCondition[];
   isDefault: boolean;
+  isParallel: boolean;
   createdAt: IsoUtcTimestamp;
 };
 
@@ -107,6 +109,8 @@ export type ProcessStepRun = {
   sourceNodeId?: string;
   stepIndex: number;
   nodeType: ProcessNodeType;
+  parallelGroupId?: string;
+  parallelBranchToken?: string;
   name: string;
   config: ProcessNodeConfig;
   status: ProcessStepRunStatus;
@@ -134,12 +138,20 @@ export type ProcessStepRunRoute = {
   conditions?: ProcessBranchCondition[];
   conditionSummary?: string;
   isDefault: boolean;
+  isParallel: boolean;
 };
 
 export type ProcessStepRunRoutingResult = {
-  selectedRouteId: string;
-  targetStepRunId: string;
-  outcome: "unconditional" | "matched_condition" | "default_fallback";
+  selectedRouteId?: string;
+  targetStepRunId?: string;
+  selectedRouteIds?: string[];
+  targetStepRunIds?: string[];
+  outcome:
+    | "unconditional"
+    | "matched_condition"
+    | "default_fallback"
+    | "parallel_split"
+    | "parallel_join";
   evaluatedAt: IsoUtcTimestamp;
   evaluatedConditions?: Array<{
     fieldName: string;
@@ -150,7 +162,19 @@ export type ProcessStepRunRoutingResult = {
   }>;
 };
 
+export type ProcessParallelJoinObligation = {
+  id: string;
+  workspaceId: string;
+  processRunId: string;
+  joinStepRunId: string;
+  parallelGroupId: string;
+  branchToken: string;
+  arrivedAt?: IsoUtcTimestamp;
+  arrivalSourceStepRunId?: string;
+};
+
 export type ProcessRunWithSteps = ProcessRun & {
   steps: ProcessStepRun[];
   routes: ProcessStepRunRoute[];
+  joinObligations: ProcessParallelJoinObligation[];
 };

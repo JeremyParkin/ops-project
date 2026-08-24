@@ -78,6 +78,8 @@ export async function saveProcessTemplateAction(
       steps: validation.steps.map((step) => ({
         clientKey: step.clientKey,
         nodeId: step.nodeId || null,
+        nodeType: step.nodeType ?? "human_task",
+        parallelGroupId: step.parallelGroupId || undefined,
         name: step.name,
         assigneeUserId: step.assigneeUserId || null,
         dueRule: step.dueAmount

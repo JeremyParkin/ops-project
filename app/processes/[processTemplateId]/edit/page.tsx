@@ -76,6 +76,8 @@ export default async function EditProcessTemplatePage({
       steps: template.steps.map((step) => ({
         clientKey: step.id,
         nodeId: step.id,
+        nodeType: step.nodeType,
+        parallelGroupId: step.parallelGroupId ?? "",
         name: step.name,
         assigneeUserId: step.assigneeUserId ?? "",
         dueAmount: step.config.dueRule ? String(step.config.dueRule.amount) : "",
@@ -86,6 +88,7 @@ export default async function EditProcessTemplatePage({
             id: edge.id,
             targetStepKey: edge.targetNodeId,
             isDefault: edge.isDefault,
+            isParallel: edge.isParallel,
             conditions: edge.conditionConfig ?? [],
           })),
       })),

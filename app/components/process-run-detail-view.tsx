@@ -17,7 +17,7 @@ type ProcessRunDetailViewProps = {
 };
 
 // Pending/completed are semantic (neutral, Sage). Active is the one place
-// Brass carries meaning here — the single current/actionable step — kept to
+// Brass carries meaning here — actionable work — kept to
 // Brass Deep for text/border so it holds contrast on a Paper/white surface;
 // Brass itself is reserved for the step's left-edge accent below.
 function statusBadgeClass(status: "pending" | "active" | "completed" | "skipped") {
@@ -46,6 +46,12 @@ export function ProcessRunDetailView({
   const completedCount = run.steps.filter((step) => step.status === "completed").length;
   const skippedCount = run.steps.filter((step) => step.status === "skipped").length;
   const stepById = new Map(run.steps.map((step) => [step.id, step]));
+  const obligationsByJoinId = new Map<string, typeof run.joinObligations>();
+  run.joinObligations.forEach((obligation) => {
+    const current = obligationsByJoinId.get(obligation.joinStepRunId) ?? [];
+    current.push(obligation);
+    obligationsByJoinId.set(obligation.joinStepRunId, current);
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -102,9 +108,25 @@ export function ProcessRunDetailView({
                 <p className="mt-1 text-sm font-medium text-graphite">
                   {step.stepIndex}. {step.name}
                 </p>
-                <p className="mt-1 text-xs text-stone">
-                  {step.assigneeLabel ? `Assigned to ${step.assigneeLabel}` : "Unassigned"}
-                </p>
+                {step.nodeType === "human_task" ? (
+                  <p className="mt-1 text-xs text-stone">
+                    {step.assigneeLabel ? `Assigned to ${step.assigneeLabel}` : "Unassigned"}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-stone">
+                    {step.nodeType === "parallel_split"
+                      ? "Parallel paths activate automatically."
+                      : (() => {
+                          const obligations = obligationsByJoinId.get(step.id) ?? [];
+                          const arrived = obligations.filter((obligation) => obligation.arrivedAt).length;
+                          return obligations.length > 0
+                            ? step.status === "completed"
+                              ? `${arrived} of ${obligations.length} branches joined.`
+                              : `Waiting for ${arrived} of ${obligations.length} branches.`
+                            : "Parallel join advances automatically.";
+                        })()}
+                  </p>
+                )}
                 {step.dueAt ? (
                   <p className="mt-1 text-xs text-stone">
                     <ProcessDueAt dueAt={step.dueAt} />
@@ -112,18 +134,22 @@ export function ProcessRunDetailView({
                 ) : null}
                 {step.routingResult ? (
                   <p className="mt-2 text-xs text-stone">
-                    {step.routingResult.outcome === "default_fallback"
+                    {step.routingResult.outcome === "parallel_split"
+                      ? "Parallel branches activated"
+                      : step.routingResult.outcome === "parallel_join"
+                        ? "Parallel paths joined"
+                      : step.routingResult.outcome === "default_fallback"
                       ? "Otherwise route"
                       : step.routingResult.outcome === "matched_condition"
                         ? "Conditional route matched"
                         : "Continued to next step"}
-                    {stepById.get(step.routingResult.targetStepRunId)
+                    {step.routingResult.targetStepRunId && stepById.get(step.routingResult.targetStepRunId)
                       ? `: ${stepById.get(step.routingResult.targetStepRunId)?.name}`
                       : ""}
                   </p>
                 ) : null}
               </div>
-              {step.status === "active" &&
+              {step.nodeType === "human_task" && step.status === "active" &&
               (!step.assigneeUserId || step.assigneeUserId === currentUserId) ? (
                 <CompleteStepButton
                   stepRunId={step.id}

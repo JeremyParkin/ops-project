@@ -9,6 +9,7 @@ import type {
   ProcessNodeConfig,
   ProcessNode,
   ProcessNodeType,
+  ProcessParallelJoinObligation,
   ProcessRun,
   ProcessRunStatus,
   ProcessRunWithSteps,
@@ -39,6 +40,7 @@ type ProcessNodeRow = {
   node_type: ProcessNodeType;
   name: string;
   position: number;
+  parallel_group_id: string | null;
   assignee_user_id: string | null;
   config: Record<string, unknown>;
   created_at: string;
@@ -54,6 +56,7 @@ type ProcessEdgeRow = {
   priority: number;
   condition_config: ProcessBranchCondition[] | null;
   is_default: boolean;
+  is_parallel: boolean;
   created_at: string;
 };
 
@@ -77,6 +80,8 @@ type ProcessStepRunRow = {
   source_node_id: string | null;
   step_index: number;
   node_type: ProcessNodeType;
+  parallel_group_id: string | null;
+  parallel_branch_token: string | null;
   name: string;
   config: Record<string, unknown>;
   status: ProcessStepRunStatus;
@@ -100,17 +105,32 @@ type ProcessStepRunRouteRow = {
   condition_config: ProcessBranchCondition[] | null;
   condition_summary: string | null;
   is_default: boolean;
+  is_parallel: boolean;
+};
+
+type ProcessParallelJoinObligationRow = {
+  id: string;
+  workspace_id: string;
+  process_run_id: string;
+  join_step_run_id: string;
+  parallel_group_id: string;
+  branch_token: string;
+  arrived_at: string | null;
+  arrival_source_step_run_id: string | null;
 };
 
 export type ProcessTemplateStepInput = {
   clientKey: string;
   nodeId: string | null;
+  nodeType: ProcessNodeType;
+  parallelGroupId?: string;
   name: string;
   assigneeUserId: string | null;
   dueRule?: ProcessDueRule;
   routes: Array<{
     targetStepKey: string;
     isDefault: boolean;
+    isParallel?: boolean;
     conditions: ProcessBranchCondition[];
   }>;
 };
@@ -160,6 +180,7 @@ function mapProcessNode(row: ProcessNodeRow): ProcessNode {
     nodeType: row.node_type,
     name: row.name,
     position: row.position,
+    parallelGroupId: row.parallel_group_id ?? undefined,
     assigneeUserId: row.assignee_user_id ?? undefined,
     config: mapProcessNodeConfig(row.config),
     createdAt: row.created_at,
@@ -190,6 +211,8 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     sourceNodeId: row.source_node_id ?? undefined,
     stepIndex: row.step_index,
     nodeType: row.node_type,
+    parallelGroupId: row.parallel_group_id ?? undefined,
+    parallelBranchToken: row.parallel_branch_token ?? undefined,
     name: row.name,
     config: mapProcessNodeConfig(row.config),
     status: row.status,
@@ -215,6 +238,22 @@ function mapProcessStepRunRoute(row: ProcessStepRunRouteRow): ProcessStepRunRout
     conditions: row.condition_config ?? undefined,
     conditionSummary: row.condition_summary ?? undefined,
     isDefault: row.is_default,
+    isParallel: row.is_parallel,
+  };
+}
+
+function mapProcessParallelJoinObligation(
+  row: ProcessParallelJoinObligationRow,
+): ProcessParallelJoinObligation {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    processRunId: row.process_run_id,
+    joinStepRunId: row.join_step_run_id,
+    parallelGroupId: row.parallel_group_id,
+    branchToken: row.branch_token,
+    arrivedAt: row.arrived_at ?? undefined,
+    arrivalSourceStepRunId: row.arrival_source_step_run_id ?? undefined,
   };
 }
 
@@ -327,6 +366,7 @@ export async function getProcessTemplateWithSteps({
     priority: row.priority,
     conditionConfig: row.condition_config ?? undefined,
     isDefault: row.is_default,
+    isParallel: row.is_parallel,
     createdAt: row.created_at,
   }));
 
@@ -362,6 +402,8 @@ export async function saveProcessTemplate({
     p_steps: steps.map((step) => ({
       client_key: step.clientKey,
       node_id: step.nodeId,
+      node_type: step.nodeType,
+      parallel_group_id: step.parallelGroupId ?? null,
       name: step.name,
       assignee_user_id: step.assigneeUserId,
       due_rule: step.dueRule
@@ -370,6 +412,7 @@ export async function saveProcessTemplate({
       routes: step.routes.map((route) => ({
         target_client_key: route.targetStepKey,
         is_default: route.isDefault,
+        is_parallel: route.isParallel === true,
         conditions: route.conditions,
       })),
     })),
@@ -523,6 +566,7 @@ export async function getProcessRunWithSteps({
     { data: runRow, error: runError },
     { data: stepRows, error: stepError },
     { data: routeRows, error: routeError },
+    { data: obligationRows, error: obligationError },
   ] =
     await Promise.all([
       supabase
@@ -545,6 +589,12 @@ export async function getProcessRunWithSteps({
         .eq("process_run_id", processRunId)
         .order("priority", { ascending: true })
         .returns<ProcessStepRunRouteRow[]>(),
+      supabase
+        .from("process_parallel_join_obligations")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .eq("process_run_id", processRunId)
+        .returns<ProcessParallelJoinObligationRow[]>(),
     ]);
 
   if (runError) {
@@ -563,10 +613,15 @@ export async function getProcessRunWithSteps({
     throw new Error(`Unable to load process run routes: ${routeError.message}`);
   }
 
+  if (obligationError) {
+    throw new Error(`Unable to load process join obligations: ${obligationError.message}`);
+  }
+
   return {
     ...mapProcessRun(runRow),
     steps: stepRows.map(mapProcessStepRun),
     routes: routeRows.map(mapProcessStepRunRoute),
+    joinObligations: obligationRows.map(mapProcessParallelJoinObligation),
   };
 }
 
@@ -785,26 +840,33 @@ export async function listMyWorkItems({
 
   allStepsByRunId.forEach((steps) => {
     const stepById = new Map(steps.map((step) => [step.id, step]));
-    let currentStep = steps.find((step) => step.status === "active");
+    const activeSteps = steps.filter(
+      (step) => step.status === "active" && step.nodeType === "human_task",
+    );
 
-    // A route becomes knowable only when it has one unconditional successor.
-    // At a conditional split, stop rather than advertising either possible branch.
-    while (currentStep) {
-      const routes = routesBySourceStepRunId.get(currentStep.id) ?? [];
+    activeSteps.forEach((activeStep) => {
+      let currentStep: ProcessStepRun | undefined = activeStep;
 
-      if (routes.length !== 1 || !routes[0].isDefault) {
-        break;
+      // A route becomes knowable only when it has one ordinary unconditional
+      // successor. Conditional splits and unsatisfied parallel joins stay out
+      // of Upcoming until their runtime path has actually advanced.
+      while (currentStep) {
+        const routes = routesBySourceStepRunId.get(currentStep.id) ?? [];
+
+        if (routes.length !== 1 || !routes[0].isDefault || routes[0].isParallel) {
+          break;
+        }
+
+        const nextStep = stepById.get(routes[0].targetStepRunId);
+
+        if (!nextStep || nextStep.status !== "pending" || nextStep.nodeType !== "human_task") {
+          break;
+        }
+
+        deterministicUpcomingStepIds.add(nextStep.id);
+        currentStep = nextStep;
       }
-
-      const nextStep = stepById.get(routes[0].targetStepRunId);
-
-      if (!nextStep || nextStep.status !== "pending") {
-        break;
-      }
-
-      deterministicUpcomingStepIds.add(nextStep.id);
-      currentStep = nextStep;
-    }
+    });
   });
 
   const uniqueOrigins = new Map<string, { entityTypeId: string; recordId: string }>();
