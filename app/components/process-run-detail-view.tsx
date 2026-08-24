@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ApprovalDecisionButtons } from "@/app/components/approval-decision-buttons";
 import { CompleteStepButton } from "@/app/components/complete-step-button";
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
 import { ProcessDueAt } from "@/app/components/process-due-at";
@@ -11,6 +12,10 @@ type ProcessRunDetailViewProps = {
   originHref: string;
   currentUserId: string;
   completeProcessStepRunAction: (
+    state: ProcessActionState,
+    formData: FormData,
+  ) => Promise<ProcessActionState>;
+  decideProcessApprovalAction: (
     state: ProcessActionState,
     formData: FormData,
   ) => Promise<ProcessActionState>;
@@ -42,6 +47,7 @@ export function ProcessRunDetailView({
   originHref,
   currentUserId,
   completeProcessStepRunAction,
+  decideProcessApprovalAction,
 }: ProcessRunDetailViewProps) {
   const completedCount = run.steps.filter((step) => step.status === "completed").length;
   const skippedCount = run.steps.filter((step) => step.status === "skipped").length;
@@ -108,7 +114,7 @@ export function ProcessRunDetailView({
                 <p className="mt-1 text-sm font-medium text-graphite">
                   {step.stepIndex}. {step.name}
                 </p>
-                {step.nodeType === "human_task" ? (
+                {step.nodeType === "human_task" || step.nodeType === "approval" ? (
                   <p className="mt-1 text-xs text-stone">
                     {step.assigneeLabel ? `Assigned to ${step.assigneeLabel}` : "Unassigned"}
                   </p>
@@ -134,7 +140,9 @@ export function ProcessRunDetailView({
                 ) : null}
                 {step.routingResult ? (
                   <p className="mt-2 text-xs text-stone">
-                    {step.routingResult.outcome === "parallel_split"
+                    {step.routingResult.outcome === "approval_outcome"
+                      ? `Decision: ${step.approvalOutcomeLabel ?? step.routingResult.approvalOutcomeLabel ?? "Recorded"}`
+                      : step.routingResult.outcome === "parallel_split"
                       ? "Parallel branches activated"
                       : step.routingResult.outcome === "parallel_join"
                         ? "Parallel paths joined"
@@ -148,6 +156,11 @@ export function ProcessRunDetailView({
                       : ""}
                   </p>
                 ) : null}
+                {step.decidedAt ? (
+                  <p className="mt-1 text-xs text-stone">
+                    Decided by {step.decidedByLabel ?? "a workspace member"}
+                  </p>
+                ) : null}
               </div>
               {step.nodeType === "human_task" && step.status === "active" &&
               (!step.assigneeUserId || step.assigneeUserId === currentUserId) ? (
@@ -155,6 +168,26 @@ export function ProcessRunDetailView({
                   stepRunId={step.id}
                   completeProcessStepRunAction={completeProcessStepRunAction}
                 />
+              ) : step.nodeType === "approval" && step.status === "active" ? (
+                !step.assigneeUserId || step.assigneeUserId === currentUserId ? (
+                  <ApprovalDecisionButtons
+                    stepRunId={step.id}
+                    outcomes={run.routes
+                      .filter(
+                        (route) =>
+                          route.sourceStepRunId === step.id &&
+                          route.approvalOutcomeId &&
+                          route.approvalOutcomeLabel,
+                      )
+                      .map((route) => ({
+                        id: route.approvalOutcomeId!,
+                        label: route.approvalOutcomeLabel!,
+                      }))}
+                    decideProcessApprovalAction={decideProcessApprovalAction}
+                  />
+                ) : (
+                  <p className="text-xs text-stone">Only the assigned member can decide.</p>
+                )
               ) : null}
             </li>
           ))}

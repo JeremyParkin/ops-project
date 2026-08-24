@@ -89,6 +89,8 @@ export default async function EditProcessTemplatePage({
             targetStepKey: edge.targetNodeId,
             isDefault: edge.isDefault,
             isParallel: edge.isParallel,
+            approvalOutcomeId: edge.approvalOutcomeId ?? "",
+            approvalOutcomeLabel: edge.approvalOutcomeLabel ?? "",
             conditions: edge.conditionConfig ?? [],
           })),
       })),

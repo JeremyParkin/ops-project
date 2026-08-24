@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   archiveProcessTemplate as archiveProcessTemplateInRepository,
   completeProcessStepRun as completeProcessStepRunInRepository,
+  decideProcessApproval as decideProcessApprovalInRepository,
   deleteProcessTemplateIfSafe,
   restoreProcessTemplate as restoreProcessTemplateInRepository,
   saveProcessTemplate as saveProcessTemplateInRepository,
@@ -41,6 +42,8 @@ type CompleteProcessStepRunContext = {
   workspaceId: string;
   processRunId: string;
 };
+
+type DecideProcessApprovalContext = CompleteProcessStepRunContext;
 
 function extractRpcErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
@@ -240,4 +243,40 @@ export async function completeProcessStepRunAction(
   revalidatePath(`/process-runs/${context.processRunId}`);
 
   return { success: true, message: "Step completed." };
+}
+
+export async function decideProcessApprovalAction(
+  context: DecideProcessApprovalContext,
+  _previousState: ProcessActionState,
+  formData: FormData,
+): Promise<ProcessActionState> {
+  const stepRunId = formData.get("stepRunId");
+  const outcomeId = formData.get("outcomeId");
+
+  if (
+    typeof stepRunId !== "string" ||
+    !stepRunId ||
+    typeof outcomeId !== "string" ||
+    !outcomeId
+  ) {
+    return { success: false, message: "Invalid approval decision." };
+  }
+
+  try {
+    await decideProcessApprovalInRepository({
+      workspaceId: context.workspaceId,
+      processRunId: context.processRunId,
+      stepRunId,
+      outcomeId,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: extractRpcErrorMessage(error, "Unable to submit this approval decision."),
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return { success: true, message: "Approval decision recorded." };
 }

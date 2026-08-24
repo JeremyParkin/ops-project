@@ -5,6 +5,8 @@ export type ProcessTemplateRouteFormValue = {
   targetStepKey: string;
   isDefault: boolean;
   isParallel?: boolean;
+  approvalOutcomeId?: string;
+  approvalOutcomeLabel?: string;
   conditions: ProcessBranchCondition[];
 };
 
@@ -152,6 +154,8 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
               targetStepKey: asString(routeRecord.targetStepKey),
               isDefault: routeRecord.isDefault === true,
               isParallel: routeRecord.isParallel === true,
+              approvalOutcomeId: asString(routeRecord.approvalOutcomeId).trim(),
+              approvalOutcomeLabel: asString(routeRecord.approvalOutcomeLabel).trim(),
               conditions: conditions as ProcessBranchCondition[],
             };
           })
@@ -161,7 +165,9 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
         clientKey: asString(record.clientKey) || `step-${index + 1}`,
         nodeId: asString(record.nodeId),
         nodeType:
-          record.nodeType === "parallel_split" || record.nodeType === "parallel_join"
+          record.nodeType === "approval" ||
+          record.nodeType === "parallel_split" ||
+          record.nodeType === "parallel_join"
             ? record.nodeType
             : "human_task",
         parallelGroupId: asString(record.parallelGroupId),
@@ -235,7 +241,14 @@ export function validateProcessTemplateFormData(
 
   if (!submittedSteps || submittedSteps.length === 0) {
     errors._form = "At least one valid step is required.";
-  } else if (submittedSteps.some((step) => (step.nodeType ?? "human_task") === "human_task" && !step.name)) {
+  } else if (
+    submittedSteps.some(
+      (step) =>
+        ((step.nodeType ?? "human_task") === "human_task" ||
+          (step.nodeType ?? "human_task") === "approval") &&
+        !step.name,
+    )
+  ) {
     errors._form = "Every step requires a name.";
   }
 
@@ -251,21 +264,24 @@ export function validateProcessTemplateFormData(
 
     if (
       nodeType !== "human_task" &&
+      nodeType !== "approval" &&
       nodeType !== "parallel_split" &&
       nodeType !== "parallel_join"
     ) {
       errors._form = "Every process node must have a supported type.";
     }
 
-    if (nodeType !== "human_task" && !step.parallelGroupId) {
+    const isSystemNode = nodeType === "parallel_split" || nodeType === "parallel_join";
+
+    if (isSystemNode && !step.parallelGroupId) {
       errors._form = "Parallel system nodes require a matching parallel group.";
     }
 
-    if (nodeType !== "human_task" && (step.assigneeUserId || step.dueAmount)) {
+    if (isSystemNode && (step.assigneeUserId || step.dueAmount)) {
       errors[`stepRoutes.${index}`] = "Parallel system nodes cannot have an assignee or due rule.";
     }
 
-    if (nodeType === "human_task" && step.dueAmount) {
+    if ((nodeType === "human_task" || nodeType === "approval") && step.dueAmount) {
       if (step.dueUnit !== "hours" && step.dueUnit !== "days") {
         errors[`stepDueAmount.${index}`] = "Due unit must be hours or days.";
       } else if (!/^[1-9]\d*$/.test(step.dueAmount)) {
@@ -280,6 +296,8 @@ export function validateProcessTemplateFormData(
     }
 
     const defaultRoutes = step.routes.filter((route) => route.isDefault);
+    const approvalOutcomeIds = new Set<string>();
+    const approvalOutcomeLabels = new Set<string>();
 
     if (defaultRoutes.length > 1) {
       errors[`stepRoutes.${index}`] = "A step can have only one default route.";
@@ -288,6 +306,32 @@ export function validateProcessTemplateFormData(
     step.routes.forEach((route) => {
       if (!route.targetStepKey) {
         errors[`stepRoutes.${index}`] = "Every route needs a target step.";
+      }
+
+      if (nodeType === "approval") {
+        const outcomeId = route.approvalOutcomeId?.trim() ?? "";
+        const outcomeLabel = route.approvalOutcomeLabel?.trim() ?? "";
+
+        if (!outcomeId || !outcomeLabel) {
+          errors[`stepRoutes.${index}`] = "Every approval outcome needs a label and stable identity.";
+        }
+        if (outcomeId && approvalOutcomeIds.has(outcomeId)) {
+          errors[`stepRoutes.${index}`] = "Approval outcome identities must be unique.";
+        }
+        if (outcomeLabel && approvalOutcomeLabels.has(outcomeLabel.toLocaleLowerCase())) {
+          errors[`stepRoutes.${index}`] = "Approval outcome labels must be unique.";
+        }
+        approvalOutcomeIds.add(outcomeId);
+        approvalOutcomeLabels.add(outcomeLabel.toLocaleLowerCase());
+
+        if (route.isDefault || route.isParallel || route.conditions.length > 0) {
+          errors[`stepRoutes.${index}`] = "Approval outcomes cannot use conditional, default, or parallel routing.";
+        }
+        return;
+      }
+
+      if (route.approvalOutcomeId || route.approvalOutcomeLabel) {
+        errors[`stepRoutes.${index}`] = "Only approval nodes can configure approval outcomes.";
       }
       if (route.isParallel && (route.isDefault || route.conditions.length > 0)) {
         errors[`stepRoutes.${index}`] = "Parallel branch routes cannot have conditions or be default routes.";
@@ -300,7 +344,16 @@ export function validateProcessTemplateFormData(
       }
     });
 
-    if (nodeType !== "parallel_split" && step.routes.length > 1 && defaultRoutes.length !== 1) {
+    if (nodeType === "approval" && step.routes.length < 2) {
+      errors[`stepRoutes.${index}`] = "An approval needs at least two outcomes.";
+    }
+
+    if (
+      nodeType !== "parallel_split" &&
+      nodeType !== "approval" &&
+      step.routes.length > 1 &&
+      defaultRoutes.length !== 1
+    ) {
       errors[`stepRoutes.${index}`] = "Conditional routing requires one Otherwise route.";
     }
   });

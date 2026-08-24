@@ -20,6 +20,9 @@ function MyWorkItemRow({ item, primary }: { item: MyWorkItem; primary: boolean }
       className={`border border-grit p-3 ${primary ? "border-l-4 border-l-brass-deep" : ""}`}
     >
       <p className="text-sm font-semibold text-graphite">{item.stepRun.name}</p>
+      {item.stepRun.nodeType === "approval" ? (
+        <p className="mt-1 text-xs font-medium uppercase tracking-wide text-brass-deep">Approval</p>
+      ) : null}
       <p className="mt-1 text-sm text-stone">{item.run.processTemplateName}</p>
       <Link
         href={item.originHref}

@@ -57,6 +57,8 @@ type ProcessEdgeRow = {
   condition_config: ProcessBranchCondition[] | null;
   is_default: boolean;
   is_parallel: boolean;
+  approval_outcome_id: string | null;
+  approval_outcome_label: string | null;
   created_at: string;
 };
 
@@ -90,6 +92,11 @@ type ProcessStepRunRow = {
   completed_at: string | null;
   assignee_user_id: string | null;
   assignee_label: string | null;
+  approval_outcome_id: string | null;
+  approval_outcome_label: string | null;
+  decided_at: string | null;
+  decided_by_user_id: string | null;
+  decided_by_label: string | null;
   routing_result: ProcessStepRunRoutingResult | null;
 };
 
@@ -106,6 +113,8 @@ type ProcessStepRunRouteRow = {
   condition_summary: string | null;
   is_default: boolean;
   is_parallel: boolean;
+  approval_outcome_id: string | null;
+  approval_outcome_label: string | null;
 };
 
 type ProcessParallelJoinObligationRow = {
@@ -131,6 +140,8 @@ export type ProcessTemplateStepInput = {
     targetStepKey: string;
     isDefault: boolean;
     isParallel?: boolean;
+    approvalOutcomeId?: string;
+    approvalOutcomeLabel?: string;
     conditions: ProcessBranchCondition[];
   }>;
 };
@@ -221,6 +232,11 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     completedAt: row.completed_at ?? undefined,
     assigneeUserId: row.assignee_user_id ?? undefined,
     assigneeLabel: row.assignee_label ?? undefined,
+    approvalOutcomeId: row.approval_outcome_id ?? undefined,
+    approvalOutcomeLabel: row.approval_outcome_label ?? undefined,
+    decidedAt: row.decided_at ?? undefined,
+    decidedByUserId: row.decided_by_user_id ?? undefined,
+    decidedByLabel: row.decided_by_label ?? undefined,
     routingResult: row.routing_result ?? undefined,
   };
 }
@@ -239,6 +255,8 @@ function mapProcessStepRunRoute(row: ProcessStepRunRouteRow): ProcessStepRunRout
     conditionSummary: row.condition_summary ?? undefined,
     isDefault: row.is_default,
     isParallel: row.is_parallel,
+    approvalOutcomeId: row.approval_outcome_id ?? undefined,
+    approvalOutcomeLabel: row.approval_outcome_label ?? undefined,
   };
 }
 
@@ -367,6 +385,8 @@ export async function getProcessTemplateWithSteps({
     conditionConfig: row.condition_config ?? undefined,
     isDefault: row.is_default,
     isParallel: row.is_parallel,
+    approvalOutcomeId: row.approval_outcome_id ?? undefined,
+    approvalOutcomeLabel: row.approval_outcome_label ?? undefined,
     createdAt: row.created_at,
   }));
 
@@ -413,6 +433,8 @@ export async function saveProcessTemplate({
         target_client_key: route.targetStepKey,
         is_default: route.isDefault,
         is_parallel: route.isParallel === true,
+        approval_outcome_id: route.approvalOutcomeId ?? null,
+        approval_outcome_label: route.approvalOutcomeLabel ?? null,
         conditions: route.conditions,
       })),
     })),
@@ -551,6 +573,30 @@ export async function completeProcessStepRun({
 
   if (error) {
     throw new Error(`Unable to complete step: ${error.message}`);
+  }
+}
+
+export async function decideProcessApproval({
+  workspaceId,
+  processRunId,
+  stepRunId,
+  outcomeId,
+}: {
+  workspaceId: string;
+  processRunId: string;
+  stepRunId: string;
+  outcomeId: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("decide_process_approval_authorized", {
+    p_workspace_id: workspaceId,
+    p_process_run_id: processRunId,
+    p_step_run_id: stepRunId,
+    p_outcome_id: outcomeId,
+  });
+
+  if (error) {
+    throw new Error(`Unable to decide approval: ${error.message}`);
   }
 }
 
@@ -841,7 +887,9 @@ export async function listMyWorkItems({
   allStepsByRunId.forEach((steps) => {
     const stepById = new Map(steps.map((step) => [step.id, step]));
     const activeSteps = steps.filter(
-      (step) => step.status === "active" && step.nodeType === "human_task",
+      (step) =>
+        step.status === "active" &&
+        (step.nodeType === "human_task" || step.nodeType === "approval"),
     );
 
     activeSteps.forEach((activeStep) => {
@@ -859,7 +907,11 @@ export async function listMyWorkItems({
 
         const nextStep = stepById.get(routes[0].targetStepRunId);
 
-        if (!nextStep || nextStep.status !== "pending" || nextStep.nodeType !== "human_task") {
+        if (
+          !nextStep ||
+          nextStep.status !== "pending" ||
+          (nextStep.nodeType !== "human_task" && nextStep.nodeType !== "approval")
+        ) {
           break;
         }
 

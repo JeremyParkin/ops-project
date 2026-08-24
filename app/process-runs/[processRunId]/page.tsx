@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
-import { completeProcessStepRunAction } from "@/app/process-actions";
+import {
+  completeProcessStepRunAction,
+  decideProcessApprovalAction,
+} from "@/app/process-actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkspacePageLayout } from "@/app/components/page-primitives";
 import { ProcessRunDetailView } from "@/app/components/process-run-detail-view";
@@ -63,6 +66,10 @@ export default async function ProcessRunPage({
         originHref={originHref}
         currentUserId={user.id}
         completeProcessStepRunAction={completeProcessStepRunAction.bind(null, {
+          workspaceId,
+          processRunId,
+        })}
+        decideProcessApprovalAction={decideProcessApprovalAction.bind(null, {
           workspaceId,
           processRunId,
         })}

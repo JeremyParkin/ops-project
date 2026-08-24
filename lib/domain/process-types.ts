@@ -1,6 +1,6 @@
 import type { EntityRecord, EntityType, IsoUtcTimestamp } from "./types";
 
-export type ProcessNodeType = "human_task" | "parallel_split" | "parallel_join";
+export type ProcessNodeType = "human_task" | "approval" | "parallel_split" | "parallel_join";
 export type ProcessRunStatus = "active" | "completed";
 export type ProcessStepRunStatus = "pending" | "active" | "completed" | "skipped";
 
@@ -76,6 +76,8 @@ export type ProcessEdge = {
   conditionConfig?: ProcessBranchCondition[];
   isDefault: boolean;
   isParallel: boolean;
+  approvalOutcomeId?: string;
+  approvalOutcomeLabel?: string;
   createdAt: IsoUtcTimestamp;
 };
 
@@ -123,6 +125,11 @@ export type ProcessStepRun = {
   // never depends on the membership row still existing.
   assigneeUserId?: string;
   assigneeLabel?: string;
+  approvalOutcomeId?: string;
+  approvalOutcomeLabel?: string;
+  decidedAt?: IsoUtcTimestamp;
+  decidedByUserId?: string;
+  decidedByLabel?: string;
   routingResult?: ProcessStepRunRoutingResult;
 };
 
@@ -139,6 +146,8 @@ export type ProcessStepRunRoute = {
   conditionSummary?: string;
   isDefault: boolean;
   isParallel: boolean;
+  approvalOutcomeId?: string;
+  approvalOutcomeLabel?: string;
 };
 
 export type ProcessStepRunRoutingResult = {
@@ -150,9 +159,12 @@ export type ProcessStepRunRoutingResult = {
     | "unconditional"
     | "matched_condition"
     | "default_fallback"
+    | "approval_outcome"
     | "parallel_split"
     | "parallel_join";
   evaluatedAt: IsoUtcTimestamp;
+  approvalOutcomeId?: string;
+  approvalOutcomeLabel?: string;
   evaluatedConditions?: Array<{
     fieldName: string;
     operator: ProcessBranchConditionOperator;

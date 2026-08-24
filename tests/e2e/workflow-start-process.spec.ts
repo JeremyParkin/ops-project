@@ -70,17 +70,22 @@ async function createTemplate({
   entity,
   suffix,
   archived = false,
+  withApproval = false,
 }: {
   run: TestRun;
   entity: TestEntity;
   suffix: string;
   archived?: boolean;
+  withApproval?: boolean;
 }) {
   const supabase = createSupabaseTestClient();
   const id = randomUUID();
   const name = `${run.label} ${suffix}`;
   const firstNodeId = randomUUID();
   const secondNodeId = randomUUID();
+  const thirdNodeId = randomUUID();
+  const approveOutcomeId = randomUUID();
+  const rejectOutcomeId = randomUUID();
   const { error: templateError } = await supabase.from("process_templates").insert({
     id,
     workspace_id: DEMO_WORKSPACE_ID,
@@ -93,13 +98,13 @@ async function createTemplate({
     throw new Error(`Unable to create process template fixture: ${templateError.message}`);
   }
 
-  const { error: nodeError } = await supabase.from("process_nodes").insert([
+  const nodes = [
     {
       id: firstNodeId,
       workspace_id: DEMO_WORKSPACE_ID,
       process_template_id: id,
-      node_type: "human_task",
-      name: "Prepare",
+      node_type: withApproval ? "approval" : "human_task",
+      name: withApproval ? "Approve" : "Prepare",
       position: 1,
       config: { due_rule: { amount: 4, unit: "hours" } },
     },
@@ -112,26 +117,75 @@ async function createTemplate({
       position: 2,
       config: {},
     },
-  ]);
+    ...(withApproval
+      ? [
+          {
+            id: thirdNodeId,
+            workspace_id: DEMO_WORKSPACE_ID,
+            process_template_id: id,
+            node_type: "human_task",
+            name: "Revise",
+            position: 3,
+            config: {},
+          },
+        ]
+      : []),
+  ];
+  const { error: nodeError } = await supabase.from("process_nodes").insert(nodes);
 
   if (nodeError) {
     throw new Error(`Unable to create process step fixtures: ${nodeError.message}`);
   }
 
-  const { error: edgeError } = await supabase.from("process_edges").insert({
-    workspace_id: DEMO_WORKSPACE_ID,
-    process_template_id: id,
-    source_node_id: firstNodeId,
-    target_node_id: secondNodeId,
-    priority: 0,
-    is_default: true,
-  });
+  const { error: edgeError } = await supabase.from("process_edges").insert(
+    withApproval
+      ? [
+          {
+            workspace_id: DEMO_WORKSPACE_ID,
+            process_template_id: id,
+            source_node_id: firstNodeId,
+            target_node_id: secondNodeId,
+            priority: 0,
+            condition_config: null,
+            is_default: false,
+            is_parallel: false,
+            approval_outcome_id: approveOutcomeId,
+            approval_outcome_label: "Approve",
+          },
+          {
+            workspace_id: DEMO_WORKSPACE_ID,
+            process_template_id: id,
+            source_node_id: firstNodeId,
+            target_node_id: thirdNodeId,
+            priority: 1,
+            condition_config: null,
+            is_default: false,
+            is_parallel: false,
+            approval_outcome_id: rejectOutcomeId,
+            approval_outcome_label: "Reject",
+          },
+        ]
+      : {
+          workspace_id: DEMO_WORKSPACE_ID,
+          process_template_id: id,
+          source_node_id: firstNodeId,
+          target_node_id: secondNodeId,
+          priority: 0,
+          is_default: true,
+        },
+  );
 
   if (edgeError) {
     throw new Error(`Unable to create process edge fixture: ${edgeError.message}`);
   }
 
-  return { id, name };
+  return {
+    id,
+    name,
+    ...(withApproval
+      ? { firstNodeId, outcomes: { approve: approveOutcomeId, reject: rejectOutcomeId } }
+      : {}),
+  };
 }
 
 async function createDeliverable(page: Parameters<typeof gotoEntity>[0], entity: TestEntity, name: string, type: string, status = "Draft") {
@@ -311,6 +365,56 @@ test("Start Process lists compatible templates and starts the canonical snapshot
       originRecordId: record.id,
     }),
   ]);
+});
+
+test("workflow-triggered starts snapshot approval outcomes through the canonical start path", async ({ page }) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const deliverable = await createEntity(supabase, run, "Approval Deliverable", [
+    { slug: "name", name: "Name", type: "text", required: true },
+    { slug: "type", name: "Type", type: "text", required: true },
+    { slug: "status", name: "Status", type: "text" },
+  ]);
+  const template = await createTemplate({
+    run,
+    entity: deliverable,
+    suffix: "Approval workflow",
+    withApproval: true,
+  });
+  await createStartProcessWorkflow({
+    page,
+    name: `${run.label} Start approval workflow`,
+    entity: deliverable,
+    templateId: template.id,
+  });
+  await createDeliverable(page, deliverable, `${run.label} Approval record`, "Monthly Report");
+  await expect.poll(() => getProcessRuns(template.id)).toHaveLength(1);
+  const [processRun] = await getProcessRuns(template.id);
+  const [{ data: steps, error: stepError }, { data: routes, error: routeError }] = await Promise.all([
+    supabase
+      .from("process_step_runs")
+      .select("id, source_node_id, node_type, status, due_at")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_run_id", processRun.id),
+    supabase
+      .from("process_step_run_routes")
+      .select("source_node_id, approval_outcome_id, approval_outcome_label")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_run_id", processRun.id),
+  ]);
+  expect(stepError).toBeNull();
+  expect(routeError).toBeNull();
+  expect(steps?.find((step) => step.source_node_id === template.firstNodeId)).toMatchObject({
+    node_type: "approval",
+    status: "active",
+    due_at: expect.any(String),
+  });
+  expect(routes).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ approval_outcome_id: template.outcomes?.approve, approval_outcome_label: "Approve" }),
+      expect.objectContaining({ approval_outcome_id: template.outcomes?.reject, approval_outcome_label: "Reject" }),
+    ]),
+  );
 });
 
 test("Start Process supports record updates and duplicate active runs fail without a second run", async ({ page }) => {

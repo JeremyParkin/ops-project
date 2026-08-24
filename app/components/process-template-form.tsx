@@ -39,6 +39,8 @@ type LocalRoute = {
   targetStepKey: string;
   isDefault: boolean;
   isParallel: boolean;
+  approvalOutcomeId?: string;
+  approvalOutcomeLabel?: string;
   conditions: LocalCondition[];
 };
 
@@ -97,6 +99,8 @@ function toLocalRoute(route: ProcessTemplateRouteFormValue, index: number): Loca
     targetStepKey: route.targetStepKey,
     isDefault: route.isDefault,
     isParallel: route.isParallel === true,
+    approvalOutcomeId: route.approvalOutcomeId ?? "",
+    approvalOutcomeLabel: route.approvalOutcomeLabel ?? "",
     conditions: route.conditions.map(toLocalCondition),
   };
 }
@@ -268,6 +272,92 @@ export function ProcessTemplateForm({
     });
   }
 
+  function addApproval() {
+    const approvalKey = createKey("approval");
+    const approvedKey = createKey("approval-approved");
+    const rejectedKey = createKey("approval-rejected");
+
+    setSteps((current) => {
+      const previous = current.at(-1);
+      const block: LocalStep[] = [
+        {
+          key: approvalKey,
+          nodeId: "",
+          nodeType: "approval",
+          parallelGroupId: "",
+          name: "Approval",
+          assigneeUserId: "",
+          dueAmount: "",
+          dueUnit: "days",
+          routes: [
+            {
+              id: createKey("route"),
+              targetStepKey: approvedKey,
+              isDefault: false,
+              isParallel: false,
+              approvalOutcomeId: crypto.randomUUID(),
+              approvalOutcomeLabel: "Approve",
+              conditions: [],
+            },
+            {
+              id: createKey("route"),
+              targetStepKey: rejectedKey,
+              isDefault: false,
+              isParallel: false,
+              approvalOutcomeId: crypto.randomUUID(),
+              approvalOutcomeLabel: "Reject",
+              conditions: [],
+            },
+          ],
+        },
+        {
+          key: approvedKey,
+          nodeId: "",
+          nodeType: "human_task",
+          parallelGroupId: "",
+          name: "Approved follow-up",
+          assigneeUserId: "",
+          dueAmount: "",
+          dueUnit: "days",
+          routes: [],
+        },
+        {
+          key: rejectedKey,
+          nodeId: "",
+          nodeType: "human_task",
+          parallelGroupId: "",
+          name: "Rejected follow-up",
+          assigneeUserId: "",
+          dueAmount: "",
+          dueUnit: "days",
+          routes: [],
+        },
+      ];
+
+      const withPrevious =
+        previous && previous.routes.length === 0
+          ? current.map((step) =>
+              step.key === previous.key
+                ? {
+                    ...step,
+                    routes: [
+                      {
+                        id: createKey("route"),
+                        targetStepKey: approvalKey,
+                        isDefault: true,
+                        isParallel: false,
+                        conditions: [],
+                      },
+                    ],
+                  }
+                : step,
+            )
+          : current;
+
+      return [...withPrevious, ...block];
+    });
+  }
+
   function addParallelPaths() {
     const splitKey = createKey("parallel-split");
     const firstBranchKey = createKey("parallel-branch");
@@ -426,6 +516,24 @@ export function ProcessTemplateForm({
     });
   }
 
+  function addApprovalOutcome(stepKey: string, targetStepKey: string) {
+    updateStep(stepKey, (step) => ({
+      ...step,
+      routes: [
+        ...step.routes,
+        {
+          id: createKey("route"),
+          targetStepKey,
+          isDefault: false,
+          isParallel: false,
+          approvalOutcomeId: crypto.randomUUID(),
+          approvalOutcomeLabel: "New outcome",
+          conditions: [],
+        },
+      ],
+    }));
+  }
+
   function addConditionalRoute(stepKey: string, nextTargetStepKey: string) {
     const field = activeFields[0];
 
@@ -501,6 +609,8 @@ export function ProcessTemplateForm({
         targetStepKey: route.targetStepKey,
         isDefault: route.isDefault,
         isParallel: route.isParallel,
+        approvalOutcomeId: route.approvalOutcomeId ?? "",
+        approvalOutcomeLabel: route.approvalOutcomeLabel ?? "",
         conditions: route.conditions.map((condition) =>
           serializeCondition(condition, currentContext?.fields ?? []),
         ),
@@ -605,6 +715,13 @@ export function ProcessTemplateForm({
             </button>
             <button
               type="button"
+              onClick={addApproval}
+              className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
+            >
+              + Add approval
+            </button>
+            <button
+              type="button"
               onClick={addParallelPaths}
               className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
             >
@@ -617,8 +734,9 @@ export function ProcessTemplateForm({
               const legalTargets = steps.slice(index + 1);
               const routeError = state.errors[`stepRoutes.${index}`];
               const hasConditionalRoutes = step.routes.some((route) => !route.isDefault);
+              const isApproval = step.nodeType === "approval";
 
-              if (step.nodeType !== "human_task") {
+              if (step.nodeType === "parallel_split" || step.nodeType === "parallel_join") {
                 const isSplit = step.nodeType === "parallel_split";
 
                 return (
@@ -648,7 +766,7 @@ export function ProcessTemplateForm({
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <label htmlFor={`step-name-${step.key}`} className="block text-xs font-medium uppercase tracking-wide text-stone">
-                        Step {index + 1}
+                        {isApproval ? "Approval" : `Step ${index + 1}`}
                       </label>
                       <input
                         id={`step-name-${step.key}`}
@@ -696,7 +814,78 @@ export function ProcessTemplateForm({
                     </fieldset>
                   </div>
 
-                  {legalTargets.length === 0 ? (
+                  {isApproval ? (
+                    <fieldset className="mt-4 border-t border-grit pt-4">
+                      <legend className="text-sm font-semibold text-graphite">Outcomes</legend>
+                      {legalTargets.length === 0 ? (
+                        <p className="mt-2 text-sm text-stone">
+                          Add steps after this approval before configuring outcomes.
+                        </p>
+                      ) : (
+                        <div className="mt-3 flex flex-col gap-3">
+                          {step.routes.map((route, routeIndex) => (
+                            <div key={route.id} className="grid gap-2 border border-grit bg-chalk p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                              <label className="text-sm text-stone">
+                                <span className="block text-xs font-medium uppercase tracking-wide">Outcome {routeIndex + 1}</span>
+                                <input
+                                  value={route.approvalOutcomeLabel ?? ""}
+                                  onChange={(event) => {
+                                    const approvalOutcomeLabel = event.currentTarget.value;
+                                    updateRoute(step.key, route.id, (currentRoute) => ({
+                                      ...currentRoute,
+                                      approvalOutcomeLabel,
+                                    }));
+                                  }}
+                                  className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"
+                                />
+                              </label>
+                              <label className="text-sm text-stone">
+                                <span className="block text-xs font-medium uppercase tracking-wide">Then</span>
+                                <select
+                                  value={route.targetStepKey}
+                                  onChange={(event) => {
+                                    const targetStepKey = event.currentTarget.value;
+                                    updateRoute(step.key, route.id, (currentRoute) => ({
+                                      ...currentRoute,
+                                      targetStepKey,
+                                    }));
+                                  }}
+                                  className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"
+                                >
+                                  {legalTargets.map((target) => (
+                                    <option key={target.key} value={target.key}>
+                                      {target.name || "Untitled step"}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateStep(step.key, (current) => ({
+                                    ...current,
+                                    routes: current.routes.filter((candidate) => candidate.id !== route.id),
+                                  }))
+                                }
+                                disabled={step.routes.length <= 2}
+                                className="self-end h-9 text-xs font-medium text-stone underline-offset-4 hover:text-red-700 hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => addApprovalOutcome(step.key, legalTargets[0].key)}
+                            className="self-start text-sm font-medium text-stone underline-offset-4 hover:text-graphite hover:underline"
+                          >
+                            + Add outcome
+                          </button>
+                        </div>
+                      )}
+                      <FieldError message={routeError} />
+                    </fieldset>
+                  ) : legalTargets.length === 0 ? (
                     <p className="mt-4 border-t border-grit pt-3 text-sm text-stone">This is the terminal step.</p>
                   ) : (
                     <fieldset className="mt-4 border-t border-grit pt-4">
