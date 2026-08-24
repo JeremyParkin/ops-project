@@ -156,11 +156,20 @@ export async function deleteProcessTemplateAction(
     const result = await deleteProcessTemplateIfSafe(context);
 
     if (!result.deleted) {
+      const dependencies = [
+        result.runCount > 0
+          ? `${result.runCount} process run${result.runCount === 1 ? "" : "s"}`
+          : null,
+        result.workflowCount > 0
+          ? `${result.workflowCount} workflow${result.workflowCount === 1 ? "" : "s"}`
+          : null,
+      ].filter((dependency): dependency is string => Boolean(dependency));
+
       return {
         success: false,
-        message: `Cannot delete this process template because ${result.runCount} process run${
-          result.runCount === 1 ? "" : "s"
-        } reference it.`,
+        message: `Cannot delete this process template because ${dependencies.join(
+          " and ",
+        )} reference it.`,
       };
     }
   } catch (error) {

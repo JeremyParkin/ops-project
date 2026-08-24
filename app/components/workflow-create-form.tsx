@@ -11,6 +11,7 @@ import { getWorkflowFieldLabel } from "@/lib/domain/workflow-field-labels";
 import type { WorkflowFormState } from "@/lib/domain/workflow-validation";
 import { initialWorkflowFormState } from "@/lib/domain/workflow-validation";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
+import type { ProcessTemplate } from "@/lib/domain/process-types";
 import type { RelationRecordOption } from "@/lib/domain/record-repository";
 import type {
   WorkflowActionType,
@@ -27,6 +28,7 @@ type WorkflowEntityContext = {
 type WorkflowDefinitionFormProps = {
   mode: "create" | "edit";
   entityContexts: WorkflowEntityContext[];
+  processTemplates: ProcessTemplate[];
   initialState?: WorkflowFormState;
   submitAction: (
     state: WorkflowFormState,
@@ -57,6 +59,7 @@ type LocalAction = {
   actionType: WorkflowActionType;
   actionTargetEntityTypeId: string;
   relatedFieldDefinitionId: string;
+  processTemplateId: string;
   mappings: Record<string, LocalMapping>;
 };
 
@@ -231,6 +234,7 @@ function createDefaultAction(defaultEntityTypeId: string): LocalAction {
     actionType: "create_record",
     actionTargetEntityTypeId: defaultEntityTypeId,
     relatedFieldDefinitionId: "",
+    processTemplateId: "",
     mappings: {},
   };
 }
@@ -374,6 +378,7 @@ function ConditionValueInput({
 export function WorkflowDefinitionForm({
   mode,
   entityContexts,
+  processTemplates,
   initialState = initialWorkflowFormState,
   submitAction,
 }: WorkflowDefinitionFormProps) {
@@ -404,6 +409,7 @@ export function WorkflowDefinitionForm({
           key={state.formVersion}
           mode={mode}
           entityContexts={entityContexts}
+          processTemplates={processTemplates}
           initialState={initialState}
           submitAction={submitAction}
           state={state}
@@ -417,6 +423,7 @@ export function WorkflowDefinitionForm({
 function WorkflowDefinitionFormFields({
   mode,
   entityContexts,
+  processTemplates,
   state,
   pending,
 }: WorkflowDefinitionFormFieldsProps) {
@@ -445,6 +452,10 @@ function WorkflowDefinitionFormFields({
       return contextById.get(relatedField?.relatedEntityTypeId ?? "");
     }
 
+    if (action.actionType === "start_process") {
+      return undefined;
+    }
+
     return contextById.get(action.actionTargetEntityTypeId);
   }
 
@@ -455,6 +466,7 @@ function WorkflowDefinitionFormFields({
       actionTargetEntityTypeId:
         formValue.actionTargetEntityTypeId || defaultTargetEntityTypeId,
       relatedFieldDefinitionId: formValue.relatedFieldDefinitionId,
+      processTemplateId: formValue.processTemplateId,
       mappings: {},
     };
     const targetContext = resolveTargetContext(local, initialTriggerContext);
@@ -605,6 +617,14 @@ function WorkflowDefinitionFormFields({
           };
         }
 
+        if (action.actionType === "start_process") {
+          return {
+            ...action,
+            processTemplateId: "",
+            mappings: {},
+          };
+        }
+
         const targetContext = contextById.get(action.actionTargetEntityTypeId);
 
         if (!nextTriggerContext || !targetContext) {
@@ -633,12 +653,19 @@ function WorkflowDefinitionFormFields({
           ? triggerContext
           : value === "update_related_record"
             ? undefined
-            : contextById.get(targetEntityTypeId);
+            : value === "start_process"
+              ? undefined
+              : contextById.get(targetEntityTypeId);
 
       return {
         ...action,
         actionType: value,
-        actionTargetEntityTypeId: targetEntityTypeId,
+        actionTargetEntityTypeId:
+          value === "create_record" ? targetEntityTypeId : "",
+        relatedFieldDefinitionId:
+          value === "update_related_record" ? action.relatedFieldDefinitionId : "",
+        processTemplateId:
+          value === "start_process" ? action.processTemplateId : "",
         mappings: createMappingsForTarget(
           getActiveFields(nextTargetContext?.fields ?? []),
           {},
@@ -681,6 +708,13 @@ function WorkflowDefinitionFormFields({
         ),
       };
     });
+  }
+
+  function handleActionProcessTemplateChange(actionId: string, value: string) {
+    updateAction(actionId, (action) => ({
+      ...action,
+      processTemplateId: value,
+    }));
   }
 
   function addCondition() {
@@ -783,6 +817,9 @@ function WorkflowDefinitionFormFields({
               mappings: action.mappings,
             })
           : [];
+        const selectedProcessTemplate = processTemplates.find(
+          (processTemplate) => processTemplate.id === action.processTemplateId,
+        );
 
         return [
           ...relatedFields
@@ -795,6 +832,11 @@ function WorkflowDefinitionFormFields({
               (field) =>
                 `${actionLabel} related field ${getSourceFieldLabel(field)} is archived.`,
             ),
+          ...(action.actionType === "start_process" && selectedProcessTemplate?.archivedAt
+            ? [
+                `${actionLabel} process template ${selectedProcessTemplate.name} is archived.`,
+              ]
+            : []),
           ...renderedTargetFields
             .filter((field) => field.archivedAt)
             .map((field) =>
@@ -940,7 +982,7 @@ function WorkflowDefinitionFormFields({
       {archivedReferenceMessages.length > 0 ? (
         <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p className="font-semibold">
-            This workflow cannot run while it references an archived field.
+            This workflow cannot run while it references archived configuration.
           </p>
           <ul className="mt-2 list-disc pl-5">
             {archivedReferenceMessages.map((message) => (
@@ -1200,6 +1242,21 @@ function WorkflowDefinitionFormFields({
                   mappings: action.mappings,
                 })
               : [];
+            const selectedProcessTemplate = processTemplates.find(
+              (processTemplate) => processTemplate.id === action.processTemplateId,
+            );
+            const compatibleProcessTemplates = processTemplates.filter(
+              (processTemplate) =>
+                !processTemplate.archivedAt &&
+                processTemplate.appliesToEntityTypeId === triggerEntityTypeId,
+            );
+            const processTemplateOptions =
+              selectedProcessTemplate &&
+              !compatibleProcessTemplates.some(
+                (processTemplate) => processTemplate.id === selectedProcessTemplate.id,
+              )
+                ? [...compatibleProcessTemplates, selectedProcessTemplate]
+                : compatibleProcessTemplates;
 
             return (
               <div
@@ -1264,6 +1321,7 @@ function WorkflowDefinitionFormFields({
                       <option value="update_related_record">
                         Update Related Record
                       </option>
+                      <option value="start_process">Start Process</option>
                     </select>
                   </div>
 
@@ -1344,17 +1402,66 @@ function WorkflowDefinitionFormFields({
                       ) : null}
                     </div>
                   ) : null}
+
+                  {action.actionType === "start_process" ? (
+                    <div>
+                      <label
+                        htmlFor={`processTemplateId-${action.id}`}
+                        className="block text-sm font-medium text-slate-800"
+                      >
+                        Process Template
+                      </label>
+                      <select
+                        id={`processTemplateId-${action.id}`}
+                        name={`processTemplateId:${action.id}`}
+                        value={action.processTemplateId}
+                        onChange={(event) =>
+                          handleActionProcessTemplateChange(
+                            action.id,
+                            event.currentTarget.value,
+                          )
+                        }
+                        className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                      >
+                        <option value="">Choose process template</option>
+                        {processTemplateOptions.map((processTemplate) => (
+                          <option key={processTemplate.id} value={processTemplate.id}>
+                            {processTemplate.name}
+                            {processTemplate.archivedAt ? " (Archived)" : ""}
+                            {!processTemplate.archivedAt &&
+                            processTemplate.appliesToEntityTypeId !== triggerEntityTypeId
+                              ? " (Does not apply)"
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <FieldError
+                        message={state.errors[`processTemplateId:${action.id}`]}
+                      />
+                      {compatibleProcessTemplates.length === 0 ? (
+                        <p className="mt-1 text-sm text-slate-500">
+                          No active process templates apply to this trigger entity.
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-sm text-slate-500">
+                          Starts the selected process for the triggering record.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
 
                 <FieldError message={state.errors[`action:${action.id}`]} />
 
-                <h4 className="mb-3 mt-4 text-sm font-semibold text-slate-950">
-                  {action.actionType === "update_record" ||
-                  action.actionType === "update_related_record"
-                    ? "Update Fields"
-                    : "Set Fields"}
-                </h4>
-                <div className="flex flex-col gap-3">
+                {action.actionType !== "start_process" ? (
+                  <>
+                    <h4 className="mb-3 mt-4 text-sm font-semibold text-slate-950">
+                      {action.actionType === "update_record" ||
+                      action.actionType === "update_related_record"
+                        ? "Update Fields"
+                        : "Set Fields"}
+                    </h4>
+                    <div className="flex flex-col gap-3">
                   {renderedTargetFields.map((targetField) => {
                     const mapping =
                       action.mappings[targetField.id] ??
@@ -1574,8 +1681,10 @@ function WorkflowDefinitionFormFields({
                         </div>
                       </div>
                     );
-                  })}
-                </div>
+                    })}
+                    </div>
+                  </>
+                ) : null}
               </div>
             );
           })}

@@ -15,6 +15,7 @@ type WorkflowActionRow = {
   actionType: WorkflowActionType;
   actionTargetEntityTypeId?: string | null;
   relatedFieldDefinitionId?: string | null;
+  processTemplateId?: string | null;
   fieldMappings?: WorkflowAction["fieldMappings"];
 };
 
@@ -88,6 +89,7 @@ function mapWorkflowAction(row: WorkflowActionRow): WorkflowAction {
     actionType: row.actionType,
     actionTargetEntityTypeId: row.actionTargetEntityTypeId ?? undefined,
     relatedFieldDefinitionId: row.relatedFieldDefinitionId ?? undefined,
+    processTemplateId: row.processTemplateId ?? undefined,
     fieldMappings: row.fieldMappings ?? [],
   };
 }

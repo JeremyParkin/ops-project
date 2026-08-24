@@ -10,7 +10,8 @@ export type WorkflowTriggerType = "record_created" | "record_updated";
 export type WorkflowActionType =
   | "create_record"
   | "update_record"
-  | "update_related_record";
+  | "update_related_record"
+  | "start_process";
 export type WorkflowExecutionStatus = "succeeded" | "failed" | "skipped";
 export type WorkflowConditionOperator =
   | "equals"
@@ -92,6 +93,7 @@ export type WorkflowAction = {
   actionType: WorkflowActionType;
   actionTargetEntityTypeId?: EntityType["id"];
   relatedFieldDefinitionId?: FieldDefinition["id"];
+  processTemplateId?: string;
   fieldMappings: WorkflowFieldMapping[];
 };
 
@@ -121,6 +123,12 @@ export type WorkflowActionResult = {
   actionEntityTypeId?: EntityType["id"];
   actionRecordId?: EntityRecord["id"];
   createdRecordId?: EntityRecord["id"];
+  // Process-start actions retain their explicit process identifiers and
+  // origin context without overloading the legacy record-action fields.
+  processTemplateId?: string;
+  processRunId?: string;
+  originEntityTypeId?: EntityType["id"];
+  originRecordId?: EntityRecord["id"];
   resultMessage?: string;
   errorMessage?: string;
 };

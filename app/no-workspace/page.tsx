@@ -11,7 +11,7 @@ export default async function NoWorkspacePage() {
     <main className="auth-page">
       <section className="auth-form">
         <img
-          src="/branding/kinema-L3-brass-black-text.svg"
+          src="/branding/kinema-L3-black-text.svg"
           alt="Kinema"
           className="h-16 w-auto self-center"
         />

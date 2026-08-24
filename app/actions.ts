@@ -74,7 +74,11 @@ import {
   type RecordActionState,
   updateEntityRecord as updateEntityRecordInRepository,
 } from "@/lib/domain/record-repository";
-import { getEntityTypeProcessTemplateSummary, getRecordProcessRunSummary } from "@/lib/domain/process-repository";
+import {
+  getEntityTypeProcessTemplateSummary,
+  getRecordProcessRunSummary,
+  listProcessTemplates,
+} from "@/lib/domain/process-repository";
 import {
   createWorkflowDefinition,
   deleteWorkflowDefinition,
@@ -1742,10 +1746,15 @@ export async function createWorkflow(
       }),
     ),
   );
+  const processTemplates = await listProcessTemplates({
+    workspaceId,
+    includeArchived: true,
+  });
   const validation = await validateWorkflowFormData({
     formData,
     formVersion: nextFormVersion,
     activeEntityContexts,
+    processTemplates,
     validateConstantRelationValue: async (field, value) => {
       if (!field.relatedEntityTypeId) {
         return false;
@@ -1811,10 +1820,15 @@ export async function updateWorkflow(
       }),
     ),
   );
+  const processTemplates = await listProcessTemplates({
+    workspaceId,
+    includeArchived: true,
+  });
   const validation = await validateWorkflowFormData({
     formData,
     formVersion: nextFormVersion,
     activeEntityContexts,
+    processTemplates,
     validateConstantRelationValue: async (field, value) => {
       if (!field.relatedEntityTypeId) {
         return false;

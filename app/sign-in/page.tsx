@@ -23,7 +23,7 @@ export default async function SignInPage() {
     <main className="auth-page">
       <form action={signIn} className="auth-form">
         <img
-          src="/branding/kinema-L3-brass-black-text.svg"
+          src="/branding/kinema-L3-black-text.svg"
           alt="Kinema"
           className="h-16 w-auto self-center"
         />

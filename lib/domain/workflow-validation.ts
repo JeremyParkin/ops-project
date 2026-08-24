@@ -28,6 +28,7 @@ import type {
   WorkflowFieldMapping,
   WorkflowTriggerType,
 } from "./workflow-types";
+import type { ProcessTemplate } from "./process-types";
 
 export type WorkflowMappingFormValue = {
   type:
@@ -55,6 +56,7 @@ export type WorkflowActionFormValue = {
   actionType: WorkflowActionType;
   actionTargetEntityTypeId: string;
   relatedFieldDefinitionId: string;
+  processTemplateId: string;
   mappings: Record<string, WorkflowMappingFormValue>;
 };
 
@@ -111,6 +113,7 @@ export const initialWorkflowFormState: WorkflowFormState = {
         actionType: "create_record",
         actionTargetEntityTypeId: "",
         relatedFieldDefinitionId: "",
+        processTemplateId: "",
         mappings: {},
       },
     ],
@@ -151,10 +154,17 @@ function getConditionRows(formData: FormData) {
     });
 }
 
-function coerceActionType(rawActionType: string): WorkflowActionType {
-  return rawActionType === "update_record" || rawActionType === "update_related_record"
-    ? rawActionType
-    : "create_record";
+function parseActionType(rawActionType: string): WorkflowActionType | undefined {
+  if (
+    rawActionType === "create_record" ||
+    rawActionType === "update_record" ||
+    rawActionType === "update_related_record" ||
+    rawActionType === "start_process"
+  ) {
+    return rawActionType;
+  }
+
+  return undefined;
 }
 
 function getActionRows(formData: FormData) {
@@ -163,7 +173,7 @@ function getActionRows(formData: FormData) {
     .filter((value): value is string => typeof value === "string")
     .map((id) => ({
       id,
-      actionType: coerceActionType(getString(formData, `actionType:${id}`)),
+      actionType: parseActionType(getString(formData, `actionType:${id}`)),
       actionTargetEntityTypeId: getString(
         formData,
         `actionTargetEntityTypeId:${id}`,
@@ -172,6 +182,7 @@ function getActionRows(formData: FormData) {
         formData,
         `relatedFieldDefinitionId:${id}`,
       ),
+      processTemplateId: getString(formData, `processTemplateId:${id}`),
     }));
 }
 
@@ -257,11 +268,13 @@ export async function validateWorkflowFormData({
   formData,
   formVersion,
   activeEntityContexts,
+  processTemplates,
   validateConstantRelationValue,
 }: {
   formData: FormData;
   formVersion: number;
   activeEntityContexts: EntityFieldContext[];
+  processTemplates: ProcessTemplate[];
   validateConstantRelationValue: (
     field: FieldDefinition,
     value: string,
@@ -293,6 +306,9 @@ export async function validateWorkflowFormData({
       context.entityType.id,
       context.entityType.name,
     ]),
+  );
+  const processTemplateById = new Map(
+    processTemplates.map((processTemplate) => [processTemplate.id, processTemplate]),
   );
   const name = getString(formData, "workflowName");
   const enabled = getLastString(formData, "workflowEnabled") !== "false";
@@ -326,9 +342,10 @@ export async function validateWorkflowFormData({
           conditions: conditionRows,
           actions: actionRows.map((row) => ({
             id: row.id,
-            actionType: row.actionType,
+            actionType: row.actionType ?? "create_record",
             actionTargetEntityTypeId: row.actionTargetEntityTypeId,
             relatedFieldDefinitionId: row.relatedFieldDefinitionId,
+            processTemplateId: row.processTemplateId,
             mappings: {},
           })),
         },
@@ -348,7 +365,8 @@ export async function validateWorkflowFormData({
       row.id,
       {
         id: row.id,
-        actionType: row.actionType,
+        actionType: row.actionType ?? "create_record",
+        processTemplateId: row.processTemplateId,
         actionTargetEntityTypeId: row.actionTargetEntityTypeId,
         relatedFieldDefinitionId: row.relatedFieldDefinitionId,
         mappings: {},
@@ -497,6 +515,11 @@ export async function validateWorkflowFormData({
     }
 
     for (const actionRow of actionRows) {
+      if (!actionRow.actionType) {
+        errors[`actionType:${actionRow.id}`] = "Choose a valid workflow action.";
+        continue;
+      }
+
       const relatedField = triggerContext.fields.find(
         (field) => field.id === actionRow.relatedFieldDefinitionId,
       );
@@ -506,7 +529,56 @@ export async function validateWorkflowFormData({
           : actionRow.actionType === "update_related_record" &&
               relatedField?.relatedEntityTypeId
             ? entityContextById.get(relatedField.relatedEntityTypeId)
-            : triggerContext;
+            : actionRow.actionType === "update_record"
+              ? triggerContext
+              : undefined;
+
+      if (actionRow.actionType === "start_process") {
+        const processTemplate = processTemplateById.get(
+          actionRow.processTemplateId,
+        );
+        const mappingInputPrefixes = new Set([
+          "mappingType",
+          "constantValue",
+          "sourceFieldDefinitionId",
+          "templateValue",
+          "targetFieldDefinitionId",
+        ]);
+        const hasMappings = Array.from(formData.keys()).some((key) => {
+          const [prefix, actionId] = key.split(":");
+
+          return actionId === actionRow.id && mappingInputPrefixes.has(prefix);
+        });
+
+        if (!actionRow.processTemplateId || !processTemplate) {
+          errors[`processTemplateId:${actionRow.id}`] =
+            "Choose an active process template that applies to the trigger entity.";
+        } else if (processTemplate.archivedAt) {
+          errors[`processTemplateId:${actionRow.id}`] =
+            `${processTemplate.name} is archived and cannot be used in workflow configuration.`;
+        } else if (
+          processTemplate.appliesToEntityTypeId !== triggerEntityTypeId
+        ) {
+          errors[`processTemplateId:${actionRow.id}`] =
+            `${processTemplate.name} does not apply to the trigger entity.`;
+        }
+
+        if (
+          actionRow.actionTargetEntityTypeId ||
+          actionRow.relatedFieldDefinitionId ||
+          hasMappings
+        ) {
+          errors[`action:${actionRow.id}`] =
+            "Start Process cannot include record targets, relation fields, or field mappings.";
+        }
+
+        configActions.push({
+          actionType: "start_process",
+          processTemplateId: actionRow.processTemplateId || undefined,
+          fieldMappings: [],
+        });
+        continue;
+      }
 
       if (actionRow.actionType === "create_record" && !targetContext) {
         errors[`actionTargetEntityTypeId:${actionRow.id}`] =
@@ -793,6 +865,7 @@ export async function validateWorkflowFormData({
           actionRow.actionType === "update_related_record"
             ? actionRow.relatedFieldDefinitionId
             : undefined,
+        processTemplateId: undefined,
         fieldMappings: configMappings,
       });
     }
@@ -885,6 +958,7 @@ export function createWorkflowFormStateFromDefinition({
         actionType: action.actionType,
         actionTargetEntityTypeId: action.actionTargetEntityTypeId ?? "",
         relatedFieldDefinitionId: action.relatedFieldDefinitionId ?? "",
+        processTemplateId: action.processTemplateId ?? "",
         mappings: Object.fromEntries(
           action.fieldMappings.map((mapping) => {
             if (mapping.source.type === "unset") {

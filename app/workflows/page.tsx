@@ -28,6 +28,10 @@ function describeWorkflowAction(
     return "Update related record";
   }
 
+  if (action.actionType === "start_process") {
+    return "Start process";
+  }
+
   return `Create record in ${
     action.actionTargetEntityTypeId
       ? entityNameById.get(action.actionTargetEntityTypeId) ?? "Unknown entity"
@@ -209,6 +213,8 @@ export default async function WorkflowsPage() {
                                   ? ` — ${result.resultMessage}`
                                   : result.createdRecordId
                                     ? " — record created"
+                                    : result.processRunId
+                                      ? " — process started"
                                     : result.actionRecordId
                                       ? " — record updated"
                                       : ""}

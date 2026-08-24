@@ -1,4 +1,5 @@
 import { getEntityContext } from "./metadata-repository";
+import { startProcessRun } from "./process-repository";
 import {
   createEntityRecord,
   entityRecordExists,
@@ -465,6 +466,38 @@ async function executeUpdateRelatedRecordAction({
   }
 }
 
+async function executeStartProcessAction({
+  workspaceId,
+  sourceContext,
+  triggerRecord,
+  action,
+}: {
+  workspaceId: string;
+  sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
+  triggerRecord: EntityRecord;
+  action: WorkflowAction;
+}) {
+  if (!action.processTemplateId) {
+    throw new Error("Start Process action is missing its process template.");
+  }
+
+  // Use the same membership-checked canonical RPC as the manual start path.
+  // It owns template/origin validation, locking, snapshots, and due timing.
+  const processRunId = await startProcessRun({
+    workspaceId,
+    processTemplateId: action.processTemplateId,
+    originEntityTypeId: sourceContext.entityType.id,
+    originRecordId: triggerRecord.id,
+  });
+
+  return {
+    processTemplateId: action.processTemplateId,
+    processRunId,
+    originEntityTypeId: sourceContext.entityType.id,
+    originRecordId: triggerRecord.id,
+  };
+}
+
 async function executeSingleAction({
   workspaceId,
   sourceContext,
@@ -486,7 +519,23 @@ async function executeSingleAction({
             triggerRecord,
             action,
           })
-        : await executeCreateRecordAction({ workspaceId, sourceContext, triggerRecord, action });
+        : action.actionType === "start_process"
+          ? await executeStartProcessAction({
+              workspaceId,
+              sourceContext,
+              triggerRecord,
+              action,
+            })
+          : action.actionType === "create_record"
+            ? await executeCreateRecordAction({
+                workspaceId,
+                sourceContext,
+                triggerRecord,
+                action,
+              })
+            : (() => {
+                throw new Error("Workflow action type is invalid.");
+              })();
 
   return {
     createdRecordId:
@@ -494,15 +543,32 @@ async function executeSingleAction({
     actionRecordId:
       "createdRecordId" in actionResult
         ? actionResult.createdRecordId
-        : actionResult.actionRecordId,
+        : "actionRecordId" in actionResult
+          ? actionResult.actionRecordId
+          : undefined,
     actionEntityTypeId:
       "targetEntityTypeId" in actionResult
         ? actionResult.targetEntityTypeId
-        : actionResult.actionEntityTypeId,
+        : "actionEntityTypeId" in actionResult
+          ? actionResult.actionEntityTypeId
+          : undefined,
     resultMessage:
       "changed" in actionResult && !actionResult.changed
         ? "No changes required."
+        : "processRunId" in actionResult
+          ? "Process started."
+          : undefined,
+    processTemplateId:
+      "processTemplateId" in actionResult
+        ? actionResult.processTemplateId
         : undefined,
+    processRunId: "processRunId" in actionResult ? actionResult.processRunId : undefined,
+    originEntityTypeId:
+      "originEntityTypeId" in actionResult
+        ? actionResult.originEntityTypeId
+        : undefined,
+    originRecordId:
+      "originRecordId" in actionResult ? actionResult.originRecordId : undefined,
   };
 }
 
@@ -555,6 +621,10 @@ async function executeWorkflowActions({
         actionEntityTypeId: result.actionEntityTypeId,
         actionRecordId: result.actionRecordId,
         createdRecordId: result.createdRecordId,
+        processTemplateId: result.processTemplateId,
+        processRunId: result.processRunId,
+        originEntityTypeId: result.originEntityTypeId,
+        originRecordId: result.originRecordId,
         resultMessage: result.resultMessage,
       });
 
@@ -576,6 +646,16 @@ async function executeWorkflowActions({
         status: "failed",
         actionEntityTypeId: resolvedEntityTypeId,
         actionRecordId: resolvedRecordId,
+        processTemplateId:
+          action.actionType === "start_process"
+            ? action.processTemplateId
+            : undefined,
+        originEntityTypeId:
+          action.actionType === "start_process"
+            ? sourceContext.entityType.id
+            : undefined,
+        originRecordId:
+          action.actionType === "start_process" ? triggerRecord.id : undefined,
         errorMessage,
       });
 
@@ -607,6 +687,8 @@ function describeActionOutcome(result: WorkflowActionResult) {
       return "updated the triggering record.";
     case "update_related_record":
       return "updated a related record.";
+    case "start_process":
+      return "started a process.";
   }
 }
 

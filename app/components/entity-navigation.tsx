@@ -45,7 +45,7 @@ export async function WorkspaceNavigation({
     <aside className="w-full self-start bg-graphite p-4 lg:sticky lg:top-5 lg:w-64">
       <Link href={homeHref} className="mb-5 block">
         <img
-          src="/branding/kinema-L1-brass-white-text.svg"
+          src="/branding/kinema-L1-white-text.svg"
           alt="Kinema"
           className="h-8 w-auto"
         />

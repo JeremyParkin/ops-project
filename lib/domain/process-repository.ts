@@ -417,7 +417,11 @@ export async function deleteProcessTemplateIfSafe({
     throw new Error(`Unable to delete process template: ${error.message}`);
   }
 
-  const resultRows = data as Array<{ deleted: boolean; run_count: number }> | null;
+  const resultRows = data as Array<{
+    deleted: boolean;
+    run_count: number;
+    workflow_count: number;
+  }> | null;
   const result = resultRows?.[0];
 
   if (!result) {
@@ -427,6 +431,7 @@ export async function deleteProcessTemplateIfSafe({
   return {
     deleted: result.deleted,
     runCount: result.run_count,
+    workflowCount: result.workflow_count,
   };
 }
 
