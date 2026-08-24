@@ -67,7 +67,7 @@ export function RecordDetailView({
         title={recordLabel}
         actions={<>
           {record.archivedAt ? (
-            <span className="border border-slate-300 px-2 py-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+            <span className="border border-grit px-2 py-1 text-xs font-medium uppercase tracking-wide text-stone">
               Archived
             </span>
           ) : null}
@@ -81,9 +81,9 @@ export function RecordDetailView({
         </>}
       />
 
-      <section className="border border-slate-200 bg-white p-5">
+      <section className="border border-grit bg-white p-5">
         <SectionHeader title="Details" />
-        <dl className="mt-5 divide-y divide-slate-100">
+        <dl className="mt-5 divide-y divide-chalk">
           {orderedFields.map((field) => {
             const value = record.values[field.key];
             const relationLabel =
@@ -96,13 +96,13 @@ export function RecordDetailView({
                 key={field.id}
                 className="grid gap-2 py-3 md:grid-cols-[minmax(12rem,18rem)_1fr]"
               >
-                <dt className="text-sm font-medium text-slate-600">{field.name}</dt>
-                <dd className="text-sm text-slate-950">
+                <dt className="text-sm font-medium text-stone">{field.name}</dt>
+                <dd className="text-sm text-graphite">
                   {field.type === "relation" ? (
                     relationLabel && typeof value === "string" && field.relatedEntityTypeId ? (
                       <Link
                         href={`/entities/${field.relatedEntityTypeId}/records/${value}`}
-                        className="inline-flex items-center border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-900 underline-offset-4 hover:underline"
+                        className="inline-flex items-center border border-grit bg-chalk px-2 py-1 text-xs font-medium text-stone underline-offset-4 hover:underline"
                       >
                         {relationLabel}
                       </Link>
@@ -122,32 +122,32 @@ export function RecordDetailView({
       <ProcessSection entries={processSectionEntries} />
 
       {incomingRelationGroups.length > 0 ? (
-        <section className="border border-slate-200 bg-white p-5">
+        <section className="border border-grit bg-white p-5">
           <SectionHeader title="Related Records" />
           <div className="mt-5 grid gap-6">
             {incomingRelationGroups.map((group) => (
               <div key={`${group.sourceEntityType.id}:${group.relationField.id}`}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold text-slate-950">
+                  <h3 className="text-sm font-semibold text-graphite">
                     {formatEntityGroupName(group.sourceEntityType.name)} via{" "}
                     {group.relationField.name}
                   </h3>
                   {!record.archivedAt ? (
                     <Link
                       href={`/entities/${group.sourceEntityType.id}?prefillRelationFieldId=${group.relationField.id}&originEntityTypeId=${entityType.id}&originRecordId=${record.id}#add-record`}
-                      className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+                      className="text-sm font-medium text-stone underline-offset-4 hover:underline"
                     >
                       Add {group.sourceEntityType.name}
                     </Link>
                   ) : null}
                 </div>
                 {group.records.length > 0 ? (
-                  <ul className="mt-2 divide-y divide-slate-100 border-y border-slate-100">
+                  <ul className="mt-2 divide-y divide-chalk border-y border-chalk">
                     {group.records.map((incomingRecord) => (
                       <li key={incomingRecord.id} className="py-2">
                         <Link
                           href={`/entities/${group.sourceEntityType.id}/records/${incomingRecord.id}`}
-                          className="text-sm font-medium text-slate-950 underline-offset-4 hover:underline"
+                          className="text-sm font-medium text-graphite underline-offset-4 hover:underline"
                         >
                           {getRecordLabel({
                             entityType: group.sourceEntityType,
@@ -159,7 +159,7 @@ export function RecordDetailView({
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-2 text-sm text-slate-500">No related records yet.</p>
+                  <p className="mt-2 text-sm text-stone">No related records yet.</p>
                 )}
               </div>
             ))}

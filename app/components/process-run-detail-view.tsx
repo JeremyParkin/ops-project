@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CompleteStepButton } from "@/app/components/complete-step-button";
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
+import { ProcessDueAt } from "@/app/components/process-due-at";
 import type { ProcessActionState } from "@/app/process-actions";
 import type { ProcessRunWithSteps } from "@/lib/domain/process-types";
 
@@ -15,16 +16,20 @@ type ProcessRunDetailViewProps = {
   ) => Promise<ProcessActionState>;
 };
 
+// Pending/completed are semantic (neutral, Sage). Active is the one place
+// Brass carries meaning here — the single current/actionable step — kept to
+// Brass Deep for text/border so it holds contrast on a Paper/white surface;
+// Brass itself is reserved for the step's left-edge accent below.
 function statusBadgeClass(status: "pending" | "active" | "completed") {
   if (status === "completed") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    return "border-status-sage/40 bg-status-sage/10 text-status-sage";
   }
 
   if (status === "active") {
-    return "border-sky-200 bg-sky-50 text-sky-900";
+    return "border-brass-deep/50 bg-brass-light/20 text-brass-deep";
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-500";
+  return "border-grit bg-chalk text-stone";
 }
 
 export function ProcessRunDetailView({
@@ -46,8 +51,8 @@ export function ProcessRunDetailView({
           <span
             className={`border px-2 py-1 text-xs font-medium uppercase tracking-wide ${
               run.status === "completed"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-sky-200 bg-sky-50 text-sky-900"
+                ? "border-status-sage/40 bg-status-sage/10 text-status-sage"
+                : "border-status-slate/40 bg-status-slate/10 text-status-slate"
             }`}
           >
             {run.status === "completed" ? "Complete" : "Active"}
@@ -55,26 +60,30 @@ export function ProcessRunDetailView({
         }
       />
 
-      <section className="border border-slate-200 bg-white p-5">
+      <section className="border border-grit bg-white p-5">
         <SectionHeader
           title="Overview"
           description={`${completedCount} of ${run.steps.length} steps complete`}
         />
-        <p className="mt-4 text-sm text-slate-600">
+        <p className="mt-4 text-sm text-stone">
           Started from{" "}
-          <Link href={originHref} className="font-medium text-slate-950 underline-offset-4 hover:underline">
+          <Link href={originHref} className="font-medium text-graphite underline-offset-4 hover:underline">
             {originLabel}
           </Link>
         </p>
       </section>
 
-      <section className="border border-slate-200 bg-white p-5">
+      <section className="border border-grit bg-white p-5">
         <SectionHeader title="Steps" />
         <ol className="mt-5 flex flex-col gap-3">
           {run.steps.map((step) => (
             <li
               key={step.id}
-              className="flex flex-wrap items-center justify-between gap-3 border border-slate-200 p-3"
+              className={`flex flex-wrap items-center justify-between gap-3 border p-3 ${
+                step.status === "active"
+                  ? "border-grit border-l-4 border-l-brass-deep"
+                  : "border-grit"
+              }`}
             >
               <div>
                 <span
@@ -82,12 +91,17 @@ export function ProcessRunDetailView({
                 >
                   {step.status}
                 </span>
-                <p className="mt-1 text-sm font-medium text-slate-950">
+                <p className="mt-1 text-sm font-medium text-graphite">
                   {step.stepIndex}. {step.name}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-stone">
                   {step.assigneeLabel ? `Assigned to ${step.assigneeLabel}` : "Unassigned"}
                 </p>
+                {step.dueAt ? (
+                  <p className="mt-1 text-xs text-stone">
+                    <ProcessDueAt dueAt={step.dueAt} />
+                  </p>
+                ) : null}
               </div>
               {step.status === "active" &&
               (!step.assigneeUserId || step.assigneeUserId === currentUserId) ? (

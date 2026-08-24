@@ -31,7 +31,7 @@ export function CompleteStepButton({
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex h-9 items-center justify-center bg-slate-950 px-3 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+        className="inline-flex h-9 items-center justify-center bg-brass px-3 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone"
       >
         {pending ? "Completing..." : "Complete"}
       </button>

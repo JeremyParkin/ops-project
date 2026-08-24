@@ -56,6 +56,8 @@ export default async function EditProcessTemplatePage({
         nodeId: step.id,
         name: step.name,
         assigneeUserId: step.assigneeUserId ?? "",
+        dueAmount: step.config.dueRule ? String(step.config.dueRule.amount) : "",
+        dueUnit: step.config.dueRule?.unit ?? "days",
       })),
     },
   };

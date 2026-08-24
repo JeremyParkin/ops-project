@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="476.41" height="113.04" viewBox="0 0 476.41 113.04" role="img" aria-label="kinema">
+  <defs></defs>
+  <g transform="translate(0 0) scale(1.13040)">
+    <path d="M12 12 H88 V88 H62 A50 50 0 0 0 12 38 Z" fill="#C8913A"></path>
+    <path d="M12 24 A64 64 0 0 1 76 88" fill="none" stroke="#FFFFFF" stroke-width="11.5"></path>
+  </g>
+  <text x="156.52" y="70" font-family="Space Grotesk" font-weight="500" font-size="100" letter-spacing="-4" fill="#1A1B18" xml:space="preserve">kınema</text>
+  <rect x="215.13" y="1.00" width="10.5" height="10.5" fill="#1A1B18"></rect>
+</svg>

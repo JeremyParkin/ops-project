@@ -4,6 +4,8 @@ import { getEntityRecord, getRecordLabel } from "./record-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
   ProcessEdge,
+  ProcessDueRule,
+  ProcessNodeConfig,
   ProcessNode,
   ProcessNodeType,
   ProcessRun,
@@ -34,7 +36,7 @@ type ProcessNodeRow = {
   node_type: ProcessNodeType;
   name: string;
   assignee_user_id: string | null;
-  config: Record<string, never>;
+  config: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 };
@@ -69,9 +71,10 @@ type ProcessStepRunRow = {
   step_index: number;
   node_type: ProcessNodeType;
   name: string;
-  config: Record<string, never>;
+  config: Record<string, unknown>;
   status: ProcessStepRunStatus;
   started_at: string | null;
+  due_at: string | null;
   completed_at: string | null;
   assignee_user_id: string | null;
   assignee_label: string | null;
@@ -81,7 +84,32 @@ export type ProcessTemplateStepInput = {
   nodeId: string | null;
   name: string;
   assigneeUserId: string | null;
+  dueRule?: ProcessDueRule;
 };
+
+function mapProcessNodeConfig(config: Record<string, unknown>): ProcessNodeConfig {
+  const dueRule = config.due_rule;
+
+  if (
+    typeof dueRule !== "object" ||
+    dueRule === null ||
+    Array.isArray(dueRule) ||
+    typeof (dueRule as Record<string, unknown>).amount !== "number" ||
+    ((dueRule as Record<string, unknown>).unit !== "hours" &&
+      (dueRule as Record<string, unknown>).unit !== "days")
+  ) {
+    return {};
+  }
+
+  const dueRuleRecord = dueRule as Record<string, unknown>;
+
+  return {
+    dueRule: {
+      amount: dueRuleRecord.amount as number,
+      unit: dueRuleRecord.unit as ProcessDueRule["unit"],
+    },
+  };
+}
 
 function mapProcessTemplate(row: ProcessTemplateRow): ProcessTemplate {
   return {
@@ -104,7 +132,7 @@ function mapProcessNode(row: ProcessNodeRow): ProcessNode {
     nodeType: row.node_type,
     name: row.name,
     assigneeUserId: row.assignee_user_id ?? undefined,
-    config: row.config,
+    config: mapProcessNodeConfig(row.config),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -134,9 +162,10 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     stepIndex: row.step_index,
     nodeType: row.node_type,
     name: row.name,
-    config: row.config,
+    config: mapProcessNodeConfig(row.config),
     status: row.status,
     startedAt: row.started_at ?? undefined,
+    dueAt: row.due_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
     assigneeUserId: row.assignee_user_id ?? undefined,
     assigneeLabel: row.assignee_label ?? undefined,
@@ -315,6 +344,9 @@ export async function saveProcessTemplate({
       node_id: step.nodeId,
       name: step.name,
       assignee_user_id: step.assigneeUserId,
+      due_rule: step.dueRule
+        ? { amount: step.dueRule.amount, unit: step.dueRule.unit }
+        : null,
     })),
   });
 
@@ -599,9 +631,30 @@ export type MyWorkItem = {
 };
 
 export type MyWorkSummary = {
+  overdue: MyWorkItem[];
   readyNow: MyWorkItem[];
   upcoming: MyWorkItem[];
 };
+
+function compareActiveMyWorkItems(left: MyWorkItem, right: MyWorkItem) {
+  if (left.stepRun.dueAt && right.stepRun.dueAt) {
+    const dueComparison = left.stepRun.dueAt.localeCompare(right.stepRun.dueAt);
+
+    if (dueComparison !== 0) {
+      return dueComparison;
+    }
+  } else if (left.stepRun.dueAt) {
+    return -1;
+  } else if (right.stepRun.dueAt) {
+    return 1;
+  }
+
+  const runComparison = left.run.startedAt.localeCompare(right.run.startedAt);
+
+  return runComparison !== 0
+    ? runComparison
+    : left.stepRun.stepIndex - right.stepRun.stepIndex;
+}
 
 // "My Work" is a convenience filter over data every workspace member can
 // already see (via Process Run detail), not a new visibility boundary — the
@@ -616,7 +669,7 @@ export async function listMyWorkItems({
   const user = await getCurrentUser();
 
   if (!user) {
-    return { readyNow: [], upcoming: [] };
+    return { overdue: [], readyNow: [], upcoming: [] };
   }
 
   const supabase = await createServerSupabaseClient();
@@ -641,7 +694,7 @@ export async function listMyWorkItems({
   }));
 
   if (entries.length === 0) {
-    return { readyNow: [], upcoming: [] };
+    return { overdue: [], readyNow: [], upcoming: [] };
   }
 
   const uniqueOrigins = new Map<string, { entityTypeId: string; recordId: string }>();
@@ -705,8 +758,18 @@ export async function listMyWorkItems({
     };
   });
 
+  const now = Date.now();
+  const activeItems = items.filter((item) => item.stepRun.status === "active");
+  const overdue = activeItems
+    .filter((item) => item.stepRun.dueAt && Date.parse(item.stepRun.dueAt) < now)
+    .sort(compareActiveMyWorkItems);
+  const readyNow = activeItems
+    .filter((item) => !item.stepRun.dueAt || Date.parse(item.stepRun.dueAt) >= now)
+    .sort(compareActiveMyWorkItems);
+
   return {
-    readyNow: items.filter((item) => item.stepRun.status === "active"),
+    overdue,
+    readyNow,
     upcoming: items.filter((item) => item.stepRun.status === "pending"),
   };
 }

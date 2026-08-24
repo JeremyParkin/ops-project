@@ -147,7 +147,7 @@ export function FieldCreateForm({
           <button
             type="submit"
             disabled={pending}
-            className="inline-flex h-10 items-center justify-center bg-slate-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone"
           >
             {pending ? "Adding..." : "Add Field"}
           </button>

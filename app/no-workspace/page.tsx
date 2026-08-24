@@ -10,6 +10,11 @@ export default async function NoWorkspacePage() {
   return (
     <main className="auth-page">
       <section className="auth-form">
+        <img
+          src="/branding/kinema-L3-brass-black-text.svg"
+          alt="Kinema"
+          className="h-16 w-auto self-center"
+        />
         <h1>No workspace access</h1>
         <p>Your account has not been assigned to a workspace.</p>
         <form action={signOut}>

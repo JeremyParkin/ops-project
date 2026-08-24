@@ -81,7 +81,7 @@ function formatTableCell(
   }
 
   return (
-    <span className="inline-flex items-center border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-900">
+    <span className="inline-flex items-center border border-grit bg-chalk px-2 py-1 text-xs font-medium text-stone">
       {formattedValue}
     </span>
   );
@@ -107,14 +107,14 @@ export function EntityRecordsTable({
 
   if (records.length === 0 && emptyState) {
     return (
-      <section className="mx-auto w-full max-w-6xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
-        <h2 className="text-lg font-semibold text-slate-950">{emptyState.title}</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
+      <section className="mx-auto w-full max-w-6xl border border-dashed border-grit bg-chalk px-5 py-10 text-center">
+        <h2 className="text-lg font-semibold text-graphite">{emptyState.title}</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone">
           {emptyState.description}
         </p>
         <Link
           href="#add-record"
-          className="mt-5 inline-flex h-10 items-center justify-center bg-slate-950 px-4 text-sm font-medium text-white hover:bg-slate-800"
+          className="mt-5 inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
         >
           Add {entityType.name}
         </Link>
@@ -124,16 +124,16 @@ export function EntityRecordsTable({
 
   return (
     <section className="mx-auto w-full max-w-6xl">
-      <div className="overflow-hidden border border-slate-200 bg-white">
+      <div className="overflow-hidden border border-grit bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+            <thead className="bg-chalk text-xs uppercase tracking-wide text-stone">
               <tr>
                 {fields.map((field) => (
                   <th
                     key={field.id}
                     scope="col"
-                    className="border-b border-slate-200 px-4 py-3 font-medium"
+                    className="border-b border-grit px-4 py-3 font-medium"
                   >
                     {field.name}
                   </th>
@@ -141,14 +141,14 @@ export function EntityRecordsTable({
                 {recordEditPathBase ? (
                   <th
                     scope="col"
-                    className="border-b border-slate-200 px-4 py-3 font-medium"
+                    className="border-b border-grit px-4 py-3 font-medium"
                   >
                     Actions
                   </th>
                 ) : null}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800">
+            <tbody className="divide-y divide-chalk text-graphite">
               {records.map((record) => {
                 const actionContext = recordActionContext
                   ? {
@@ -166,7 +166,7 @@ export function EntityRecordsTable({
                 return (
                 <tr
                   key={record.id}
-                  className={record.archivedAt ? "bg-slate-50 text-slate-500" : ""}
+                  className={record.archivedAt ? "bg-chalk text-stone" : ""}
                 >
                   {fields.map((field) => {
                     const cell = formatTableCell(
@@ -188,7 +188,7 @@ export function EntityRecordsTable({
                         {field.id === identityField?.id && recordEditPathBase ? (
                           <Link
                             href={`${recordEditPathBase}/${record.id}`}
-                            className="font-medium text-slate-950 underline-offset-4 hover:underline"
+                            className="font-medium text-graphite underline-offset-4 hover:underline"
                           >
                             {cell}
                           </Link>
@@ -216,28 +216,28 @@ export function EntityRecordsTable({
                           {!identityFieldIsVisible ? (
                             <Link
                               href={`${recordEditPathBase}/${record.id}`}
-                              className="text-sm font-medium text-slate-950 underline-offset-4 hover:underline"
+                              className="text-sm font-medium text-graphite underline-offset-4 hover:underline"
                             >
                               Open
                             </Link>
                           ) : null}
                           <Link
                             href={`${recordEditPathBase}/${record.id}/edit`}
-                            className="text-sm font-medium text-slate-950 underline-offset-4 hover:underline"
+                            className="text-sm font-medium text-graphite underline-offset-4 hover:underline"
                           >
                             Edit
                           </Link>
                           {record.archivedAt ? (
-                            <span className="border border-slate-300 px-2 py-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                            <span className="border border-grit px-2 py-1 text-xs font-medium uppercase tracking-wide text-stone">
                               Archived
                             </span>
                           ) : null}
                         {actionContext ? (
                           <details className="text-sm">
-                            <summary className="cursor-pointer font-medium text-slate-700 underline-offset-4 hover:underline">
+                            <summary className="cursor-pointer font-medium text-stone underline-offset-4 hover:underline">
                               Record actions
                             </summary>
-                            <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3">
+                            <div className="mt-3 rounded-sm border border-grit bg-white p-3">
                               <RecordRowActions
                                 isArchived={Boolean(record.archivedAt)}
                                 archiveRecordAction={archiveRecord.bind(

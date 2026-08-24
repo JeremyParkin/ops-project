@@ -57,7 +57,7 @@ export function WorkflowRowActions({
             <button
               type="submit"
               disabled={disablePending}
-              className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline disabled:text-slate-400"
+              className="text-sm font-medium text-stone underline-offset-4 hover:underline disabled:text-grit"
             >
               {disablePending ? "Disabling..." : "Disable"}
             </button>
@@ -67,7 +67,7 @@ export function WorkflowRowActions({
             <button
               type="submit"
               disabled={enablePending}
-              className="text-sm font-medium text-slate-950 underline-offset-4 hover:underline disabled:text-slate-400"
+              className="text-sm font-medium text-graphite underline-offset-4 hover:underline disabled:text-grit"
             >
               {enablePending ? "Enabling..." : "Enable"}
             </button>
@@ -97,7 +97,7 @@ export function WorkflowRowActions({
       </div>
       {latestMessage ? (
         <p
-          className={`text-xs ${latestSuccess ? "text-emerald-700" : "text-red-700"}`}
+          className={`text-xs ${latestSuccess ? "text-status-sage" : "text-red-700"}`}
           role="status"
         >
           {latestMessage}

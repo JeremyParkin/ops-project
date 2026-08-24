@@ -69,7 +69,7 @@ export default async function WorkflowsPage() {
             </div>
             <Link
               href="/workflows/new"
-              className="inline-flex h-10 items-center justify-center bg-slate-950 px-4 text-sm font-medium text-white"
+              className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
             >
               New Workflow
             </Link>

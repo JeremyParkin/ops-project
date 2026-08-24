@@ -79,6 +79,9 @@ export async function saveProcessTemplateAction(
         nodeId: step.nodeId || null,
         name: step.name,
         assigneeUserId: step.assigneeUserId || null,
+        dueRule: step.dueAmount
+          ? { amount: Number(step.dueAmount), unit: step.dueUnit }
+          : undefined,
       })),
     });
   } catch (error) {

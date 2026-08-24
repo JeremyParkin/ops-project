@@ -22,6 +22,11 @@ export default async function SignInPage() {
   return (
     <main className="auth-page">
       <form action={signIn} className="auth-form">
+        <img
+          src="/branding/kinema-L3-brass-black-text.svg"
+          alt="Kinema"
+          className="h-16 w-auto self-center"
+        />
         <h1>Sign in</h1>
         <label>
           Email

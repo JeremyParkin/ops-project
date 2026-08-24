@@ -2,7 +2,15 @@ export type ProcessTemplateStepFormValue = {
   nodeId: string;
   name: string;
   assigneeUserId: string;
+  dueAmount: string;
+  dueUnit: string;
 };
+
+type ValidatedProcessTemplateStep = Omit<ProcessTemplateStepFormValue, "dueUnit"> & {
+  dueUnit: "hours" | "days";
+};
+
+export const PROCESS_DUE_RULE_MAX_AMOUNT = 8760;
 
 export type ProcessTemplateFormValues = {
   name: string;
@@ -27,8 +35,8 @@ export const initialProcessTemplateFormState: ProcessTemplateFormState = {
     description: "",
     appliesToEntityTypeId: "",
     steps: [
-      { nodeId: "", name: "", assigneeUserId: "" },
-      { nodeId: "", name: "", assigneeUserId: "" },
+      { nodeId: "", name: "", assigneeUserId: "", dueAmount: "", dueUnit: "days" },
+      { nodeId: "", name: "", assigneeUserId: "", dueAmount: "", dueUnit: "days" },
     ],
   },
 };
@@ -39,7 +47,7 @@ type ProcessTemplateValidationResult =
       name: string;
       description?: string;
       appliesToEntityTypeId: string;
-      steps: ProcessTemplateStepFormValue[];
+      steps: ValidatedProcessTemplateStep[];
       submittedValues: ProcessTemplateFormValues;
     }
   | {
@@ -66,10 +74,14 @@ export function validateProcessTemplateFormData(
   const stepAssigneeUserIds = formData
     .getAll("stepAssigneeUserId")
     .map((value) => String(value).trim());
-  const submittedSteps = nodeIds.map((nodeId, index) => ({
+  const stepDueAmounts = formData.getAll("stepDueAmount").map((value) => String(value).trim());
+  const stepDueUnits = formData.getAll("stepDueUnit").map((value) => String(value));
+  const submittedSteps: ProcessTemplateStepFormValue[] = nodeIds.map((nodeId, index) => ({
     nodeId,
     name: stepNames[index] ?? "",
     assigneeUserId: stepAssigneeUserIds[index] ?? "",
+    dueAmount: stepDueAmounts[index] ?? "",
+    dueUnit: stepDueUnits[index] ?? "days",
   }));
   const submittedValues: ProcessTemplateFormValues = {
     name,
@@ -92,6 +104,28 @@ export function validateProcessTemplateFormData(
     errors._form = "Every step requires a name.";
   }
 
+  submittedSteps.forEach((step, index) => {
+    if (!step.dueAmount) {
+      return;
+    }
+
+    if (step.dueUnit !== "hours" && step.dueUnit !== "days") {
+      errors[`stepDueAmount.${index}`] = "Due unit must be hours or days.";
+      return;
+    }
+
+    if (!/^[1-9]\d*$/.test(step.dueAmount)) {
+      errors[`stepDueAmount.${index}`] = "Due offset must be a whole number.";
+      return;
+    }
+
+    const amount = Number(step.dueAmount);
+
+    if (!Number.isSafeInteger(amount) || amount > PROCESS_DUE_RULE_MAX_AMOUNT) {
+      errors[`stepDueAmount.${index}`] = `Due offset must be between 1 and ${PROCESS_DUE_RULE_MAX_AMOUNT}.`;
+    }
+  });
+
   if (Object.keys(errors).length > 0) {
     return { success: false, errors, submittedValues };
   }
@@ -101,7 +135,7 @@ export function validateProcessTemplateFormData(
     name,
     description: description || undefined,
     appliesToEntityTypeId,
-    steps: submittedSteps,
+    steps: submittedSteps as ValidatedProcessTemplateStep[],
     submittedValues,
   };
 }

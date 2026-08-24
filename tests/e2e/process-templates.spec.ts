@@ -56,6 +56,43 @@ async function fillTemplateBasics(
 }
 
 test.describe("process templates", () => {
+  test("persists optional hours and days due rules through the template editor", async ({ page }) => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const templateName = `${run.label} Due Rule Template`;
+
+    await page.goto("/processes/new");
+    await fillTemplateBasics(page, { name: templateName, appliesTo: entity });
+    await stepNameInput(page, 0).fill("Four-hour review");
+    await stepNameInput(page, 1).fill("Two-day approval");
+    await page.locator('input[name="stepDueAmount"]').nth(0).fill("4");
+    await page.locator('input[name="stepDueAmount"]').nth(1).fill("2");
+    await page.getByLabel("Due unit for step 1").selectOption("hours");
+    await page.getByLabel("Due unit for step 2").selectOption("days");
+    await page.getByRole("button", { name: "Save Process Template" }).click();
+    await expect(page.getByRole("link", { name: templateName })).toBeVisible();
+
+    const { data: template } = await supabase
+      .from("process_templates")
+      .select("id")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("name", templateName)
+      .single();
+    const { data: nodes } = await supabase
+      .from("process_nodes")
+      .select("name, config")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_template_id", template!.id)
+      .order("created_at", { ascending: true });
+    expect(nodes).toEqual([
+      { name: "Four-hour review", config: { due_rule: { amount: 4, unit: "hours" } } },
+      { name: "Two-day approval", config: { due_rule: { amount: 2, unit: "days" } } },
+    ]);
+  });
+
   test("creates a template with ordered steps, then rename/reorder preserves stable node IDs", async ({
     page,
   }) => {

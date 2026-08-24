@@ -13,8 +13,8 @@ type WorkspaceNavigationProps = {
 function navigationLinkClass(isActive: boolean) {
   return `px-3 py-2 text-sm font-medium ${
     isActive
-      ? "bg-slate-950 text-white"
-      : "text-slate-700 hover:bg-slate-100"
+      ? "bg-brass text-graphite"
+      : "text-grit hover:bg-slab hover:text-chalk"
   }`;
 }
 
@@ -42,12 +42,13 @@ export async function WorkspaceNavigation({
         : "/entities/new?showArchivedEntities=true";
 
   return (
-    <aside className="w-full self-start border border-slate-200 bg-white p-4 lg:sticky lg:top-5 lg:w-64">
-      <Link
-        href={homeHref}
-        className="mb-5 block text-sm font-semibold uppercase tracking-wide text-slate-950"
-      >
-        Workspace
+    <aside className="w-full self-start bg-graphite p-4 lg:sticky lg:top-5 lg:w-64">
+      <Link href={homeHref} className="mb-5 block">
+        <img
+          src="/branding/kinema-L1-brass-white-text.svg"
+          alt="Kinema"
+          className="h-8 w-auto"
+        />
       </Link>
       {memberships.length > 1 ? (
         <form action={switchActiveWorkspace} className="mb-4 flex gap-2">
@@ -58,7 +59,7 @@ export async function WorkspaceNavigation({
             id="active-workspace"
             name="workspaceId"
             defaultValue={workspaceId}
-            className="min-w-0 flex-1 border border-slate-300 px-2 py-1.5 text-sm text-slate-950"
+            className="min-w-0 flex-1 border border-grit bg-paper px-2 py-1.5 text-sm text-graphite"
           >
             {memberships.map((membership) => (
               <option key={membership.workspaceId} value={membership.workspaceId}>
@@ -66,7 +67,10 @@ export async function WorkspaceNavigation({
               </option>
             ))}
           </select>
-          <button type="submit" className="border border-slate-300 px-2 text-sm font-medium">
+          <button
+            type="submit"
+            className="border border-grit px-2 text-sm font-medium text-chalk hover:bg-slab"
+          >
             Switch
           </button>
         </form>
@@ -79,12 +83,12 @@ export async function WorkspaceNavigation({
           id="workspace-record-search"
           name="q"
           type="search"
-          className="min-w-0 flex-1 border border-slate-300 px-2 py-1.5 text-sm text-slate-950 placeholder:text-slate-400"
+          className="min-w-0 flex-1 border border-grit bg-paper px-2 py-1.5 text-sm text-graphite placeholder:text-stone"
           placeholder="Search records"
         />
         <button
           type="submit"
-          className="border border-slate-950 bg-slate-950 px-2 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+          className="border border-grit px-2 py-1.5 text-sm font-medium text-chalk hover:bg-slab"
         >
           Search
         </button>
@@ -97,8 +101,8 @@ export async function WorkspaceNavigation({
           My Work
         </Link>
       </nav>
-      <div className="my-5 border-t border-slate-100" />
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <div className="my-5 border-t border-slab" />
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-grit">
         Entities
       </div>
       <nav className="flex flex-col gap-1" aria-label="Entity navigation">
@@ -120,7 +124,7 @@ export async function WorkspaceNavigation({
                 {entityType.archivedAt ? (
                   <span
                     className={`text-xs uppercase tracking-wide ${
-                      isActive ? "text-slate-200" : "text-slate-400"
+                      isActive ? "text-graphite/70" : "text-grit"
                     }`}
                   >
                     Archived
@@ -131,7 +135,7 @@ export async function WorkspaceNavigation({
           );
         })}
       </nav>
-      <div className="mt-4 border-t border-slate-100 pt-4">
+      <div className="mt-4 border-t border-slab pt-4">
         <details
           open={
             activeSection === "workflows" ||
@@ -139,7 +143,7 @@ export async function WorkspaceNavigation({
             activeSection === "create-entity"
           }
         >
-          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+          <summary className="cursor-pointer text-sm font-semibold text-chalk">
             Workspace setup
           </summary>
           <nav className="mt-2 flex flex-col gap-1" aria-label="Workspace setup">
@@ -163,14 +167,17 @@ export async function WorkspaceNavigation({
             </Link>
             <Link
               href={archiveToggleHref}
-              className="px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="px-3 py-2 text-sm font-medium text-grit hover:bg-slab hover:text-chalk"
             >
               {showArchivedEntities ? "Hide archived entities" : "Archived entities"}
             </Link>
           </nav>
         </details>
         <form action={signOut} className="mt-3">
-          <button type="submit" className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline">
+          <button
+            type="submit"
+            className="text-sm font-medium text-grit underline-offset-4 hover:text-chalk hover:underline"
+          >
             Sign out
           </button>
         </form>

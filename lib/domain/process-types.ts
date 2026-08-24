@@ -4,6 +4,15 @@ export type ProcessNodeType = "human_task";
 export type ProcessRunStatus = "active" | "completed";
 export type ProcessStepRunStatus = "pending" | "active" | "completed";
 
+export type ProcessDueRule = {
+  amount: number;
+  unit: "hours" | "days";
+};
+
+export type ProcessNodeConfig = {
+  dueRule?: ProcessDueRule;
+};
+
 export type ProcessTemplate = {
   id: string;
   workspaceId: string;
@@ -25,7 +34,7 @@ export type ProcessNode = {
   // member. Structurally guaranteed (composite FK) to be a member of this
   // same workspace whenever set.
   assigneeUserId?: string;
-  config: Record<string, never>;
+  config: ProcessNodeConfig;
   createdAt: IsoUtcTimestamp;
   updatedAt: IsoUtcTimestamp;
 };
@@ -75,9 +84,10 @@ export type ProcessStepRun = {
   stepIndex: number;
   nodeType: ProcessNodeType;
   name: string;
-  config: Record<string, never>;
+  config: ProcessNodeConfig;
   status: ProcessStepRunStatus;
   startedAt?: IsoUtcTimestamp;
+  dueAt?: IsoUtcTimestamp;
   completedAt?: IsoUtcTimestamp;
   // Snapshotted at run start: assigneeUserId is used for completion
   // authorization (compared against the acting user), assigneeLabel (the

@@ -116,7 +116,7 @@ export function WorkspaceOnboarding({
                 type="button"
                 onClick={() => setStep(2)}
                 disabled={selectedOptionIds.length === 0}
-                className="h-10 bg-slate-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="h-10 bg-brass px-4 text-sm font-medium text-graphite disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone"
               >
                 Continue
               </button>
@@ -160,7 +160,7 @@ export function WorkspaceOnboarding({
               <button
                 type="submit"
                 disabled={pending}
-                className="h-10 bg-slate-950 px-4 text-sm font-medium text-white disabled:bg-slate-500"
+                className="h-10 bg-brass px-4 text-sm font-medium text-graphite disabled:bg-chalk disabled:text-stone"
               >
                 {pending ? "Creating..." : "Create workspace structure"}
               </button>

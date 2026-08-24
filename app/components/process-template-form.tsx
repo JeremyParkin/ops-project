@@ -11,6 +11,8 @@ type LocalStep = {
   nodeId: string;
   name: string;
   assigneeUserId: string;
+  dueAmount: string;
+  dueUnit: "hours" | "days";
 };
 
 type ProcessTemplateFormProps = {
@@ -57,6 +59,8 @@ export function ProcessTemplateForm({
       nodeId: step.nodeId,
       name: step.name,
       assigneeUserId: step.assigneeUserId,
+      dueAmount: step.dueAmount,
+      dueUnit: step.dueUnit === "hours" ? "hours" : "days",
     })),
   );
 
@@ -72,10 +76,29 @@ export function ProcessTemplateForm({
     );
   }
 
+  function updateStepDueAmount(key: string, dueAmount: string) {
+    setSteps((current) =>
+      current.map((step) => (step.key === key ? { ...step, dueAmount } : step)),
+    );
+  }
+
+  function updateStepDueUnit(key: string, dueUnit: "hours" | "days") {
+    setSteps((current) =>
+      current.map((step) => (step.key === key ? { ...step, dueUnit } : step)),
+    );
+  }
+
   function addStep() {
     setSteps((current) => [
       ...current,
-      { key: createStepKey(), nodeId: "", name: "", assigneeUserId: "" },
+      {
+        key: createStepKey(),
+        nodeId: "",
+        name: "",
+        assigneeUserId: "",
+        dueAmount: "",
+        dueUnit: "days",
+      },
     ]);
   }
 
@@ -103,14 +126,14 @@ export function ProcessTemplateForm({
   }
 
   return (
-    <section className="mx-auto w-full max-w-3xl border border-slate-200 bg-white p-5">
+    <section className="mx-auto w-full max-w-3xl border border-grit bg-white p-5">
       <div className="mb-5">
-        <h1 className="text-2xl font-semibold text-slate-950">
+        <h1 className="text-2xl font-semibold text-graphite">
           {isEditing ? "Edit Process Template" : "New Process Template"}
         </h1>
         {state.message ? (
           <p
-            className={`mt-2 text-sm ${state.success ? "text-emerald-700" : "text-red-700"}`}
+            className={`mt-2 text-sm ${state.success ? "text-status-sage" : "text-red-700"}`}
             role="status"
           >
             {state.message}
@@ -121,7 +144,7 @@ export function ProcessTemplateForm({
 
       <form action={formAction} className="flex flex-col gap-5">
         <div>
-          <label htmlFor="process-template-name" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="process-template-name" className="block text-sm font-medium text-slab">
             Name<span className="ml-1 text-red-700" aria-hidden="true">*</span>
           </label>
           <input
@@ -131,13 +154,13 @@ export function ProcessTemplateForm({
             required
             defaultValue={state.values.name}
             aria-invalid={state.errors.name ? "true" : "false"}
-            className="mt-1 block h-10 w-full border border-slate-300 px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+            className="mt-1 block h-10 w-full border border-grit px-3 text-sm text-graphite outline-none focus:border-brass-deep"
           />
           <FieldError message={state.errors.name} />
         </div>
 
         <div>
-          <label htmlFor="process-template-description" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="process-template-description" className="block text-sm font-medium text-slab">
             Description
           </label>
           <textarea
@@ -145,12 +168,12 @@ export function ProcessTemplateForm({
             name="description"
             rows={2}
             defaultValue={state.values.description}
-            className="mt-1 block w-full border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none focus:border-slate-950"
+            className="mt-1 block w-full border border-grit px-3 py-2 text-sm text-graphite outline-none focus:border-brass-deep"
           />
         </div>
 
         <div>
-          <label htmlFor="process-template-applies-to" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="process-template-applies-to" className="block text-sm font-medium text-slab">
             Applies to<span className="ml-1 text-red-700" aria-hidden="true">*</span>
           </label>
           {isEditing ? (
@@ -160,12 +183,12 @@ export function ProcessTemplateForm({
                 name="appliesToEntityTypeId"
                 value={state.values.appliesToEntityTypeId}
               />
-              <p className="mt-1 h-10 border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <p className="mt-1 h-10 border border-grit bg-chalk px-3 py-2 text-sm text-stone">
                 {entityTypes.find(
                   (entityType) => entityType.id === state.values.appliesToEntityTypeId,
                 )?.name ?? "Unknown entity"}
               </p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-stone">
                 The entity a process template applies to cannot be changed after creation.
               </p>
             </>
@@ -176,7 +199,7 @@ export function ProcessTemplateForm({
               required
               defaultValue={state.values.appliesToEntityTypeId}
               aria-invalid={state.errors.appliesToEntityTypeId ? "true" : "false"}
-              className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+              className="mt-1 block h-10 w-full border border-grit bg-white px-3 text-sm text-graphite outline-none focus:border-brass-deep"
             >
               <option value="">Choose entity type</option>
               {entityTypes.map((entityType) => (
@@ -191,24 +214,24 @@ export function ProcessTemplateForm({
 
         <div>
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-slate-950">Steps</h2>
+            <h2 className="text-lg font-semibold text-graphite">Steps</h2>
             <button
               type="button"
               onClick={addStep}
-              className="border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:border-slate-950 hover:text-slate-950"
+              className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
             >
               + Add step
             </button>
           </div>
           <div className="flex flex-col gap-3">
             {steps.map((step, index) => (
-              <div key={step.key} className="border border-slate-200 p-3">
+              <div key={step.key} className="border border-grit p-3">
                 <input type="hidden" name="stepNodeId" value={step.nodeId} />
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <label
                       htmlFor={`step-name-${step.key}`}
-                      className="block text-xs font-medium uppercase tracking-wide text-slate-500"
+                      className="block text-xs font-medium uppercase tracking-wide text-stone"
                     >
                       Step {index + 1}
                     </label>
@@ -219,14 +242,14 @@ export function ProcessTemplateForm({
                       required
                       value={step.name}
                       onChange={(event) => updateStepName(step.key, event.target.value)}
-                      className="mt-1 block h-10 w-full border border-slate-300 px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                      className="mt-1 block h-10 w-full border border-grit px-3 text-sm text-graphite outline-none focus:border-brass-deep"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => moveStep(step.key, "up")}
                     disabled={index === 0}
-                    className="h-10 border border-slate-300 px-2 text-xs font-medium text-slate-700 hover:border-slate-950 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="h-10 border border-grit px-2 text-xs font-medium text-stone hover:border-brass-deep hover:text-brass-deep disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Move Up
                   </button>
@@ -234,7 +257,7 @@ export function ProcessTemplateForm({
                     type="button"
                     onClick={() => moveStep(step.key, "down")}
                     disabled={index === steps.length - 1}
-                    className="h-10 border border-slate-300 px-2 text-xs font-medium text-slate-700 hover:border-slate-950 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="h-10 border border-grit px-2 text-xs font-medium text-stone hover:border-brass-deep hover:text-brass-deep disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Move Down
                   </button>
@@ -242,7 +265,7 @@ export function ProcessTemplateForm({
                     type="button"
                     onClick={() => removeStep(step.key)}
                     disabled={steps.length <= 1}
-                    className="h-10 border border-slate-300 px-2 text-xs font-medium text-slate-700 hover:border-red-700 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="h-10 border border-grit px-2 text-xs font-medium text-stone hover:border-red-700 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Remove
                   </button>
@@ -250,7 +273,7 @@ export function ProcessTemplateForm({
                 <div className="mt-2 max-w-xs">
                   <label
                     htmlFor={`step-assignee-${step.key}`}
-                    className="block text-xs font-medium uppercase tracking-wide text-slate-500"
+                    className="block text-xs font-medium uppercase tracking-wide text-stone"
                   >
                     Assignee
                   </label>
@@ -259,7 +282,7 @@ export function ProcessTemplateForm({
                     name="stepAssigneeUserId"
                     value={step.assigneeUserId}
                     onChange={(event) => updateStepAssignee(step.key, event.target.value)}
-                    className="mt-1 block h-9 w-full border border-slate-300 bg-white px-2 text-sm text-slate-950 outline-none focus:border-slate-950"
+                    className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"
                   >
                     <option value="">Unassigned</option>
                     {members.map((member) => (
@@ -269,22 +292,62 @@ export function ProcessTemplateForm({
                     ))}
                   </select>
                 </div>
+                <fieldset className="mt-3">
+                  <legend className="text-xs font-medium uppercase tracking-wide text-stone">
+                    Due
+                  </legend>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <input
+                      id={`step-due-amount-${step.key}`}
+                      name="stepDueAmount"
+                      type="number"
+                      min="1"
+                      max="8760"
+                      step="1"
+                      value={step.dueAmount}
+                      onChange={(event) => updateStepDueAmount(step.key, event.target.value)}
+                      aria-describedby={`step-due-help-${step.key}`}
+                      className="h-9 w-24 border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep"
+                    />
+                    <select
+                      aria-label={`Due unit for step ${index + 1}`}
+                      name="stepDueUnit"
+                      value={step.dueUnit}
+                      onChange={(event) =>
+                        updateStepDueUnit(
+                          step.key,
+                          event.target.value === "hours" ? "hours" : "days",
+                        )
+                      }
+                      className="h-9 border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"
+                    >
+                      <option value="hours">Hours</option>
+                      <option value="days">Days</option>
+                    </select>
+                    <span id={`step-due-help-${step.key}`} className="text-sm text-stone">
+                      after activation
+                    </span>
+                  </div>
+                  {state.errors[`stepDueAmount.${index}`] ? (
+                    <FieldError message={state.errors[`stepDueAmount.${index}`]} />
+                  ) : null}
+                </fieldset>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+        <div className="flex flex-wrap items-center gap-3 border-t border-grit pt-4">
           <button
             type="submit"
             disabled={pending}
-            className="inline-flex h-10 items-center justify-center bg-slate-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone"
           >
             {pending ? "Saving..." : "Save Process Template"}
           </button>
           <Link
             href="/processes"
-            className="h-10 px-2 py-2 text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+            className="h-10 px-2 py-2 text-sm font-medium text-stone underline-offset-4 hover:underline"
           >
             Cancel
           </Link>

@@ -14,6 +14,7 @@ import {
 } from "./helpers/supabase-test-data";
 import { requireE2eEnv } from "./helpers/env";
 import { selectReactOption } from "./helpers/ui";
+import type { ProcessDueRule } from "@/lib/domain/process-types";
 
 test.describe.configure({ mode: "serial" });
 
@@ -129,10 +130,12 @@ async function createProcessTemplateFixture(
   entity: TestEntity,
   stepNames: string[],
   assigneeUserIds: Array<string | null> = [],
+  dueRules: Array<ProcessDueRule | null> = [],
+  templateNameSuffix = "Playbook",
 ) {
   const supabase = createSupabaseTestClient();
   const templateId = randomUUID();
-  const templateName = `${run.label} ${entity.name} Playbook`;
+  const templateName = `${run.label} ${entity.name} ${templateNameSuffix}`;
 
   const { error: templateError } = await supabase.from("process_templates").insert({
     id: templateId,
@@ -154,6 +157,14 @@ async function createProcessTemplateFixture(
       node_type: "human_task",
       name,
       assignee_user_id: assigneeUserIds[index] ?? null,
+      config: dueRules[index]
+        ? {
+            due_rule: {
+              amount: dueRules[index].amount,
+              unit: dueRules[index].unit,
+            },
+          }
+        : {},
     })),
   );
 
@@ -215,6 +226,16 @@ function stepNameInput(page: Page, index: number): Locator {
   return page.locator('input[name="stepName"]').nth(index);
 }
 
+function processRunIdFromCurrentUrl(page: Page) {
+  const processRunId = new URL(page.url()).pathname.split("/").at(-1);
+
+  if (!processRunId) {
+    throw new Error("Expected to be on a process run page.");
+  }
+
+  return processRunId;
+}
+
 async function fillTemplateBasics(
   page: Page,
   { name, appliesTo }: { name: string; appliesTo: TestEntity },
@@ -258,6 +279,180 @@ test.describe("process runs", () => {
     await expect(processCard(page, template.name).getByRole("link", { name: "Open process" })).toBeVisible();
     await expect(processCard(page, template.name)).toContainText("0 of 3 steps complete");
     await expect(processCard(page, template.name)).toContainText("Current: Prepare Data");
+  });
+
+  test("snapshots hour and 24-hour-day due rules when a run starts", async ({ page }) => {
+    const hydrationErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && /hydration/i.test(message.text())) {
+        hydrationErrors.push(message.text());
+      }
+    });
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const hoursTemplate = await createProcessTemplateFixture(
+      run,
+      entity,
+      ["Four-hour review", "No deadline yet"],
+      [],
+      [{ amount: 4, unit: "hours" }, null],
+      "Hours Playbook",
+    );
+    const daysTemplate = await createProcessTemplateFixture(
+      run,
+      entity,
+      ["Two-day review"],
+      [],
+      [{ amount: 2, unit: "days" }],
+      "Days Playbook",
+    );
+    const recordId = await createEntityRecord({ entity, valuesBySlug: { name: "Due Rule Record" } });
+
+    await page.goto(`/entities/${entity.id}/records/${recordId}`);
+    await processCard(page, hoursTemplate.name).getByRole("button", { name: "Start process" }).click();
+    await page.waitForURL(/\/process-runs\//);
+    await expect(stepRow(page, "Four-hour review").locator("time")).not.toHaveText("date");
+    await page.reload();
+    await expect(stepRow(page, "Four-hour review").locator("time")).not.toHaveText("date");
+    expect(hydrationErrors).toEqual([]);
+    const hoursRunId = processRunIdFromCurrentUrl(page);
+    const { data: hourSteps } = await supabase
+      .from("process_step_runs")
+      .select("step_index, status, started_at, due_at, config")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_run_id", hoursRunId)
+      .order("step_index", { ascending: true });
+    const activeHourStep = hourSteps?.[0];
+    const pendingStep = hourSteps?.[1];
+    expect(activeHourStep?.status).toBe("active");
+    expect(activeHourStep?.config).toEqual({ due_rule: { amount: 4, unit: "hours" } });
+    expect(
+      new Date(activeHourStep!.due_at as string).getTime() -
+        new Date(activeHourStep!.started_at as string).getTime(),
+    ).toBe(4 * 60 * 60 * 1000);
+    expect(pendingStep?.due_at).toBeNull();
+
+    await page.goto(`/entities/${entity.id}/records/${recordId}`);
+    await processCard(page, daysTemplate.name).getByRole("button", { name: "Start process" }).click();
+    await page.waitForURL(/\/process-runs\//);
+    const daysRunId = processRunIdFromCurrentUrl(page);
+    const { data: dayStep } = await supabase
+      .from("process_step_runs")
+      .select("started_at, due_at")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_run_id", daysRunId)
+      .eq("step_index", 1)
+      .single();
+    expect(
+      new Date(dayStep!.due_at).getTime() - new Date(dayStep!.started_at).getTime(),
+    ).toBe(48 * 60 * 60 * 1000);
+  });
+
+  test("activates a step from its snapshotted due rule after the template changes", async ({
+    page,
+  }) => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const template = await createProcessTemplateFixture(
+      run,
+      entity,
+      ["Prepare", "Review"],
+      [],
+      [null, { amount: 2, unit: "hours" }],
+    );
+    const recordId = await createEntityRecord({ entity, valuesBySlug: { name: "Snapshot Record" } });
+
+    await page.goto(`/entities/${entity.id}/records/${recordId}`);
+    await processCard(page, template.name).getByRole("button", { name: "Start process" }).click();
+    await page.waitForURL(/\/process-runs\//);
+    const processRunId = processRunIdFromCurrentUrl(page);
+    const { data: stepRuns } = await supabase
+      .from("process_step_runs")
+      .select("id, step_index")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_run_id", processRunId)
+      .order("step_index", { ascending: true });
+
+    await supabase
+      .from("process_nodes")
+      .update({ config: { due_rule: { amount: 7, unit: "days" } } })
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("id", template.nodeIds[1]);
+
+    await page.getByRole("button", { name: "Complete" }).click();
+    await expect(stepRow(page, "Review")).toContainText("active");
+
+    const { data: activatedReview } = await supabase
+      .from("process_step_runs")
+      .select("config, started_at, due_at, status")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("id", stepRuns?.[1].id as string)
+      .single();
+    expect(activatedReview?.status).toBe("active");
+    expect(activatedReview?.config).toEqual({ due_rule: { amount: 2, unit: "hours" } });
+    expect(
+      new Date(activatedReview!.due_at).getTime() - new Date(activatedReview!.started_at).getTime(),
+    ).toBe(2 * 60 * 60 * 1000);
+
+    await page.getByRole("button", { name: "Complete" }).click();
+    const { data: completedReview } = await supabase
+      .from("process_step_runs")
+      .select("due_at, completed_at, status")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("id", stepRuns?.[1].id as string)
+      .single();
+    expect(completedReview?.status).toBe("completed");
+    expect(completedReview?.due_at).toBe(activatedReview?.due_at);
+    expect(completedReview?.completed_at).toBeTruthy();
+  });
+
+  test("rejects malformed or out-of-range due rules through the canonical template RPC", async () => {
+    const { run, entity, template } = await createScenario(["Valid step"]);
+    const authenticatedClient = await createAuthenticatedTestClient();
+
+    for (const dueRule of [
+      { amount: 0, unit: "hours" },
+      { amount: -1, unit: "hours" },
+      { amount: 1.5, unit: "hours" },
+      { amount: 8761, unit: "days" },
+      { amount: 2, unit: "weeks" },
+      "not-a-rule",
+    ]) {
+      const { error } = await authenticatedClient.rpc("save_process_template_authorized", {
+        p_workspace_id: DEMO_WORKSPACE_ID,
+        p_process_template_id: template.id,
+        p_name: `${template.name} should not persist`,
+        p_description: null,
+        p_applies_to_entity_type_id: entity.id,
+        p_steps: [{ node_id: template.nodeIds[0], name: "Valid step", due_rule: dueRule }],
+      });
+      expect(error).not.toBeNull();
+    }
+
+    const supabase = createSupabaseTestClient();
+    const [{ data: node }, { data: savedTemplate }] = await Promise.all([
+      supabase
+      .from("process_nodes")
+      .select("name, config")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("id", template.nodeIds[0])
+      .single(),
+      supabase
+        .from("process_templates")
+        .select("name")
+        .eq("workspace_id", DEMO_WORKSPACE_ID)
+        .eq("id", template.id)
+        .single(),
+    ]);
+    expect(node).toEqual({ name: "Valid step", config: {} });
+    expect(savedTemplate).toEqual({ name: template.name });
+    expect(template.name).toContain(run.label);
   });
 
   test("completing steps in sequence cascades activation and completes the run on the final step", async ({
@@ -1095,5 +1290,75 @@ test.describe("process runs", () => {
     await page.goto("/my-work");
     await expect(page.getByText("Runner Active Step")).toHaveCount(0);
     await expect(page.getByText("Runner Pending Step")).toHaveCount(0);
+  });
+
+  test("My Work separates overdue work and orders due active work before undated work", async ({
+    page,
+  }) => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const authenticatedClient = await createAuthenticatedTestClient();
+    const { data: userData } = await authenticatedClient.auth.getUser();
+    const runnerUserId = userData.user?.id as string;
+    const overdueTemplate = await createProcessTemplateFixture(
+      run,
+      entity,
+      ["Overdue review"],
+      [runnerUserId],
+      [{ amount: 1, unit: "hours" }],
+    );
+    const dueSoonTemplate = await createProcessTemplateFixture(
+      run,
+      entity,
+      ["Due soon review"],
+      [runnerUserId],
+      [{ amount: 2, unit: "hours" }],
+    );
+    const undatedTemplate = await createProcessTemplateFixture(
+      run,
+      entity,
+      ["Undated review"],
+      [runnerUserId],
+    );
+    const recordId = await createEntityRecord({ entity, valuesBySlug: { name: "Attention Record" } });
+
+    for (const template of [overdueTemplate, dueSoonTemplate, undatedTemplate]) {
+      const { error } = await authenticatedClient.rpc("start_process_run_authorized", {
+        p_workspace_id: DEMO_WORKSPACE_ID,
+        p_process_template_id: template.id,
+        p_origin_entity_type_id: entity.id,
+        p_origin_record_id: recordId,
+      });
+      expect(error).toBeNull();
+    }
+
+    const { data: overdueRun } = await supabase
+      .from("process_runs")
+      .select("id")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_template_id", overdueTemplate.id)
+      .single();
+    const { error: overdueUpdateError } = await supabase
+      .from("process_step_runs")
+      .update({ due_at: new Date(Date.now() - 60_000).toISOString() })
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_run_id", overdueRun!.id);
+    expect(overdueUpdateError).toBeNull();
+
+    await page.goto("/my-work");
+    const overdueSection = page.locator("section").filter({ hasText: "Overdue" });
+    const readyNowSection = page.locator("section").filter({ hasText: "Ready now" });
+    const upcomingSection = page.locator("section").filter({ hasText: "Upcoming" });
+    await expect(overdueSection.getByText("Overdue review")).toBeVisible();
+    await expect(readyNowSection.getByText("Due soon review")).toBeVisible();
+    await expect(readyNowSection.getByText("Undated review")).toBeVisible();
+    await expect(upcomingSection.getByText("Due soon review")).toHaveCount(0);
+    const readyText = await readyNowSection.textContent();
+    expect(readyText?.indexOf("Due soon review")).toBeLessThan(
+      readyText?.indexOf("Undated review") ?? Number.POSITIVE_INFINITY,
+    );
   });
 });

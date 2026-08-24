@@ -114,7 +114,7 @@ export default async function Home({
                           ? `/entities/${entityType.id}?showArchivedEntities=true`
                           : `/entities/${entityType.id}`
                       }
-                      className="border border-slate-950 bg-slate-950 px-3 py-2 text-xs font-medium text-white underline-offset-4 hover:bg-slate-800 hover:underline"
+                      className="border border-brass bg-brass px-3 py-2 text-xs font-medium text-graphite underline-offset-4 hover:bg-brass-deep hover:text-paper hover:underline"
                     >
                       Open
                     </Link>

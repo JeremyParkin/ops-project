@@ -1,14 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4f1ea; /* paper */
+  --foreground: #1a1b18; /* graphite */
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  /* Kinema brand tokens. Graphite is the shell ground, Paper the content
+     ground, Brass the one deliberate accent — see docs/PROJECT_CONTEXT.md
+     "Brand" section. Status tokens are prefixed to avoid colliding with
+     Tailwind's built-in `slate` palette. */
+  --color-graphite: #1a1b18;
+  --color-pitch: #141511;
+  --color-slab: #2e2c27;
+  --color-stone: #55534d;
+  --color-grit: #8a877f;
+  --color-chalk: #ddd9cf;
+  --color-paper: #f4f1ea;
+
+  --color-brass-deep: #8a5e1e;
+  --color-brass: #c8913a;
+  --color-brass-light: #e0b573;
+
+  --color-status-sage: #5d6e55;
+  --color-status-ochre: #ad8a46;
+  --color-status-oxide: #9a5b3e;
+  --color-status-slate: #5a6a78;
+
   --font-sans: Arial, Helvetica, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
@@ -20,6 +42,81 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid #0f172a;
+  outline: 2px solid #c8913a;
   outline-offset: 2px;
+}
+
+/* Sign-in / no-workspace: plain, self-contained page chrome. Deliberately
+   not built from the same table/card primitives the authenticated app uses,
+   since these pages render before a workspace/session exists. */
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1b18;
+  padding: 1.5rem;
+}
+
+.auth-form {
+  width: 100%;
+  max-width: 22rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  background: #f4f1ea;
+  color: #1a1b18;
+  padding: 2rem;
+  border: 1px solid #8a877f; /* grit — chalk fails 3:1 against paper/white */
+}
+
+.auth-form h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.auth-form p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #55534d;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #2e2c27;
+}
+
+.auth-form input {
+  height: 2.5rem;
+  border: 1px solid #8a877f; /* grit — chalk fails 3:1 against white */
+  background: #ffffff;
+  color: #1a1b18;
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+}
+
+.auth-form input:focus-visible {
+  outline: 2px solid #c8913a;
+  outline-offset: 1px;
+  border-color: #c8913a;
+}
+
+.auth-form button {
+  height: 2.5rem;
+  background: #c8913a;
+  color: #1a1b18;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-form button:hover {
+  background: #8a5e1e;
+  color: #f4f1ea;
 }

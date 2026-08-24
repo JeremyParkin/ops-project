@@ -78,18 +78,18 @@ export function RecordEditForm({
   });
 
   return (
-    <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
+    <section className="mx-auto w-full max-w-6xl border border-grit bg-white p-5">
       <div className="mb-5">
-        <h1 className="text-2xl font-semibold text-slate-950">
+        <h1 className="text-2xl font-semibold text-graphite">
           Edit {entityType.name}
         </h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-stone">
           Fields marked <span className="font-semibold text-red-700">*</span> are required.
         </p>
         {state.message ? (
           <p
             className={`mt-2 text-sm ${
-              state.success ? "text-emerald-700" : "text-red-700"
+              state.success ? "text-status-sage" : "text-red-700"
             }`}
             role="status"
           >
@@ -111,7 +111,7 @@ export function RecordEditForm({
                 <input type="hidden" name={field.key} value="false" />
                 <label
                   htmlFor={fieldId}
-                  className="flex items-center gap-3 text-sm font-medium text-slate-800"
+                  className="flex items-center gap-3 text-sm font-medium text-slab"
                 >
                   <input
                     id={fieldId}
@@ -119,7 +119,7 @@ export function RecordEditForm({
                     type="checkbox"
                     value="true"
                     defaultChecked={fieldValue === "true"}
-                    className="h-4 w-4 border-slate-300 text-slate-950"
+                    className="h-4 w-4 border-grit text-brass-deep"
                   />
                   {field.name}
                   {field.required ? (
@@ -143,7 +143,7 @@ export function RecordEditForm({
               <div key={field.id}>
                 <label
                   htmlFor={fieldId}
-                  className="block text-sm font-medium text-slate-800"
+                  className="block text-sm font-medium text-slab"
                 >
                   {field.name}
                   {field.required ? (
@@ -161,7 +161,7 @@ export function RecordEditForm({
                   aria-describedby={
                     state.errors[field.key] ? `${fieldId}-error` : undefined
                   }
-                  className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                  className="mt-1 block h-10 w-full border border-grit bg-white px-3 text-sm text-graphite outline-none focus:border-brass-deep"
                 >
                   <option value="">Choose record</option>
                   {options.map((option) => (
@@ -171,7 +171,7 @@ export function RecordEditForm({
                   ))}
                 </select>
                 {relatedEntityName ? (
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-stone">
                     Related to {relatedEntityName}
                   </p>
                 ) : null}
@@ -186,7 +186,7 @@ export function RecordEditForm({
             <div key={field.id}>
               <label
                 htmlFor={fieldId}
-                className="block text-sm font-medium text-slate-800"
+                className="block text-sm font-medium text-slab"
               >
                 {field.name}
                 {field.required ? (
@@ -205,7 +205,7 @@ export function RecordEditForm({
                 aria-describedby={
                   state.errors[field.key] ? `${fieldId}-error` : undefined
                 }
-                className="mt-1 block h-10 w-full border border-slate-300 px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                className="mt-1 block h-10 w-full border border-grit px-3 text-sm text-graphite outline-none focus:border-brass-deep"
               />
               <div id={`${fieldId}-error`}>
                 <FieldError message={state.errors[field.key]} />
@@ -214,11 +214,11 @@ export function RecordEditForm({
           );
         })}
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4 md:col-span-2">
+        <div className="flex flex-wrap items-center gap-3 border-t border-grit pt-4 md:col-span-2">
           <button
             type="submit"
             disabled={pending}
-            className="inline-flex h-10 items-center justify-center bg-slate-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone"
           >
             {pending ? "Saving..." : "Save Changes"}
           </button>
@@ -228,7 +228,7 @@ export function RecordEditForm({
                 ? `/entities/${entityType.id}/records/${record.id}`
                 : `/entities/${entityType.id}`
             }
-            className="h-10 px-2 py-2 text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+            className="h-10 px-2 py-2 text-sm font-medium text-stone underline-offset-4 hover:underline"
           >
             Cancel
           </Link>

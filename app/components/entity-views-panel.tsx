@@ -482,7 +482,7 @@ function ViewForm({
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex h-10 items-center justify-center bg-slate-950 px-4 text-sm font-medium text-white disabled:bg-slate-400"
+          className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite disabled:bg-chalk disabled:text-stone"
         >
           {pending
             ? mode === "create"
@@ -565,7 +565,7 @@ export function EntityViewsPanel({
         </div>
         <Link
           href="#add-record"
-          className="inline-flex h-10 items-center justify-center bg-slate-950 px-4 text-sm font-medium text-white hover:bg-slate-800"
+          className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
         >
           Add {entityType.name}
         </Link>
@@ -578,8 +578,8 @@ export function EntityViewsPanel({
             aria-current={!selectedView ? "page" : undefined}
             className={`border px-3 py-2 text-sm font-medium ${
               !selectedView
-                ? "border-slate-950 bg-slate-950 text-white"
-                : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                ? "border-brass bg-brass text-graphite"
+                : "border-grit text-stone hover:bg-chalk"
             }`}
           >
             All Records
@@ -591,8 +591,8 @@ export function EntityViewsPanel({
               aria-current={selectedView?.id === view.id ? "page" : undefined}
               className={`border px-3 py-2 text-sm font-medium ${
                 selectedView?.id === view.id
-                  ? "border-slate-950 bg-slate-950 text-white"
-                  : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                  ? "border-brass bg-brass text-graphite"
+                  : "border-grit text-stone hover:bg-chalk"
               }`}
             >
               {view.name}
