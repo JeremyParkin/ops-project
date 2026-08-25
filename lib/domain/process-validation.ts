@@ -367,7 +367,7 @@ export function validateProcessTemplateFormData(
       }
 
       const amount = Number(step.waitAmount);
-      const hasPositiveAmount = /^[1-9]\\d*$/.test(step.waitAmount ?? "")
+      const hasPositiveAmount = /^[1-9]\d*$/.test(step.waitAmount ?? "")
         && Number.isSafeInteger(amount)
         && amount <= PROCESS_DUE_RULE_MAX_AMOUNT;
       const requiresTimeZone = step.waitKind !== "duration" || step.waitUnit === "calendar_days";

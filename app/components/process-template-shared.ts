@@ -8,7 +8,10 @@ import type {
 } from "@/lib/domain/process-validation";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
 import type { RelationRecordOption } from "@/lib/domain/record-repository";
-import { processConditionOperatorNeedsValue } from "@/lib/domain/process-conditions";
+import {
+  getProcessConditionDefaultOperator,
+  processConditionOperatorNeedsValue,
+} from "@/lib/domain/process-conditions";
 
 export type ProcessTemplateEntityContext = {
   entityType: EntityType;
@@ -138,4 +141,92 @@ export function serializeCondition(
     operator: condition.operator,
     value,
   };
+}
+
+// Node types that insert-on-edge can splice in directly. Split/join always
+// come from the dedicated "+ Add parallel paths" control, since a region has
+// structural invariants (matched group id, non-nesting) a single splice
+// can't safely express.
+export type InsertableNodeType = "human_task" | "approval" | "wait" | "condition_wait";
+
+export function createDefaultStep(
+  nodeType: InsertableNodeType,
+  key: string,
+  activeFields: FieldDefinition[],
+): LocalStep {
+  const step: LocalStep = {
+    key,
+    nodeId: "",
+    nodeType,
+    parallelGroupId: "",
+    name:
+      nodeType === "approval"
+        ? "Approval"
+        : nodeType === "wait"
+          ? "Wait"
+          : nodeType === "condition_wait"
+            ? "Wait for condition"
+            : "",
+    assigneeUserId: "",
+    dueAmount: "",
+    dueUnit: "days",
+    ...waitDefaults(),
+    ...conditionWaitDefaults(),
+    routes: [],
+  };
+
+  if (nodeType === "wait") {
+    step.waitAmount = "1";
+  }
+
+  if (nodeType === "condition_wait") {
+    const field = activeFields[0];
+    step.conditionWaitConditions = field
+      ? [
+          {
+            id: createKey("condition"),
+            sourceFieldDefinitionId: field.id,
+            operator: getProcessConditionDefaultOperator(field),
+            value: "",
+          },
+        ]
+      : [];
+  }
+
+  return step;
+}
+
+// Adjacent-swap safety: swapping the steps at `index` and its up/down
+// neighbor is only unsafe when the step currently at the lower of the two
+// positions has a route that directly targets the step at the higher
+// position — swapping would put that route's target before its source.
+// Every other route stays valid by construction (see 6B plan for the proof:
+// any route from a third step is unaffected, and any route from the moving
+// step to a third step already satisfied source < target and that third
+// step's own index doesn't change).
+export function canSwapAdjacent(
+  steps: LocalStep[],
+  index: number,
+  direction: "up" | "down",
+): { allowed: true } | { allowed: false; reason: string } {
+  const swapWith = direction === "up" ? index - 1 : index + 1;
+
+  if (index < 0 || swapWith < 0 || swapWith >= steps.length) {
+    return { allowed: false, reason: "" };
+  }
+
+  const lowerIndex = Math.min(index, swapWith);
+  const higherIndex = Math.max(index, swapWith);
+  const lower = steps[lowerIndex];
+  const higher = steps[higherIndex];
+  const breakingRoute = lower.routes.find((route) => route.targetStepKey === higher.key);
+
+  if (breakingRoute) {
+    return {
+      allowed: false,
+      reason: `Can't reorder: "${lower.name || "This step"}" routes directly to "${higher.name || "the next step"}".`,
+    };
+  }
+
+  return { allowed: true };
 }

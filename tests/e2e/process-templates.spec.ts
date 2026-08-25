@@ -354,4 +354,86 @@ test.describe("process templates", () => {
     await expect(reloadedSelects.nth(2)).toHaveValue("contains");
     await expect(reloadedFieldset.locator("input").first()).toHaveValue("urgent");
   });
+
+  test("a positive integer wait amount saves successfully, and an invalid amount still rejects", async ({
+    page,
+  }) => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+
+    // Both cases submit by writing directly into the form's hidden
+    // `processSteps` JSON payload rather than typing into the rendered
+    // Amount input. Typing into that field — via fill, pressSequentially,
+    // or even clear, all three verified — hits a separate, fully
+    // pre-existing client-side crash in its onChange handler (reproduced
+    // unmodified against the pre-6A component, so it predates the
+    // graph-builder work too). That crash is out of scope for this regex
+    // fix and is flagged separately rather than fixed or silently worked
+    // around here; submitting via the hidden field still exercises the
+    // real save action's validator, which is the code this task fixes.
+    async function submitWithWaitAmount(templateName: string, waitAmount: string) {
+      await page.goto("/processes/new");
+      await fillTemplateBasics(page, { name: templateName, appliesTo: entity });
+      await stepNameInput(page, 0).fill("Trigger");
+      await stepNameInput(page, 1).fill("Second step");
+      await page.getByRole("button", { name: "+ Add wait" }).click();
+
+      const submitted = await page.evaluate((amount) => {
+        const hidden = document.querySelector('input[name="processSteps"]') as HTMLInputElement | null;
+        if (!hidden) return false;
+        const steps = JSON.parse(hidden.value);
+        const waitStep = steps.find((step: { nodeType: string }) => step.nodeType === "wait");
+        if (!waitStep) return false;
+        waitStep.waitAmount = amount;
+        // Also switches unit to calendar_days: a separate pre-existing bug
+        // means the default "hours" unit's snapshotted config always
+        // carries a timezone (the form parser re-defaults an empty one),
+        // which the RPC then rejects with "Elapsed-hour waits cannot
+        // specify a timezone" — every "hours" wait fails to save today
+        // regardless of amount. calendar_days legitimately keeps a
+        // timezone, so it isn't affected and isolates this test to only
+        // the amount-regex behavior being fixed here.
+        waitStep.waitUnit = "calendar_days";
+        hidden.value = JSON.stringify(steps);
+        hidden.closest("form")?.requestSubmit();
+        return true;
+      }, waitAmount);
+      expect(submitted).toBe(true);
+    }
+
+    const invalidTemplateName = `${run.label} Wait Amount Invalid Template`;
+    await submitWithWaitAmount(invalidTemplateName, "0");
+    await expect(
+      page.getByText("Wait duration must be a whole positive number of hours or calendar days."),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: invalidTemplateName })).toHaveCount(0);
+
+    // A valid positive integer now saves successfully — this used to fail
+    // unconditionally regardless of the amount, because the validator's
+    // regex was double-escaped inside a regex literal (`\\d`, a literal
+    // backslash+"d") instead of `\d`.
+    const validTemplateName = `${run.label} Wait Amount Valid Template`;
+    await submitWithWaitAmount(validTemplateName, "3");
+    await expect(page.getByRole("link", { name: validTemplateName })).toBeVisible();
+
+    const { data: template } = await supabase
+      .from("process_templates")
+      .select("id")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("name", validTemplateName)
+      .single();
+    const { data: nodes } = await supabase
+      .from("process_nodes")
+      .select("config")
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("process_template_id", template!.id)
+      .eq("node_type", "wait")
+      .single();
+    expect(nodes?.config).toMatchObject({
+      wait_rule: { kind: "duration", amount: 3, unit: "calendar_days" },
+    });
+  });
 });

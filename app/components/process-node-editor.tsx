@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   getProcessConditionDefaultOperator,
   getProcessConditionOperatorsForFieldType,
@@ -23,6 +24,36 @@ export function FieldError({ message }: { message?: string }) {
       {message}
     </p>
   ) : null;
+}
+
+// Wraps one route/outcome row so the Graph view's "edit this route" edge
+// click can scroll it into view and give it a visible ring, without the
+// List view (which never sets highlightRouteId) rendering any differently.
+function HighlightableRoute({
+  routeId,
+  highlightRouteId,
+  className,
+  children,
+}: {
+  routeId: string;
+  highlightRouteId?: string | null;
+  className: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isHighlighted = highlightRouteId === routeId;
+
+  useEffect(() => {
+    if (isHighlighted) {
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [isHighlighted]);
+
+  return (
+    <div ref={ref} className={`${className} ${isHighlighted ? "ring-2 ring-brass-deep" : ""}`}>
+      {children}
+    </div>
+  );
 }
 
 export function ConditionValueInput({
@@ -318,6 +349,7 @@ export function ApprovalOutcomesEditor({
   updateRoute,
   addApprovalOutcome,
   routeError,
+  highlightRouteId,
 }: {
   step: LocalStep;
   legalTargets: LocalStep[];
@@ -325,6 +357,7 @@ export function ApprovalOutcomesEditor({
   updateRoute: RouteUpdater;
   addApprovalOutcome: (stepKey: string, targetStepKey: string) => void;
   routeError?: string;
+  highlightRouteId?: string | null;
 }) {
   return (
     <fieldset className="mt-4 border-t border-grit pt-4">
@@ -336,7 +369,12 @@ export function ApprovalOutcomesEditor({
       ) : (
         <div className="mt-3 flex flex-col gap-3">
           {step.routes.map((route, routeIndex) => (
-            <div key={route.id} className="grid gap-2 border border-grit bg-chalk p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <HighlightableRoute
+              key={route.id}
+              routeId={route.id}
+              highlightRouteId={highlightRouteId}
+              className="grid gap-2 border border-grit bg-chalk p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+            >
               <label className="text-sm text-stone">
                 <span className="block text-xs font-medium uppercase tracking-wide">Outcome {routeIndex + 1}</span>
                 <input
@@ -384,7 +422,7 @@ export function ApprovalOutcomesEditor({
               >
                 Remove
               </button>
-            </div>
+            </HighlightableRoute>
           ))}
           <button
             type="button"
@@ -410,6 +448,7 @@ export function RoutesEditor({
   addConditionalRoute,
   addCondition,
   routeError,
+  highlightRouteId,
 }: {
   step: LocalStep;
   legalTargets: LocalStep[];
@@ -420,6 +459,7 @@ export function RoutesEditor({
   addConditionalRoute: (stepKey: string, targetStepKey: string) => void;
   addCondition: (stepKey: string, routeId: string) => void;
   routeError?: string;
+  highlightRouteId?: string | null;
 }) {
   const hasConditionalRoutes = step.routes.some((route) => !route.isDefault);
 
@@ -438,7 +478,12 @@ export function RoutesEditor({
       ) : (
         <div className="mt-3 flex flex-col gap-3">
           {step.routes.filter((route) => !route.isDefault).map((route, routeIndex) => (
-            <div key={route.id} className="border border-grit bg-chalk p-3">
+            <HighlightableRoute
+              key={route.id}
+              routeId={route.id}
+              highlightRouteId={highlightRouteId}
+              className="border border-grit bg-chalk p-3"
+            >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-medium uppercase tracking-wide text-stone">Route {routeIndex + 1}</p>
                 <button type="button" onClick={() => updateStep(step.key, (current) => ({ ...current, routes: current.routes.filter((candidate) => candidate.id !== route.id) }))} className="text-xs font-medium text-stone underline-offset-4 hover:text-red-700 hover:underline">Remove route</button>
@@ -478,7 +523,7 @@ export function RoutesEditor({
                   updateRoute(step.key, route.id, (currentRoute) => ({ ...currentRoute, targetStepKey }));
                 }} className="h-9 border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep">{legalTargets.map((target) => <option key={target.key} value={target.key}>{target.name || "Untitled step"}</option>)}</select></label>
               </div>
-            </div>
+            </HighlightableRoute>
           ))}
           {step.routes.find((route) => route.isDefault) ? (() => {
             const defaultRoute = step.routes.find((route) => route.isDefault)!;
@@ -510,6 +555,7 @@ export type ProcessNodeEditorProps = {
   addCondition: (stepKey: string, routeId: string) => void;
   addConditionalRoute: (stepKey: string, targetStepKey: string) => void;
   addApprovalOutcome: (stepKey: string, targetStepKey: string) => void;
+  highlightRouteId?: string | null;
 };
 
 // The single shared per-node editing body used by both the List row and the
@@ -530,6 +576,7 @@ export function ProcessNodeEditor({
   addCondition,
   addConditionalRoute,
   addApprovalOutcome,
+  highlightRouteId,
 }: ProcessNodeEditorProps) {
   const isApproval = step.nodeType === "approval";
   const isWait = step.nodeType === "wait";
@@ -566,6 +613,7 @@ export function ProcessNodeEditor({
           updateRoute={updateRoute}
           addApprovalOutcome={addApprovalOutcome}
           routeError={routeError}
+          highlightRouteId={highlightRouteId}
         />
       ) : (
         <RoutesEditor
@@ -577,6 +625,7 @@ export function ProcessNodeEditor({
           updateRoute={updateRoute}
           addConditionalRoute={addConditionalRoute}
           addCondition={addCondition}
+          highlightRouteId={highlightRouteId}
           routeError={routeError}
         />
       )}

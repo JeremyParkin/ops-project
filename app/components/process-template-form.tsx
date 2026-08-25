@@ -12,7 +12,9 @@ import {
 } from "./process-node-editor";
 import { ProcessGraphView } from "./process-graph-view";
 import {
+  canSwapAdjacent,
   conditionWaitDefaults,
+  createDefaultStep,
   createKey,
   createParallelGroupId,
   serializeCondition,
@@ -21,6 +23,7 @@ import {
   waitDefaults,
 } from "./process-template-shared";
 import type {
+  InsertableNodeType,
   LocalRoute,
   LocalStep,
   ProcessTemplateEntityContext,
@@ -88,6 +91,7 @@ export function ProcessTemplateForm({
     })),
   );
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
+  const [selectedGraphKey, setSelectedGraphKey] = useState<string | null>(null);
   const currentContext = contextByEntityTypeId.get(appliesToEntityTypeId);
   const activeFields = (currentContext?.fields ?? []).filter((field) => !field.archivedAt);
 
@@ -461,9 +465,48 @@ export function ProcessTemplateForm({
         return current;
       }
 
+      // Defensive: the UI already disables a move the guard rejects, but
+      // moveStep itself never produces an order that breaks an existing
+      // route's forward-only invariant, regardless of caller.
+      if (!canSwapAdjacent(current, index, direction).allowed) {
+        return current;
+      }
+
       const next = [...current];
       [next[index], next[swapWith]] = [next[swapWith], next[index]];
       return next;
+    });
+  }
+
+  // Deletes a step. When it has exactly one inbound route and exactly one
+  // plain outbound route, the caller may choose to reconnect that single
+  // inbound route straight to the outbound target instead of leaving it
+  // dangling — see canReconnectOnDelete/reconnectTargetFor below, used by
+  // the Graph view's explicit delete-choice UI. This never invents a rewire
+  // for an ambiguous case; ambiguous deletes fall through to removeStep.
+  function removeStepWithReconnect(key: string) {
+    setSteps((current) => {
+      const step = current.find((candidate) => candidate.key === key);
+      const outbound = step?.routes.find(
+        (route) => route.isDefault && !route.isParallel && !route.approvalOutcomeId,
+      );
+
+      if (!step || !outbound) {
+        return current;
+      }
+
+      const newTarget = outbound.targetStepKey;
+
+      return current
+        .filter((candidate) => candidate.key !== key)
+        .map((candidate) => ({
+          ...candidate,
+          routes: candidate.routes
+            .map((route) =>
+              route.targetStepKey === key ? { ...route, targetStepKey: newTarget } : route,
+            )
+            .filter((route) => route.targetStepKey !== key),
+        }));
     });
   }
 
@@ -483,6 +526,85 @@ export function ProcessTemplateForm({
         },
       ],
     }));
+  }
+
+  // Splices a new node into an existing edge: source's route is retargeted
+  // to the new node, and the new node gets a fresh route to the edge's old
+  // target. Works uniformly for plain, conditional, approval-outcome, and
+  // parallel-branch edges — only the clicked edge's target pointer changes,
+  // its own type/conditions/outcome identity is untouched, and the new node
+  // is inserted at the old target's current array index so the forward-only
+  // ordering invariant holds automatically.
+  function insertStepOnEdge(edgeId: string, nodeType: InsertableNodeType) {
+    const newKey = createKey("step");
+
+    setSteps((current) => {
+      let sourceKey: string | undefined;
+      let oldTarget: string | undefined;
+
+      for (const step of current) {
+        const route = step.routes.find((candidate) => candidate.id === edgeId);
+
+        if (route) {
+          sourceKey = step.key;
+          oldTarget = route.targetStepKey;
+          break;
+        }
+      }
+
+      if (!sourceKey || !oldTarget) {
+        return current;
+      }
+
+      const targetIndex = current.findIndex((step) => step.key === oldTarget);
+
+      if (targetIndex === -1) {
+        return current;
+      }
+
+      const newStep = createDefaultStep(nodeType, newKey, activeFields);
+
+      newStep.routes =
+        nodeType === "approval"
+          ? [
+              {
+                id: createKey("route"),
+                targetStepKey: oldTarget,
+                isDefault: false,
+                isParallel: false,
+                approvalOutcomeId: crypto.randomUUID(),
+                approvalOutcomeLabel: "Approve",
+                conditions: [],
+              },
+              {
+                id: createKey("route"),
+                targetStepKey: oldTarget,
+                isDefault: false,
+                isParallel: false,
+                approvalOutcomeId: crypto.randomUUID(),
+                approvalOutcomeLabel: "Reject",
+                conditions: [],
+              },
+            ]
+          : [{ id: createKey("route"), targetStepKey: oldTarget, isDefault: true, isParallel: false, conditions: [] }];
+
+      const rewired = current.map((step) =>
+        step.key === sourceKey
+          ? {
+              ...step,
+              routes: step.routes.map((route) =>
+                route.id === edgeId ? { ...route, targetStepKey: newKey } : route,
+              ),
+            }
+          : step,
+      );
+      const next = [...rewired];
+
+      next.splice(targetIndex, 0, newStep);
+
+      return next;
+    });
+    setSelectedGraphKey(newKey);
   }
 
   function addConditionalRoute(stepKey: string, nextTargetStepKey: string) {
@@ -779,8 +901,37 @@ export function ProcessTemplateForm({
                           className="mt-1 block h-10 w-full border border-grit px-3 text-sm text-graphite outline-none focus:border-brass-deep"
                         />
                       </div>
-                      <button type="button" onClick={() => moveStep(step.key, "up")} disabled={index === 0} className="h-10 border border-grit px-2 text-xs font-medium text-stone hover:border-brass-deep hover:text-brass-deep disabled:cursor-not-allowed disabled:opacity-40">Move Up</button>
-                      <button type="button" onClick={() => moveStep(step.key, "down")} disabled={index === steps.length - 1} className="h-10 border border-grit px-2 text-xs font-medium text-stone hover:border-brass-deep hover:text-brass-deep disabled:cursor-not-allowed disabled:opacity-40">Move Down</button>
+                      {(() => {
+                        const upGuard = canSwapAdjacent(steps, index, "up");
+                        const downGuard = canSwapAdjacent(steps, index, "down");
+
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => moveStep(step.key, "up")}
+                              disabled={index === 0 || !upGuard.allowed}
+                              title={index !== 0 && !upGuard.allowed ? upGuard.reason : undefined}
+                              className="h-10 border border-grit px-2 text-xs font-medium text-stone hover:border-brass-deep hover:text-brass-deep disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Move Up
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveStep(step.key, "down")}
+                              disabled={index === steps.length - 1 || !downGuard.allowed}
+                              title={
+                                index !== steps.length - 1 && !downGuard.allowed
+                                  ? downGuard.reason
+                                  : undefined
+                              }
+                              className="h-10 border border-grit px-2 text-xs font-medium text-stone hover:border-brass-deep hover:text-brass-deep disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Move Down
+                            </button>
+                          </>
+                        );
+                      })()}
                       <button type="button" onClick={() => removeStep(step.key)} disabled={steps.length <= 1} className="h-10 border border-grit px-2 text-xs font-medium text-stone hover:border-red-700 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40">Remove</button>
                     </div>
 
@@ -812,12 +963,17 @@ export function ProcessTemplateForm({
               currentContext={currentContext}
               contextByEntityTypeId={contextByEntityTypeId}
               members={members}
+              selectedKey={selectedGraphKey}
+              onSelectKey={setSelectedGraphKey}
               updateStep={updateStep}
               updateRoute={updateRoute}
               addCondition={addCondition}
               addConditionalRoute={addConditionalRoute}
               addApprovalOutcome={addApprovalOutcome}
               removeStep={removeStep}
+              removeStepWithReconnect={removeStepWithReconnect}
+              moveStep={moveStep}
+              insertStepOnEdge={insertStepOnEdge}
             />
           )}
         </div>

@@ -9,6 +9,17 @@ import type { LocalStep } from "./process-template-shared";
 // rather than stacked rows. That region is bounded and non-nested by the
 // domain's own validation rules, so lane assignment is a small, contained
 // walk — not general graph layout. Hence: custom SVG, no layout library.
+//
+// 6B addition: an edge whose source and target share a lane but aren't
+// adjacent ranks would otherwise draw a straight vertical line through
+// every node card in between (the known occlusion issue). Rather than
+// general obstacle-avoidance routing, such edges jog out to one shared
+// "gutter" column past every lane in use, which is clear of every node
+// card by construction, and jog back in at the target. This is a bounded,
+// deterministic path choice, not a layout algorithm — it does not attempt
+// to keep multiple simultaneous gutter edges from overlapping each other
+// in that shared column. That remains a known, deferred cosmetic gap; the
+// occlusion case (a card obscuring an edge) is what's fixed here.
 
 export type GraphNodeLayout = {
   key: string;
@@ -25,6 +36,11 @@ export type GraphEdgeLayout = {
   isDefault: boolean;
   isParallel: boolean;
   approvalOutcomeLabel?: string;
+  path: string;
+  labelX: number;
+  labelY: number;
+  insertX: number;
+  insertY: number;
 };
 
 export type GraphLayout = {
@@ -39,6 +55,7 @@ export const GRAPH_NODE_HEIGHT = 84;
 const COLUMN_WIDTH = 236;
 const ROW_HEIGHT = 128;
 const CANVAS_PADDING = 32;
+const GUTTER_MARGIN = 56;
 
 function findMatchingJoinKey(steps: LocalStep[], split: LocalStep): string | undefined {
   return steps.find(
@@ -93,22 +110,76 @@ export function computeProcessGraphLayout(steps: LocalStep[]): GraphLayout {
       y: CANVAS_PADDING + index * ROW_HEIGHT,
     };
   });
+  const nodeByKey = new Map(nodes.map((node) => [node.key, node]));
+
+  const maxLane = nodes.reduce((max, node) => Math.max(max, node.lane), 0);
+  const gutterX = CANVAS_PADDING + GRAPH_NODE_WIDTH + maxLane * COLUMN_WIDTH + GUTTER_MARGIN;
+  let usesGutter = false;
 
   const edges: GraphEdgeLayout[] = steps.flatMap((step) =>
     step.routes
       .filter((route) => route.targetStepKey && indexByKey.has(route.targetStepKey))
-      .map((route) => ({
-        id: route.id,
-        sourceKey: step.key,
-        targetKey: route.targetStepKey,
-        isDefault: route.isDefault,
-        isParallel: route.isParallel,
-        approvalOutcomeLabel: route.approvalOutcomeLabel,
-      })),
+      .map((route) => {
+        const sourceNode = nodeByKey.get(step.key)!;
+        const targetNode = nodeByKey.get(route.targetStepKey)!;
+        const sourceIndex = indexByKey.get(step.key)!;
+        const targetIndex = indexByKey.get(route.targetStepKey)!;
+        const sameLane = sourceNode.lane === targetNode.lane;
+        const skipsRank = targetIndex > sourceIndex + 1;
+
+        const x1 = sourceNode.x + GRAPH_NODE_WIDTH / 2;
+        const y1 = sourceNode.y + GRAPH_NODE_HEIGHT;
+        const x2 = targetNode.x + GRAPH_NODE_WIDTH / 2;
+        const y2 = targetNode.y;
+
+        let path: string;
+        let labelX: number;
+        let labelY: number;
+        let insertX: number;
+        let insertY: number;
+
+        if (sameLane && skipsRank) {
+          usesGutter = true;
+
+          const gy1 = sourceNode.y + GRAPH_NODE_HEIGHT / 2;
+          const gy2 = targetNode.y + GRAPH_NODE_HEIGHT / 2;
+
+          path = `M ${x1} ${y1} L ${x1} ${gy1} L ${gutterX} ${gy1} L ${gutterX} ${gy2} L ${x2} ${gy2} L ${x2} ${y2}`;
+          labelX = gutterX;
+          labelY = (gy1 + gy2) / 2 - 6;
+          insertX = gutterX;
+          insertY = (gy1 + gy2) / 2 + 12;
+        } else {
+          const midY = (y1 + y2) / 2;
+
+          path = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+          labelX = (x1 + x2) / 2;
+          labelY = midY - 6;
+          insertX = (x1 + x2) / 2;
+          insertY = midY + 12;
+        }
+
+        return {
+          id: route.id,
+          sourceKey: step.key,
+          targetKey: route.targetStepKey,
+          isDefault: route.isDefault,
+          isParallel: route.isParallel,
+          approvalOutcomeLabel: route.approvalOutcomeLabel,
+          path,
+          labelX,
+          labelY,
+          insertX,
+          insertY,
+        };
+      }),
   );
 
-  const maxLane = nodes.reduce((max, node) => Math.max(max, node.lane), 0);
-  const width = CANVAS_PADDING * 2 + GRAPH_NODE_WIDTH + maxLane * COLUMN_WIDTH;
+  const width =
+    CANVAS_PADDING * 2 +
+    GRAPH_NODE_WIDTH +
+    maxLane * COLUMN_WIDTH +
+    (usesGutter ? GUTTER_MARGIN + CANVAS_PADDING : 0);
   const height =
     CANVAS_PADDING * 2 + (steps.length > 0 ? (steps.length - 1) * ROW_HEIGHT + GRAPH_NODE_HEIGHT : GRAPH_NODE_HEIGHT);
 
