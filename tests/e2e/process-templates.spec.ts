@@ -314,4 +314,44 @@ test.describe("process templates", () => {
     await page.getByRole("button", { name: "Delete Entity" }).click();
     await expect(page).toHaveURL("/");
   });
+
+  test("reopening a saved condition wait for edit restores its target, field, operator, and value", async ({
+    page,
+  }) => {
+    const run = createScenarioRun();
+    const supabase = createSupabaseTestClient();
+    const entity = await createEntity(supabase, run, "Deliverable", [
+      { slug: "name", name: "Name", type: "text", required: true },
+    ]);
+    const templateName = `${run.label} Condition Wait Reload Template`;
+
+    await page.goto("/processes/new");
+    await fillTemplateBasics(page, { name: templateName, appliesTo: entity });
+    await stepNameInput(page, 0).fill("Trigger");
+    await stepNameInput(page, 1).fill("Second step");
+    await page.getByRole("button", { name: "+ Add condition wait" }).click();
+
+    const conditionWaitFieldset = page
+      .locator("fieldset")
+      .filter({ hasText: "Condition wait configuration" });
+    const selects = conditionWaitFieldset.locator("select");
+    // 0: Watch, 1: first condition's field, 2: first condition's operator.
+    await selectReactOption(selects.nth(2), { label: "Contains" });
+    await conditionWaitFieldset.locator("input").first().fill("urgent");
+
+    await page.getByRole("button", { name: "Save Process Template" }).click();
+    await expect(page.getByRole("link", { name: templateName })).toBeVisible();
+
+    await page.getByRole("link", { name: templateName }).click();
+    await expect(page.getByRole("heading", { name: "Edit Process Template" })).toBeVisible();
+
+    const reloadedFieldset = page
+      .locator("fieldset")
+      .filter({ hasText: "Condition wait configuration" });
+    const reloadedSelects = reloadedFieldset.locator("select");
+    await expect(reloadedSelects.nth(0)).toHaveValue("origin");
+    await expect(reloadedSelects.nth(1)).toHaveValue(entity.fields.name.id);
+    await expect(reloadedSelects.nth(2)).toHaveValue("contains");
+    await expect(reloadedFieldset.locator("input").first()).toHaveValue("urgent");
+  });
 });

@@ -116,6 +116,16 @@ export default async function EditProcessTemplatePage({
             : step.config.waitRule?.kind === "weekdays" || step.config.waitRule?.kind === "calendar_target"
               ? step.config.waitRule.timeZone
               : "America/Toronto",
+        conditionWaitTargetKind: step.config.conditionWaitRule?.target.kind ?? "origin",
+        conditionWaitRelationFieldDefinitionId:
+          step.config.conditionWaitRule?.target.kind === "related"
+            ? step.config.conditionWaitRule.target.relationFieldDefinitionId
+            : "",
+        conditionWaitTargetEntityTypeId:
+          step.config.conditionWaitRule?.target.kind === "related"
+            ? step.config.conditionWaitRule.target.targetEntityTypeId
+            : "",
+        conditionWaitConditions: step.config.conditionWaitRule?.conditions ?? [],
         routes: template.edges
           .filter((edge) => edge.sourceNodeId === step.id)
           .map((edge) => ({
