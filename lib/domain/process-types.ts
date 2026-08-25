@@ -4,6 +4,7 @@ export type ProcessNodeType =
   | "human_task"
   | "approval"
   | "wait"
+  | "condition_wait"
   | "parallel_split"
   | "parallel_join";
 export type ProcessRunStatus = "active" | "completed";
@@ -48,9 +49,23 @@ export type ProcessWaitRule =
       timeZone: string;
     };
 
+export type ProcessConditionWaitTarget =
+  | { kind: "origin" }
+  | {
+      kind: "related";
+      relationFieldDefinitionId: string;
+      targetEntityTypeId: string;
+    };
+
+export type ProcessConditionWaitRule = {
+  target: ProcessConditionWaitTarget;
+  conditions: ProcessBranchCondition[];
+};
+
 export type ProcessNodeConfig = {
   dueRule?: ProcessDueRule;
   waitRule?: ProcessWaitRule;
+  conditionWaitRule?: ProcessConditionWaitRule;
 };
 
 export type ProcessBranchConditionOperator =
@@ -159,6 +174,12 @@ export type ProcessStepRun = {
   startedAt?: IsoUtcTimestamp;
   dueAt?: IsoUtcTimestamp;
   resumeAt?: IsoUtcTimestamp;
+  conditionWaitResult?: {
+    status: "waiting" | "blocked";
+    evaluatedAt: IsoUtcTimestamp;
+    targetRecordId?: string;
+    message?: string;
+  };
   completedAt?: IsoUtcTimestamp;
   // Snapshotted at run start: assigneeUserId is used for completion
   // authorization (compared against the acting user), assigneeLabel (the
@@ -201,6 +222,7 @@ export type ProcessStepRunRoutingResult = {
     | "matched_condition"
     | "default_fallback"
     | "approval_outcome"
+    | "condition_satisfied"
     | "parallel_split"
     | "parallel_join";
   evaluatedAt: IsoUtcTimestamp;

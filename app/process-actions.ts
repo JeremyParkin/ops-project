@@ -15,7 +15,7 @@ import {
   type ProcessTemplateFormState,
   validateProcessTemplateFormData,
 } from "@/lib/domain/process-validation";
-import type { ProcessWaitRule } from "@/lib/domain/process-types";
+import type { ProcessConditionWaitRule, ProcessWaitRule } from "@/lib/domain/process-types";
 
 export type ProcessActionState = {
   success: boolean;
@@ -70,6 +70,24 @@ function getWaitRule(step: ProcessTemplateFormState["values"]["steps"][number]):
   return { kind: "calendar_target", target: "specific_datetime", date: step.waitDate ?? "", time: step.waitTime ?? "", timeZone: timeZone ?? "" };
 }
 
+function getConditionWaitRule(
+  step: ProcessTemplateFormState["values"]["steps"][number],
+): ProcessConditionWaitRule | undefined {
+  if (step.nodeType !== "condition_wait") return undefined;
+
+  return {
+    target:
+      step.conditionWaitTargetKind === "related"
+        ? {
+            kind: "related",
+            relationFieldDefinitionId: step.conditionWaitRelationFieldDefinitionId ?? "",
+            targetEntityTypeId: step.conditionWaitTargetEntityTypeId ?? "",
+          }
+        : { kind: "origin" },
+    conditions: step.conditionWaitConditions ?? [],
+  };
+}
+
 function extractRpcErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
     const colonIndex = error.message.indexOf(": ");
@@ -114,6 +132,7 @@ export async function saveProcessTemplateAction(
           ? { amount: Number(step.dueAmount), unit: step.dueUnit }
           : undefined,
         waitRule: getWaitRule(step),
+        conditionWaitRule: getConditionWaitRule(step),
         routes: step.routes,
       })),
     });

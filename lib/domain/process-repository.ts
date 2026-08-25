@@ -4,6 +4,7 @@ import { getEntityRecord, getRecordLabel } from "./record-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
   ProcessBranchCondition,
+  ProcessConditionWaitRule,
   ProcessEdge,
   ProcessDueRule,
   ProcessWaitRule,
@@ -91,6 +92,7 @@ type ProcessStepRunRow = {
   started_at: string | null;
   due_at: string | null;
   resume_at: string | null;
+  condition_wait_result: ProcessStepRun["conditionWaitResult"] | null;
   completed_at: string | null;
   assignee_user_id: string | null;
   assignee_label: string | null;
@@ -139,6 +141,7 @@ export type ProcessTemplateStepInput = {
   assigneeUserId: string | null;
   dueRule?: ProcessDueRule;
   waitRule?: ProcessWaitRule;
+  conditionWaitRule?: ProcessConditionWaitRule;
   routes: Array<{
     targetStepKey: string;
     isDefault: boolean;
@@ -152,6 +155,31 @@ export type ProcessTemplateStepInput = {
 function mapProcessNodeConfig(config: Record<string, unknown>): ProcessNodeConfig {
   const dueRule = config.due_rule;
   const waitRule = config.wait_rule;
+  const conditionWaitRule = config.condition_wait_rule;
+
+  if (typeof conditionWaitRule === "object" && conditionWaitRule !== null && !Array.isArray(conditionWaitRule)) {
+    const rule = conditionWaitRule as Record<string, unknown>;
+    const target = rule.target;
+    const conditions = rule.conditions;
+    if (typeof target === "object" && target !== null && !Array.isArray(target) && Array.isArray(conditions)) {
+      const targetRecord = target as Record<string, unknown>;
+      if (targetRecord.kind === "origin") {
+        return { conditionWaitRule: { target: { kind: "origin" }, conditions: conditions as ProcessBranchCondition[] } };
+      }
+      if (targetRecord.kind === "related" && typeof targetRecord.relation_field_definition_id === "string" && typeof targetRecord.target_entity_type_id === "string") {
+        return {
+          conditionWaitRule: {
+            target: {
+              kind: "related",
+              relationFieldDefinitionId: targetRecord.relation_field_definition_id,
+              targetEntityTypeId: targetRecord.target_entity_type_id,
+            },
+            conditions: conditions as ProcessBranchCondition[],
+          },
+        };
+      }
+    }
+  }
 
   if (typeof waitRule === "object" && waitRule !== null && !Array.isArray(waitRule)) {
     const rule = waitRule as Record<string, unknown>;
@@ -259,6 +287,21 @@ function serializeWaitRule(waitRule: ProcessWaitRule | undefined) {
   };
 }
 
+function serializeConditionWaitRule(rule: ProcessConditionWaitRule | undefined) {
+  if (!rule) return null;
+  return {
+    target:
+      rule.target.kind === "related"
+        ? {
+            kind: "related",
+            relation_field_definition_id: rule.target.relationFieldDefinitionId,
+            target_entity_type_id: rule.target.targetEntityTypeId,
+          }
+        : { kind: "origin" },
+    conditions: rule.conditions,
+  };
+}
+
 function mapProcessTemplate(row: ProcessTemplateRow): ProcessTemplate {
   return {
     id: row.id,
@@ -319,6 +362,7 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     startedAt: row.started_at ?? undefined,
     dueAt: row.due_at ?? undefined,
     resumeAt: row.resume_at ?? undefined,
+    conditionWaitResult: row.condition_wait_result ?? undefined,
     completedAt: row.completed_at ?? undefined,
     assigneeUserId: row.assignee_user_id ?? undefined,
     assigneeLabel: row.assignee_label ?? undefined,
@@ -520,6 +564,7 @@ export async function saveProcessTemplate({
         ? { amount: step.dueRule.amount, unit: step.dueRule.unit }
         : null,
       wait_rule: serializeWaitRule(step.waitRule),
+      condition_wait_rule: serializeConditionWaitRule(step.conditionWaitRule),
       routes: step.routes.map((route) => ({
         target_client_key: route.targetStepKey,
         is_default: route.isDefault,

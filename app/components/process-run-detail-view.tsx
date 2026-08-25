@@ -134,6 +134,10 @@ export function ProcessRunDetailView({
                   <p className="mt-1 text-xs text-stone">
                     {step.nodeType === "wait"
                       ? "Wait resumes automatically."
+                      : step.nodeType === "condition_wait"
+                      ? step.conditionWaitResult?.status === "blocked"
+                        ? step.conditionWaitResult.message ?? "Waiting for a valid condition target."
+                        : "Waiting for its conditions to be satisfied."
                       : step.nodeType === "parallel_split"
                       ? "Parallel paths activate automatically."
                       : (() => {
@@ -166,10 +170,15 @@ export function ProcessRunDetailView({
                     ) : null}
                   </p>
                 ) : null}
+                {step.nodeType === "condition_wait" && step.conditionWaitResult?.targetRecordId ? (
+                  <p className="mt-1 text-xs text-stone">Watching current record values.</p>
+                ) : null}
                 {step.routingResult ? (
                   <p className="mt-2 text-xs text-stone">
                     {step.routingResult.outcome === "approval_outcome"
                       ? `Decision: ${step.approvalOutcomeLabel ?? step.routingResult.approvalOutcomeLabel ?? "Recorded"}`
+                      : step.routingResult.outcome === "condition_satisfied"
+                        ? "Condition satisfied"
                       : step.routingResult.outcome === "parallel_split"
                       ? "Parallel branches activated"
                       : step.routingResult.outcome === "parallel_join"

@@ -191,14 +191,6 @@ async function cleanupEntitiesById(supabase: SupabaseClient, entityTypeIds: stri
       .in("entity_type_id", entityTypeIds),
     "clean up E2E saved views",
   );
-  await throwOnError(
-    await supabase
-      .from("field_definitions")
-      .delete()
-      .eq("workspace_id", DEMO_WORKSPACE_ID)
-      .in("entity_type_id", entityTypeIds),
-    "clean up E2E field definitions",
-  );
   // process_runs.origin_record_id and process_templates.applies_to_entity_type_id
   // both carry an ON DELETE RESTRICT foreign key back to entity_types/entity_records
   // (see migration 0027), so both must be cleared before entity_records/entity_types
@@ -219,6 +211,14 @@ async function cleanupEntitiesById(supabase: SupabaseClient, entityTypeIds: stri
       .eq("workspace_id", DEMO_WORKSPACE_ID)
       .in("applies_to_entity_type_id", entityTypeIds),
     "clean up E2E process templates",
+  );
+  await throwOnError(
+    await supabase
+      .from("field_definitions")
+      .delete()
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .in("entity_type_id", entityTypeIds),
+    "clean up E2E field definitions",
   );
   await throwOnError(
     await supabase

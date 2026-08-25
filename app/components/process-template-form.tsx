@@ -62,6 +62,10 @@ type LocalStep = {
   waitDate: string;
   waitTime: string;
   waitTimeZone: string;
+  conditionWaitTargetKind?: "origin" | "related";
+  conditionWaitRelationFieldDefinitionId?: string;
+  conditionWaitTargetEntityTypeId?: string;
+  conditionWaitConditions?: LocalCondition[];
   routes: LocalRoute[];
 };
 
@@ -76,6 +80,15 @@ function waitDefaults() {
     waitDate: "",
     waitTime: "09:00",
     waitTimeZone: "America/Toronto",
+  };
+}
+
+function conditionWaitDefaults() {
+  return {
+    conditionWaitTargetKind: "origin" as const,
+    conditionWaitRelationFieldDefinitionId: "",
+    conditionWaitTargetEntityTypeId: "",
+    conditionWaitConditions: [] as LocalCondition[],
   };
 }
 
@@ -246,6 +259,11 @@ export function ProcessTemplateForm({
       waitDate: step.waitDate ?? "",
       waitTime: step.waitTime ?? "09:00",
       waitTimeZone: step.waitTimeZone ?? "America/Toronto",
+      conditionWaitTargetKind:
+        step.conditionWaitTargetKind === "related" ? "related" : "origin",
+      conditionWaitRelationFieldDefinitionId: step.conditionWaitRelationFieldDefinitionId ?? "",
+      conditionWaitTargetEntityTypeId: step.conditionWaitTargetEntityTypeId ?? "",
+      conditionWaitConditions: (step.conditionWaitConditions ?? []).map(toLocalCondition),
       routes: step.routes.map(toLocalRoute),
     })),
   );
@@ -431,6 +449,37 @@ export function ProcessTemplateForm({
             )
           : current;
 
+      return [...withRoute, next];
+    });
+  }
+
+  function addConditionWait() {
+    const waitKey = createKey("condition-wait");
+    const field = activeFields[0];
+
+    setSteps((current) => {
+      const previous = current.at(-1);
+      const next: LocalStep = {
+        key: waitKey,
+        nodeId: "",
+        nodeType: "condition_wait",
+        parallelGroupId: "",
+        name: "Wait for condition",
+        assigneeUserId: "",
+        dueAmount: "",
+        dueUnit: "days",
+        ...waitDefaults(),
+        ...conditionWaitDefaults(),
+        conditionWaitConditions: field
+          ? [{ id: createKey("condition"), sourceFieldDefinitionId: field.id, operator: getProcessConditionDefaultOperator(field), value: "" }]
+          : [],
+        routes: [],
+      };
+      const withRoute = previous && previous.routes.length === 0
+        ? current.map((step) => step.key === previous.key
+          ? { ...step, routes: [{ id: createKey("route"), targetStepKey: waitKey, isDefault: true, isParallel: false, conditions: [] }] }
+          : step)
+        : current;
       return [...withRoute, next];
     });
   }
@@ -694,6 +743,17 @@ export function ProcessTemplateForm({
       waitDate: step.waitDate,
       waitTime: step.waitTime,
       waitTimeZone: step.waitTimeZone,
+      conditionWaitTargetKind: step.conditionWaitTargetKind ?? "origin",
+      conditionWaitRelationFieldDefinitionId: step.conditionWaitRelationFieldDefinitionId ?? "",
+      conditionWaitTargetEntityTypeId: step.conditionWaitTargetEntityTypeId ?? "",
+      conditionWaitConditions: (step.conditionWaitConditions ?? []).map((condition) =>
+        serializeCondition(
+          condition,
+          (step.conditionWaitTargetKind === "related"
+            ? contextByEntityTypeId.get(step.conditionWaitTargetEntityTypeId ?? "")?.fields
+            : currentContext?.fields) ?? [],
+        ),
+      ),
       routes: step.routes.map((route) => ({
         id: route.id,
         targetStepKey: route.targetStepKey,
@@ -819,6 +879,13 @@ export function ProcessTemplateForm({
             </button>
             <button
               type="button"
+              onClick={addConditionWait}
+              className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
+            >
+              + Add condition wait
+            </button>
+            <button
+              type="button"
               onClick={addParallelPaths}
               className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
             >
@@ -833,6 +900,7 @@ export function ProcessTemplateForm({
               const hasConditionalRoutes = step.routes.some((route) => !route.isDefault);
               const isApproval = step.nodeType === "approval";
               const isWait = step.nodeType === "wait";
+              const isConditionWait = step.nodeType === "condition_wait";
 
               if (step.nodeType === "parallel_split" || step.nodeType === "parallel_join") {
                 const isSplit = step.nodeType === "parallel_split";
@@ -864,7 +932,7 @@ export function ProcessTemplateForm({
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <label htmlFor={`step-name-${step.key}`} className="block text-xs font-medium uppercase tracking-wide text-stone">
-                        {isApproval ? "Approval" : isWait ? "Wait" : `Step ${index + 1}`}
+                        {isApproval ? "Approval" : isWait ? "Wait" : isConditionWait ? "Condition wait" : `Step ${index + 1}`}
                       </label>
                       <input
                         id={`step-name-${step.key}`}
@@ -948,7 +1016,58 @@ export function ProcessTemplateForm({
                       <p className="mt-2 text-xs text-stone">Waits resume automatically and never appear in My Work.</p>
                       <FieldError message={routeError} />
                     </fieldset>
-                  ) : (
+                  ) : isConditionWait ? (() => {
+                    const relationFields = activeFields.filter((field) => field.type === "relation" && field.relatedEntityTypeId);
+                    const targetContext = step.conditionWaitTargetKind === "related"
+                      ? contextByEntityTypeId.get(step.conditionWaitTargetEntityTypeId ?? "")
+                      : currentContext;
+                    const targetFields = (targetContext?.fields ?? []).filter((field) => !field.archivedAt);
+                    const conditions = step.conditionWaitConditions ?? [];
+                    return (
+                      <fieldset className="mt-3 border-t border-grit pt-3">
+                        <legend className="text-xs font-medium uppercase tracking-wide text-stone">Condition wait configuration</legend>
+                        <div className="mt-2 grid gap-3 md:grid-cols-2">
+                          <label className="text-sm text-stone">Watch
+                            <select value={step.conditionWaitTargetKind ?? "origin"} onChange={(event) => {
+                              const kind = event.currentTarget.value === "related" ? "related" : "origin";
+                              updateStep(step.key, (current) => ({ ...current, ...conditionWaitDefaults(), conditionWaitTargetKind: kind }));
+                            }} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep">
+                              <option value="origin">The process record</option>
+                              <option value="related" disabled={relationFields.length === 0}>A directly related record</option>
+                            </select>
+                          </label>
+                          {step.conditionWaitTargetKind === "related" ? (
+                            <label className="text-sm text-stone">Relation
+                              <select value={step.conditionWaitRelationFieldDefinitionId ?? ""} onChange={(event) => {
+                                const relationFieldDefinitionId = event.currentTarget.value;
+                                const field = relationFields.find((candidate) => candidate.id === relationFieldDefinitionId);
+                                updateStep(step.key, (current) => ({ ...current, conditionWaitRelationFieldDefinitionId: relationFieldDefinitionId, conditionWaitTargetEntityTypeId: field?.relatedEntityTypeId ?? "", conditionWaitConditions: [] }));
+                              }} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep">
+                                <option value="">Choose relation</option>
+                                {relationFields.map((field) => <option key={field.id} value={field.id}>{field.name}</option>)}
+                              </select>
+                            </label>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 flex flex-col gap-2">
+                          {conditions.map((condition) => {
+                            const selectedField = targetFields.find((field) => field.id === condition.sourceFieldDefinitionId) ?? targetFields[0];
+                            const operators = selectedField ? getProcessConditionOperatorsForFieldType(selectedField.type) : [];
+                            const selectedOperator = operators.includes(condition.operator) ? condition.operator : operators[0] ?? "equals";
+                            return <div key={condition.id} className="grid gap-2 md:grid-cols-[1fr_180px_1fr_auto]">
+                              <select value={selectedField?.id ?? ""} onChange={(event) => { const sourceFieldDefinitionId = event.currentTarget.value; const field = targetFields.find((candidate) => candidate.id === sourceFieldDefinitionId); updateStep(step.key, (current) => ({ ...current, conditionWaitConditions: (current.conditionWaitConditions ?? []).map((candidate) => candidate.id === condition.id ? { ...candidate, sourceFieldDefinitionId, operator: field ? getProcessConditionDefaultOperator(field) : "equals", value: "" } : candidate) })); }} className="h-9 border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep">{targetFields.map((field) => <option key={field.id} value={field.id}>{field.name}</option>)}</select>
+                              <select value={selectedOperator} onChange={(event) => { const operator = event.currentTarget.value as ProcessBranchConditionOperator; updateStep(step.key, (current) => ({ ...current, conditionWaitConditions: (current.conditionWaitConditions ?? []).map((candidate) => candidate.id === condition.id ? { ...candidate, operator, value: "" } : candidate) })); }} className="h-9 border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep">{operators.map((operator) => <option key={operator} value={operator}>{processConditionOperatorLabels[operator]}</option>)}</select>
+                              {selectedField && processConditionOperatorNeedsValue(selectedOperator) ? <ConditionValueInput field={selectedField} value={condition.value} options={targetContext?.relationOptionsByFieldId[selectedField.id] ?? []} onChange={(value) => updateStep(step.key, (current) => ({ ...current, conditionWaitConditions: (current.conditionWaitConditions ?? []).map((candidate) => candidate.id === condition.id ? { ...candidate, value } : candidate) }))} /> : <span className="self-center text-sm text-stone">No comparison value</span>}
+                              <button type="button" onClick={() => updateStep(step.key, (current) => ({ ...current, conditionWaitConditions: (current.conditionWaitConditions ?? []).filter((candidate) => candidate.id !== condition.id) }))} disabled={conditions.length <= 1} className="h-9 text-xs font-medium text-stone underline-offset-4 hover:text-red-700 hover:underline disabled:cursor-not-allowed disabled:opacity-40">Remove</button>
+                            </div>;
+                          })}
+                          <button type="button" disabled={targetFields.length === 0} onClick={() => { const field = targetFields[0]; if (!field) return; updateStep(step.key, (current) => ({ ...current, conditionWaitConditions: [...(current.conditionWaitConditions ?? []), { id: createKey("condition"), sourceFieldDefinitionId: field.id, operator: getProcessConditionDefaultOperator(field), value: "" }] })); }} className="self-start text-sm font-medium text-stone underline-offset-4 hover:text-graphite hover:underline disabled:cursor-not-allowed disabled:opacity-40">+ Add condition</button>
+                        </div>
+                        <p className="mt-2 text-xs text-stone">Waits automatically until the current record values satisfy every condition.</p>
+                        <FieldError message={routeError} />
+                      </fieldset>
+                    );
+                  })() : (
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <div>
                       <label htmlFor={`step-assignee-${step.key}`} className="block text-xs font-medium uppercase tracking-wide text-stone">Assignee</label>

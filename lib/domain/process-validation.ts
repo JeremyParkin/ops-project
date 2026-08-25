@@ -28,6 +28,10 @@ export type ProcessTemplateStepFormValue = {
   waitDate?: string;
   waitTime?: string;
   waitTimeZone?: string;
+  conditionWaitTargetKind?: string;
+  conditionWaitRelationFieldDefinitionId?: string;
+  conditionWaitTargetEntityTypeId?: string;
+  conditionWaitConditions?: ProcessBranchCondition[];
   routes: ProcessTemplateRouteFormValue[];
 };
 
@@ -70,6 +74,10 @@ function emptyStep(clientKey: string): ProcessTemplateStepFormValue {
     waitDate: "",
     waitTime: "09:00",
     waitTimeZone: "America/Toronto",
+    conditionWaitTargetKind: "origin",
+    conditionWaitRelationFieldDefinitionId: "",
+    conditionWaitTargetEntityTypeId: "",
+    conditionWaitConditions: [],
     routes: [],
   };
 }
@@ -179,12 +187,21 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
           })
         : [];
 
+      const conditionWaitConditions = Array.isArray(record.conditionWaitConditions)
+        ? record.conditionWaitConditions.map(parseCondition)
+        : [];
+
+      if (conditionWaitConditions.some((condition) => condition === null)) {
+        throw new Error("Invalid condition wait condition");
+      }
+
       return {
         clientKey: asString(record.clientKey) || `step-${index + 1}`,
         nodeId: asString(record.nodeId),
         nodeType:
           record.nodeType === "approval" ||
           record.nodeType === "wait" ||
+          record.nodeType === "condition_wait" ||
           record.nodeType === "parallel_split" ||
           record.nodeType === "parallel_join"
             ? record.nodeType
@@ -203,6 +220,10 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
         waitDate: asString(record.waitDate),
         waitTime: asString(record.waitTime) || "09:00",
         waitTimeZone: asString(record.waitTimeZone) || "America/Toronto",
+        conditionWaitTargetKind: asString(record.conditionWaitTargetKind) || "origin",
+        conditionWaitRelationFieldDefinitionId: asString(record.conditionWaitRelationFieldDefinitionId),
+        conditionWaitTargetEntityTypeId: asString(record.conditionWaitTargetEntityTypeId),
+        conditionWaitConditions: conditionWaitConditions as ProcessBranchCondition[],
         routes,
       };
     });
@@ -248,6 +269,10 @@ function parseSubmittedSteps(formData: FormData) {
     waitDate: "",
     waitTime: "09:00",
     waitTimeZone: "America/Toronto",
+    conditionWaitTargetKind: "origin",
+    conditionWaitRelationFieldDefinitionId: "",
+    conditionWaitTargetEntityTypeId: "",
+    conditionWaitConditions: [],
     routes: [],
   }));
 }
@@ -283,7 +308,8 @@ export function validateProcessTemplateFormData(
       (step) =>
         ((step.nodeType ?? "human_task") === "human_task" ||
           (step.nodeType ?? "human_task") === "approval" ||
-          (step.nodeType ?? "human_task") === "wait") &&
+          (step.nodeType ?? "human_task") === "wait" ||
+          (step.nodeType ?? "human_task") === "condition_wait") &&
         !step.name,
     )
   ) {
@@ -304,6 +330,7 @@ export function validateProcessTemplateFormData(
       nodeType !== "human_task" &&
       nodeType !== "approval" &&
       nodeType !== "wait" &&
+      nodeType !== "condition_wait" &&
       nodeType !== "parallel_split" &&
       nodeType !== "parallel_join"
     ) {
@@ -382,6 +409,21 @@ export function validateProcessTemplateFormData(
 
       if (requiresTimeZone && !(step.waitTimeZone ?? "").trim()) {
         errors[`stepRoutes.${index}`] = "Calendar waits require an IANA timezone.";
+      }
+    }
+
+    if (nodeType === "condition_wait") {
+      if (step.assigneeUserId || step.dueAmount) {
+        errors[`stepRoutes.${index}`] = "Condition waits cannot have an assignee or due rule.";
+      }
+      if (step.conditionWaitTargetKind !== "origin" && step.conditionWaitTargetKind !== "related") {
+        errors[`stepRoutes.${index}`] = "Choose a condition wait target.";
+      }
+      if (step.conditionWaitTargetKind === "related" && (!step.conditionWaitRelationFieldDefinitionId || !step.conditionWaitTargetEntityTypeId)) {
+        errors[`stepRoutes.${index}`] = "Choose the relation and target entity for this condition wait.";
+      }
+      if (!step.conditionWaitConditions || step.conditionWaitConditions.length === 0) {
+        errors[`stepRoutes.${index}`] = "A condition wait needs at least one condition.";
       }
     }
 
