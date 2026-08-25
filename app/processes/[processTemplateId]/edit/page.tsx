@@ -82,6 +82,40 @@ export default async function EditProcessTemplatePage({
         assigneeUserId: step.assigneeUserId ?? "",
         dueAmount: step.config.dueRule ? String(step.config.dueRule.amount) : "",
         dueUnit: step.config.dueRule?.unit ?? "days",
+        waitKind: step.config.waitRule?.kind ?? "duration",
+        waitAmount:
+          step.config.waitRule?.kind === "duration" || step.config.waitRule?.kind === "weekdays"
+            ? String(step.config.waitRule.amount)
+            : "",
+        waitUnit:
+          step.config.waitRule?.kind === "duration" ? step.config.waitRule.unit : "hours",
+        waitTarget:
+          step.config.waitRule?.kind === "calendar_target"
+            ? step.config.waitRule.target
+            : "nth_weekday_next_month",
+        waitOrdinal:
+          step.config.waitRule?.kind === "calendar_target" &&
+          step.config.waitRule.target === "nth_weekday_next_month"
+            ? String(step.config.waitRule.ordinal)
+            : "1",
+        waitWeekday:
+          step.config.waitRule?.kind === "calendar_target" &&
+          step.config.waitRule.target === "first_day_of_week_next_month"
+            ? String(step.config.waitRule.weekday)
+            : "1",
+        waitDate:
+          step.config.waitRule?.kind === "calendar_target" &&
+          step.config.waitRule.target === "specific_datetime"
+            ? step.config.waitRule.date
+            : "",
+        waitTime:
+          step.config.waitRule?.kind === "calendar_target" ? step.config.waitRule.time : "09:00",
+        waitTimeZone:
+          step.config.waitRule?.kind === "duration"
+            ? step.config.waitRule.timeZone ?? "America/Toronto"
+            : step.config.waitRule?.kind === "weekdays" || step.config.waitRule?.kind === "calendar_target"
+              ? step.config.waitRule.timeZone
+              : "America/Toronto",
         routes: template.edges
           .filter((edge) => edge.sourceNodeId === step.id)
           .map((edge) => ({

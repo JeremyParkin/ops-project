@@ -53,8 +53,31 @@ type LocalStep = {
   assigneeUserId: string;
   dueAmount: string;
   dueUnit: "hours" | "days";
+  waitKind: "duration" | "weekdays" | "calendar_target";
+  waitAmount: string;
+  waitUnit: "hours" | "calendar_days";
+  waitTarget: "nth_weekday_next_month" | "first_day_of_week_next_month" | "specific_datetime";
+  waitOrdinal: string;
+  waitWeekday: string;
+  waitDate: string;
+  waitTime: string;
+  waitTimeZone: string;
   routes: LocalRoute[];
 };
+
+function waitDefaults() {
+  return {
+    waitKind: "duration" as const,
+    waitAmount: "",
+    waitUnit: "hours" as const,
+    waitTarget: "nth_weekday_next_month" as const,
+    waitOrdinal: "1",
+    waitWeekday: "1",
+    waitDate: "",
+    waitTime: "09:00",
+    waitTimeZone: "America/Toronto",
+  };
+}
 
 type ProcessTemplateFormProps = {
   entityContexts: ProcessTemplateEntityContext[];
@@ -208,6 +231,21 @@ export function ProcessTemplateForm({
       assigneeUserId: step.assigneeUserId,
       dueAmount: step.dueAmount,
       dueUnit: step.dueUnit === "hours" ? "hours" : "days",
+      waitKind:
+        step.waitKind === "weekdays" || step.waitKind === "calendar_target"
+          ? step.waitKind
+          : "duration",
+      waitAmount: step.waitAmount ?? "",
+      waitUnit: step.waitUnit === "calendar_days" ? "calendar_days" : "hours",
+      waitTarget:
+        step.waitTarget === "first_day_of_week_next_month" || step.waitTarget === "specific_datetime"
+          ? step.waitTarget
+          : "nth_weekday_next_month",
+      waitOrdinal: step.waitOrdinal ?? "1",
+      waitWeekday: step.waitWeekday ?? "1",
+      waitDate: step.waitDate ?? "",
+      waitTime: step.waitTime ?? "09:00",
+      waitTimeZone: step.waitTimeZone ?? "America/Toronto",
       routes: step.routes.map(toLocalRoute),
     })),
   );
@@ -245,6 +283,7 @@ export function ProcessTemplateForm({
           assigneeUserId: "",
           dueAmount: "",
           dueUnit: "days" as const,
+          ...waitDefaults(),
           routes: [],
         },
       ];
@@ -289,6 +328,7 @@ export function ProcessTemplateForm({
           assigneeUserId: "",
           dueAmount: "",
           dueUnit: "days",
+          ...waitDefaults(),
           routes: [
             {
               id: createKey("route"),
@@ -319,6 +359,7 @@ export function ProcessTemplateForm({
           assigneeUserId: "",
           dueAmount: "",
           dueUnit: "days",
+          ...waitDefaults(),
           routes: [],
         },
         {
@@ -330,6 +371,7 @@ export function ProcessTemplateForm({
           assigneeUserId: "",
           dueAmount: "",
           dueUnit: "days",
+          ...waitDefaults(),
           routes: [],
         },
       ];
@@ -358,6 +400,41 @@ export function ProcessTemplateForm({
     });
   }
 
+  function addWait() {
+    const waitKey = createKey("wait");
+
+    setSteps((current) => {
+      const previous = current.at(-1);
+      const next: LocalStep = {
+        key: waitKey,
+        nodeId: "",
+        nodeType: "wait",
+        parallelGroupId: "",
+        name: "Wait",
+        assigneeUserId: "",
+        dueAmount: "",
+        dueUnit: "days",
+        ...waitDefaults(),
+        waitAmount: "1",
+        routes: [],
+      };
+
+      const withRoute =
+        previous && previous.routes.length === 0
+          ? current.map((step) =>
+              step.key === previous.key
+                ? {
+                    ...step,
+                    routes: [{ id: createKey("route"), targetStepKey: waitKey, isDefault: true, isParallel: false, conditions: [] }],
+                  }
+                : step,
+            )
+          : current;
+
+      return [...withRoute, next];
+    });
+  }
+
   function addParallelPaths() {
     const splitKey = createKey("parallel-split");
     const firstBranchKey = createKey("parallel-branch");
@@ -377,6 +454,7 @@ export function ProcessTemplateForm({
           assigneeUserId: "",
           dueAmount: "",
           dueUnit: "days",
+          ...waitDefaults(),
           routes: [
             {
               id: createKey("route"),
@@ -403,6 +481,7 @@ export function ProcessTemplateForm({
           assigneeUserId: "",
           dueAmount: "",
           dueUnit: "days",
+          ...waitDefaults(),
           routes: [
             {
               id: createKey("route"),
@@ -422,6 +501,7 @@ export function ProcessTemplateForm({
           assigneeUserId: "",
           dueAmount: "",
           dueUnit: "days",
+          ...waitDefaults(),
           routes: [
             {
               id: createKey("route"),
@@ -441,6 +521,7 @@ export function ProcessTemplateForm({
           assigneeUserId: "",
           dueAmount: "",
           dueUnit: "days",
+          ...waitDefaults(),
           routes: [],
         },
       ];
@@ -604,6 +685,15 @@ export function ProcessTemplateForm({
       assigneeUserId: step.assigneeUserId,
       dueAmount: step.dueAmount,
       dueUnit: step.dueUnit,
+      waitKind: step.waitKind,
+      waitAmount: step.waitAmount,
+      waitUnit: step.waitUnit,
+      waitTarget: step.waitTarget,
+      waitOrdinal: step.waitOrdinal,
+      waitWeekday: step.waitWeekday,
+      waitDate: step.waitDate,
+      waitTime: step.waitTime,
+      waitTimeZone: step.waitTimeZone,
       routes: step.routes.map((route) => ({
         id: route.id,
         targetStepKey: route.targetStepKey,
@@ -722,6 +812,13 @@ export function ProcessTemplateForm({
             </button>
             <button
               type="button"
+              onClick={addWait}
+              className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
+            >
+              + Add wait
+            </button>
+            <button
+              type="button"
               onClick={addParallelPaths}
               className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
             >
@@ -735,6 +832,7 @@ export function ProcessTemplateForm({
               const routeError = state.errors[`stepRoutes.${index}`];
               const hasConditionalRoutes = step.routes.some((route) => !route.isDefault);
               const isApproval = step.nodeType === "approval";
+              const isWait = step.nodeType === "wait";
 
               if (step.nodeType === "parallel_split" || step.nodeType === "parallel_join") {
                 const isSplit = step.nodeType === "parallel_split";
@@ -766,7 +864,7 @@ export function ProcessTemplateForm({
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <label htmlFor={`step-name-${step.key}`} className="block text-xs font-medium uppercase tracking-wide text-stone">
-                        {isApproval ? "Approval" : `Step ${index + 1}`}
+                        {isApproval ? "Approval" : isWait ? "Wait" : `Step ${index + 1}`}
                       </label>
                       <input
                         id={`step-name-${step.key}`}
@@ -786,6 +884,71 @@ export function ProcessTemplateForm({
                     <button type="button" onClick={() => removeStep(step.key)} disabled={steps.length <= 1} className="h-10 border border-grit px-2 text-xs font-medium text-stone hover:border-red-700 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40">Remove</button>
                   </div>
 
+                  {isWait ? (
+                    <fieldset className="mt-3 border-t border-grit pt-3">
+                      <legend className="text-xs font-medium uppercase tracking-wide text-stone">Wait configuration</legend>
+                      <div className="mt-2 grid gap-3 md:grid-cols-2">
+                        <label className="text-sm text-stone">Mode
+                          <select value={step.waitKind} onChange={(event) => {
+                            const waitKind = event.currentTarget.value as LocalStep["waitKind"];
+                            updateStep(step.key, (current) => ({ ...current, waitKind }));
+                          }} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep">
+                            <option value="duration">Duration</option>
+                            <option value="weekdays">Weekdays</option>
+                            <option value="calendar_target">Calendar target</option>
+                          </select>
+                        </label>
+                        {step.waitKind === "calendar_target" ? (
+                          <label className="text-sm text-stone">Rule
+                            <select value={step.waitTarget} onChange={(event) => {
+                              const waitTarget = event.currentTarget.value as LocalStep["waitTarget"];
+                              updateStep(step.key, (current) => ({ ...current, waitTarget }));
+                            }} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep">
+                              <option value="nth_weekday_next_month">Nth weekday of next month</option>
+                              <option value="first_day_of_week_next_month">First day of week next month</option>
+                              <option value="specific_datetime">Specific date and time</option>
+                            </select>
+                          </label>
+                        ) : (
+                          <label className="text-sm text-stone">Amount
+                            <input type="number" min="1" max="8760" step="1" value={step.waitAmount} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitAmount: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+                          </label>
+                        )}
+                        {step.waitKind === "duration" ? (
+                          <label className="text-sm text-stone">Unit
+                            <select value={step.waitUnit} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitUnit: event.currentTarget.value === "calendar_days" ? "calendar_days" : "hours" }))} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"><option value="hours">Hours</option><option value="calendar_days">Calendar days</option></select>
+                          </label>
+                        ) : null}
+                        {step.waitKind === "calendar_target" && step.waitTarget === "nth_weekday_next_month" ? (
+                          <label className="text-sm text-stone">Weekday number
+                            <input type="number" min="1" max="20" step="1" value={step.waitOrdinal} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitOrdinal: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+                          </label>
+                        ) : null}
+                        {step.waitKind === "calendar_target" && step.waitTarget === "first_day_of_week_next_month" ? (
+                          <label className="text-sm text-stone">Day of week
+                            <select value={step.waitWeekday} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitWeekday: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select>
+                          </label>
+                        ) : null}
+                        {step.waitKind === "calendar_target" && step.waitTarget === "specific_datetime" ? (
+                          <label className="text-sm text-stone">Date
+                            <input type="date" value={step.waitDate} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitDate: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+                          </label>
+                        ) : null}
+                        {(step.waitKind === "calendar_target") ? (
+                          <label className="text-sm text-stone">Time
+                            <input type="time" value={step.waitTime} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitTime: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+                          </label>
+                        ) : null}
+                        {(step.waitKind !== "duration" || step.waitUnit === "calendar_days") ? (
+                          <label className="text-sm text-stone">IANA timezone
+                            <input value={step.waitTimeZone} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitTimeZone: event.currentTarget.value }))} placeholder="America/Toronto" className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+                          </label>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-xs text-stone">Waits resume automatically and never appear in My Work.</p>
+                      <FieldError message={routeError} />
+                    </fieldset>
+                  ) : (
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <div>
                       <label htmlFor={`step-assignee-${step.key}`} className="block text-xs font-medium uppercase tracking-wide text-stone">Assignee</label>
@@ -813,6 +976,7 @@ export function ProcessTemplateForm({
                       <FieldError message={state.errors[`stepDueAmount.${index}`]} />
                     </fieldset>
                   </div>
+                  )}
 
                   {isApproval ? (
                     <fieldset className="mt-4 border-t border-grit pt-4">

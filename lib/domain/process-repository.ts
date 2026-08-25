@@ -6,6 +6,7 @@ import type {
   ProcessBranchCondition,
   ProcessEdge,
   ProcessDueRule,
+  ProcessWaitRule,
   ProcessNodeConfig,
   ProcessNode,
   ProcessNodeType,
@@ -89,6 +90,7 @@ type ProcessStepRunRow = {
   status: ProcessStepRunStatus;
   started_at: string | null;
   due_at: string | null;
+  resume_at: string | null;
   completed_at: string | null;
   assignee_user_id: string | null;
   assignee_label: string | null;
@@ -136,6 +138,7 @@ export type ProcessTemplateStepInput = {
   name: string;
   assigneeUserId: string | null;
   dueRule?: ProcessDueRule;
+  waitRule?: ProcessWaitRule;
   routes: Array<{
     targetStepKey: string;
     isDefault: boolean;
@@ -148,6 +151,47 @@ export type ProcessTemplateStepInput = {
 
 function mapProcessNodeConfig(config: Record<string, unknown>): ProcessNodeConfig {
   const dueRule = config.due_rule;
+  const waitRule = config.wait_rule;
+
+  if (typeof waitRule === "object" && waitRule !== null && !Array.isArray(waitRule)) {
+    const rule = waitRule as Record<string, unknown>;
+
+    if (
+      rule.kind === "duration" &&
+      typeof rule.amount === "number" &&
+      (rule.unit === "hours" || rule.unit === "calendar_days")
+    ) {
+      return {
+        waitRule: {
+          kind: "duration",
+          amount: rule.amount,
+          unit: rule.unit,
+          ...(typeof rule.time_zone === "string" ? { timeZone: rule.time_zone } : {}),
+        },
+      };
+    }
+
+    if (rule.kind === "weekdays" && typeof rule.amount === "number" && typeof rule.time_zone === "string") {
+      return { waitRule: { kind: "weekdays", amount: rule.amount, timeZone: rule.time_zone } };
+    }
+
+    if (
+      rule.kind === "calendar_target" &&
+      typeof rule.target === "string" &&
+      typeof rule.time === "string" &&
+      typeof rule.time_zone === "string"
+    ) {
+      if (rule.target === "nth_weekday_next_month" && typeof rule.ordinal === "number") {
+        return { waitRule: { kind: "calendar_target", target: rule.target, ordinal: rule.ordinal, time: rule.time, timeZone: rule.time_zone } };
+      }
+      if (rule.target === "first_day_of_week_next_month" && typeof rule.weekday === "number") {
+        return { waitRule: { kind: "calendar_target", target: rule.target, weekday: rule.weekday, time: rule.time, timeZone: rule.time_zone } };
+      }
+      if (rule.target === "specific_datetime" && typeof rule.date === "string") {
+        return { waitRule: { kind: "calendar_target", target: rule.target, date: rule.date, time: rule.time, timeZone: rule.time_zone } };
+      }
+    }
+  }
 
   if (
     typeof dueRule !== "object" ||
@@ -167,6 +211,51 @@ function mapProcessNodeConfig(config: Record<string, unknown>): ProcessNodeConfi
       amount: dueRuleRecord.amount as number,
       unit: dueRuleRecord.unit as ProcessDueRule["unit"],
     },
+  };
+}
+
+function serializeWaitRule(waitRule: ProcessWaitRule | undefined) {
+  if (!waitRule) return null;
+
+  if (waitRule.kind === "duration") {
+    return {
+      kind: waitRule.kind,
+      amount: waitRule.amount,
+      unit: waitRule.unit,
+      ...(waitRule.timeZone ? { time_zone: waitRule.timeZone } : {}),
+    };
+  }
+
+  if (waitRule.kind === "weekdays") {
+    return { kind: waitRule.kind, amount: waitRule.amount, time_zone: waitRule.timeZone };
+  }
+
+  if (waitRule.target === "nth_weekday_next_month") {
+    return {
+      kind: waitRule.kind,
+      target: waitRule.target,
+      ordinal: waitRule.ordinal,
+      time: waitRule.time,
+      time_zone: waitRule.timeZone,
+    };
+  }
+
+  if (waitRule.target === "first_day_of_week_next_month") {
+    return {
+      kind: waitRule.kind,
+      target: waitRule.target,
+      weekday: waitRule.weekday,
+      time: waitRule.time,
+      time_zone: waitRule.timeZone,
+    };
+  }
+
+  return {
+    kind: waitRule.kind,
+    target: waitRule.target,
+    date: waitRule.date,
+    time: waitRule.time,
+    time_zone: waitRule.timeZone,
   };
 }
 
@@ -229,6 +318,7 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     status: row.status,
     startedAt: row.started_at ?? undefined,
     dueAt: row.due_at ?? undefined,
+    resumeAt: row.resume_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
     assigneeUserId: row.assignee_user_id ?? undefined,
     assigneeLabel: row.assignee_label ?? undefined,
@@ -429,6 +519,7 @@ export async function saveProcessTemplate({
       due_rule: step.dueRule
         ? { amount: step.dueRule.amount, unit: step.dueRule.unit }
         : null,
+      wait_rule: serializeWaitRule(step.waitRule),
       routes: step.routes.map((route) => ({
         target_client_key: route.targetStepKey,
         is_default: route.isDefault,

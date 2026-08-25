@@ -15,6 +15,7 @@ import {
   type ProcessTemplateFormState,
   validateProcessTemplateFormData,
 } from "@/lib/domain/process-validation";
+import type { ProcessWaitRule } from "@/lib/domain/process-types";
 
 export type ProcessActionState = {
   success: boolean;
@@ -44,6 +45,30 @@ type CompleteProcessStepRunContext = {
 };
 
 type DecideProcessApprovalContext = CompleteProcessStepRunContext;
+
+function getWaitRule(step: ProcessTemplateFormState["values"]["steps"][number]): ProcessWaitRule | undefined {
+  if (step.nodeType !== "wait") return undefined;
+  const timeZone = step.waitTimeZone?.trim();
+
+  if (step.waitKind === "duration") {
+    return {
+      kind: "duration",
+      amount: Number(step.waitAmount),
+      unit: step.waitUnit === "calendar_days" ? "calendar_days" : "hours",
+      ...(timeZone ? { timeZone } : {}),
+    };
+  }
+  if (step.waitKind === "weekdays") {
+    return { kind: "weekdays", amount: Number(step.waitAmount), timeZone: timeZone ?? "" };
+  }
+  if (step.waitTarget === "nth_weekday_next_month") {
+    return { kind: "calendar_target", target: "nth_weekday_next_month", ordinal: Number(step.waitOrdinal), time: step.waitTime ?? "", timeZone: timeZone ?? "" };
+  }
+  if (step.waitTarget === "first_day_of_week_next_month") {
+    return { kind: "calendar_target", target: "first_day_of_week_next_month", weekday: Number(step.waitWeekday), time: step.waitTime ?? "", timeZone: timeZone ?? "" };
+  }
+  return { kind: "calendar_target", target: "specific_datetime", date: step.waitDate ?? "", time: step.waitTime ?? "", timeZone: timeZone ?? "" };
+}
 
 function extractRpcErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
@@ -88,6 +113,7 @@ export async function saveProcessTemplateAction(
         dueRule: step.dueAmount
           ? { amount: Number(step.dueAmount), unit: step.dueUnit }
           : undefined,
+        waitRule: getWaitRule(step),
         routes: step.routes,
       })),
     });

@@ -407,6 +407,7 @@ test.describe("process runs", () => {
     ).toBe(2 * 60 * 60 * 1000);
 
     await page.getByRole("button", { name: "Complete" }).click();
+    await expect(stepRow(page, "Review")).toContainText("completed");
     const { data: completedReview } = await supabase
       .from("process_step_runs")
       .select("due_at, completed_at, status")

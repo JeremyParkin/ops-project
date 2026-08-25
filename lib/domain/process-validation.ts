@@ -19,6 +19,15 @@ export type ProcessTemplateStepFormValue = {
   assigneeUserId: string;
   dueAmount: string;
   dueUnit: string;
+  waitKind?: string;
+  waitAmount?: string;
+  waitUnit?: string;
+  waitTarget?: string;
+  waitOrdinal?: string;
+  waitWeekday?: string;
+  waitDate?: string;
+  waitTime?: string;
+  waitTimeZone?: string;
   routes: ProcessTemplateRouteFormValue[];
 };
 
@@ -52,6 +61,15 @@ function emptyStep(clientKey: string): ProcessTemplateStepFormValue {
     assigneeUserId: "",
     dueAmount: "",
     dueUnit: "days",
+    waitKind: "duration",
+    waitAmount: "",
+    waitUnit: "hours",
+    waitTarget: "nth_weekday_next_month",
+    waitOrdinal: "1",
+    waitWeekday: "1",
+    waitDate: "",
+    waitTime: "09:00",
+    waitTimeZone: "America/Toronto",
     routes: [],
   };
 }
@@ -166,6 +184,7 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
         nodeId: asString(record.nodeId),
         nodeType:
           record.nodeType === "approval" ||
+          record.nodeType === "wait" ||
           record.nodeType === "parallel_split" ||
           record.nodeType === "parallel_join"
             ? record.nodeType
@@ -175,6 +194,15 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
         assigneeUserId: asString(record.assigneeUserId).trim(),
         dueAmount: asString(record.dueAmount).trim(),
         dueUnit: asString(record.dueUnit) || "days",
+        waitKind: asString(record.waitKind) || "duration",
+        waitAmount: asString(record.waitAmount).trim(),
+        waitUnit: asString(record.waitUnit) || "hours",
+        waitTarget: asString(record.waitTarget) || "nth_weekday_next_month",
+        waitOrdinal: asString(record.waitOrdinal) || "1",
+        waitWeekday: asString(record.waitWeekday) || "1",
+        waitDate: asString(record.waitDate),
+        waitTime: asString(record.waitTime) || "09:00",
+        waitTimeZone: asString(record.waitTimeZone) || "America/Toronto",
         routes,
       };
     });
@@ -211,6 +239,15 @@ function parseSubmittedSteps(formData: FormData) {
     assigneeUserId: stepAssigneeUserIds[index] ?? "",
     dueAmount: stepDueAmounts[index] ?? "",
     dueUnit: stepDueUnits[index] ?? "days",
+    waitKind: "duration",
+    waitAmount: "",
+    waitUnit: "hours",
+    waitTarget: "nth_weekday_next_month",
+    waitOrdinal: "1",
+    waitWeekday: "1",
+    waitDate: "",
+    waitTime: "09:00",
+    waitTimeZone: "America/Toronto",
     routes: [],
   }));
 }
@@ -245,7 +282,8 @@ export function validateProcessTemplateFormData(
     submittedSteps.some(
       (step) =>
         ((step.nodeType ?? "human_task") === "human_task" ||
-          (step.nodeType ?? "human_task") === "approval") &&
+          (step.nodeType ?? "human_task") === "approval" ||
+          (step.nodeType ?? "human_task") === "wait") &&
         !step.name,
     )
   ) {
@@ -265,6 +303,7 @@ export function validateProcessTemplateFormData(
     if (
       nodeType !== "human_task" &&
       nodeType !== "approval" &&
+      nodeType !== "wait" &&
       nodeType !== "parallel_split" &&
       nodeType !== "parallel_join"
     ) {
@@ -292,6 +331,57 @@ export function validateProcessTemplateFormData(
         if (!Number.isSafeInteger(amount) || amount > PROCESS_DUE_RULE_MAX_AMOUNT) {
           errors[`stepDueAmount.${index}`] = `Due offset must be between 1 and ${PROCESS_DUE_RULE_MAX_AMOUNT}.`;
         }
+      }
+    }
+
+    if (nodeType === "wait") {
+      if (step.assigneeUserId || step.dueAmount) {
+        errors[`stepRoutes.${index}`] = "Wait nodes cannot have an assignee or due rule.";
+      }
+
+      const amount = Number(step.waitAmount);
+      const hasPositiveAmount = /^[1-9]\\d*$/.test(step.waitAmount ?? "")
+        && Number.isSafeInteger(amount)
+        && amount <= PROCESS_DUE_RULE_MAX_AMOUNT;
+      const requiresTimeZone = step.waitKind !== "duration" || step.waitUnit === "calendar_days";
+      const isTime = /^\\d{2}:\\d{2}$/.test(step.waitTime ?? "");
+      const isDate = /^\\d{4}-\\d{2}-\\d{2}$/.test(step.waitDate ?? "");
+
+      if (step.waitKind === "duration") {
+        if (!hasPositiveAmount || (step.waitUnit !== "hours" && step.waitUnit !== "calendar_days")) {
+          errors[`stepRoutes.${index}`] = "Wait duration must be a whole positive number of hours or calendar days.";
+        }
+      } else if (step.waitKind === "weekdays") {
+        if (!hasPositiveAmount) {
+          errors[`stepRoutes.${index}`] = "Weekday waits must use a whole positive number.";
+        }
+      } else if (step.waitKind === "calendar_target") {
+        if (!isTime) {
+          errors[`stepRoutes.${index}`] = "Calendar waits require a valid time.";
+        }
+        if (step.waitTarget === "nth_weekday_next_month") {
+          const ordinal = Number(step.waitOrdinal);
+          if (!Number.isSafeInteger(ordinal) || ordinal < 1 || ordinal > 20) {
+            errors[`stepRoutes.${index}`] = "Choose the 1st through 20th weekday of next month.";
+          }
+        } else if (step.waitTarget === "first_day_of_week_next_month") {
+          const weekday = Number(step.waitWeekday);
+          if (!Number.isSafeInteger(weekday) || weekday < 0 || weekday > 6) {
+            errors[`stepRoutes.${index}`] = "Choose a day of the week.";
+          }
+        } else if (step.waitTarget === "specific_datetime") {
+          if (!isDate) {
+            errors[`stepRoutes.${index}`] = "Choose a valid calendar date.";
+          }
+        } else {
+          errors[`stepRoutes.${index}`] = "Choose a supported calendar wait target.";
+        }
+      } else {
+        errors[`stepRoutes.${index}`] = "Choose a supported wait mode.";
+      }
+
+      if (requiresTimeZone && !(step.waitTimeZone ?? "").trim()) {
+        errors[`stepRoutes.${index}`] = "Calendar waits require an IANA timezone.";
       }
     }
 

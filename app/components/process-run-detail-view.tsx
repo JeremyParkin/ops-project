@@ -41,6 +41,18 @@ function statusBadgeClass(status: "pending" | "active" | "completed" | "skipped"
   return "border-grit bg-chalk text-stone";
 }
 
+function waitRuleLabel(step: ProcessRunWithSteps["steps"][number]) {
+  const rule = step.config.waitRule;
+  if (!rule) return "Automatic wait";
+  if (rule.kind === "duration") {
+    return `${rule.amount} ${rule.unit === "calendar_days" ? "calendar day" : "hour"}${rule.amount === 1 ? "" : "s"} after activation`;
+  }
+  if (rule.kind === "weekdays") return `${rule.amount} weekday${rule.amount === 1 ? "" : "s"} after activation`;
+  if (rule.target === "nth_weekday_next_month") return `${rule.ordinal}th weekday of next month at ${rule.time} ${rule.timeZone}`;
+  if (rule.target === "first_day_of_week_next_month") return `First day-of-week target at ${rule.time} ${rule.timeZone}`;
+  return `${rule.date} at ${rule.time} ${rule.timeZone}`;
+}
+
 export function ProcessRunDetailView({
   run,
   originLabel,
@@ -120,7 +132,9 @@ export function ProcessRunDetailView({
                   </p>
                 ) : (
                   <p className="mt-1 text-xs text-stone">
-                    {step.nodeType === "parallel_split"
+                    {step.nodeType === "wait"
+                      ? "Wait resumes automatically."
+                      : step.nodeType === "parallel_split"
                       ? "Parallel paths activate automatically."
                       : (() => {
                           const obligations = obligationsByJoinId.get(step.id) ?? [];
@@ -136,6 +150,20 @@ export function ProcessRunDetailView({
                 {step.dueAt ? (
                   <p className="mt-1 text-xs text-stone">
                     <ProcessDueAt dueAt={step.dueAt} />
+                  </p>
+                ) : null}
+                {step.nodeType === "wait" ? (
+                  <p className="mt-1 text-xs text-stone">
+                    {waitRuleLabel(step)}
+                    {step.resumeAt ? (
+                      <>
+                        {" · "}
+                        <ProcessDueAt
+                          dueAt={step.resumeAt}
+                          prefix={step.status === "active" ? "Waiting until" : "Scheduled for"}
+                        />
+                      </>
+                    ) : null}
                   </p>
                 ) : null}
                 {step.routingResult ? (

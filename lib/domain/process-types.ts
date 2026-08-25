@@ -1,6 +1,11 @@
 import type { EntityRecord, EntityType, IsoUtcTimestamp } from "./types";
 
-export type ProcessNodeType = "human_task" | "approval" | "parallel_split" | "parallel_join";
+export type ProcessNodeType =
+  | "human_task"
+  | "approval"
+  | "wait"
+  | "parallel_split"
+  | "parallel_join";
 export type ProcessRunStatus = "active" | "completed";
 export type ProcessStepRunStatus = "pending" | "active" | "completed" | "skipped";
 
@@ -9,8 +14,43 @@ export type ProcessDueRule = {
   unit: "hours" | "days";
 };
 
+export type ProcessWaitRule =
+  | {
+      kind: "duration";
+      amount: number;
+      unit: "hours" | "calendar_days";
+      timeZone?: string;
+    }
+  | {
+      kind: "weekdays";
+      amount: number;
+      timeZone: string;
+    }
+  | {
+      kind: "calendar_target";
+      target: "nth_weekday_next_month";
+      ordinal: number;
+      time: string;
+      timeZone: string;
+    }
+  | {
+      kind: "calendar_target";
+      target: "first_day_of_week_next_month";
+      weekday: number;
+      time: string;
+      timeZone: string;
+    }
+  | {
+      kind: "calendar_target";
+      target: "specific_datetime";
+      date: string;
+      time: string;
+      timeZone: string;
+    };
+
 export type ProcessNodeConfig = {
   dueRule?: ProcessDueRule;
+  waitRule?: ProcessWaitRule;
 };
 
 export type ProcessBranchConditionOperator =
@@ -118,6 +158,7 @@ export type ProcessStepRun = {
   status: ProcessStepRunStatus;
   startedAt?: IsoUtcTimestamp;
   dueAt?: IsoUtcTimestamp;
+  resumeAt?: IsoUtcTimestamp;
   completedAt?: IsoUtcTimestamp;
   // Snapshotted at run start: assigneeUserId is used for completion
   // authorization (compared against the acting user), assigneeLabel (the
