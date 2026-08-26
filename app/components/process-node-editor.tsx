@@ -184,37 +184,58 @@ export function WaitConfigFields({
           </label>
         ) : (
           <label className="text-sm text-stone">Amount
-            <input type="number" min="1" max="8760" step="1" value={step.waitAmount} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitAmount: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+            <input type="number" min="1" max="8760" step="1" value={step.waitAmount} onChange={(event) => {
+              const waitAmount = event.currentTarget.value;
+              updateStep(step.key, (current) => ({ ...current, waitAmount }));
+            }} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
           </label>
         )}
         {step.waitKind === "duration" ? (
           <label className="text-sm text-stone">Unit
-            <select value={step.waitUnit} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitUnit: event.currentTarget.value === "calendar_days" ? "calendar_days" : "hours" }))} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"><option value="hours">Hours</option><option value="calendar_days">Calendar days</option></select>
+            <select value={step.waitUnit} onChange={(event) => {
+              const waitUnit = event.currentTarget.value === "calendar_days" ? "calendar_days" : "hours";
+              updateStep(step.key, (current) => ({ ...current, waitUnit }));
+            }} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"><option value="hours">Hours</option><option value="calendar_days">Calendar days</option></select>
           </label>
         ) : null}
         {step.waitKind === "calendar_target" && step.waitTarget === "nth_weekday_next_month" ? (
           <label className="text-sm text-stone">Weekday number
-            <input type="number" min="1" max="20" step="1" value={step.waitOrdinal} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitOrdinal: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+            <input type="number" min="1" max="20" step="1" value={step.waitOrdinal} onChange={(event) => {
+              const waitOrdinal = event.currentTarget.value;
+              updateStep(step.key, (current) => ({ ...current, waitOrdinal }));
+            }} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
           </label>
         ) : null}
         {step.waitKind === "calendar_target" && step.waitTarget === "first_day_of_week_next_month" ? (
           <label className="text-sm text-stone">Day of week
-            <select value={step.waitWeekday} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitWeekday: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select>
+            <select value={step.waitWeekday} onChange={(event) => {
+              const waitWeekday = event.currentTarget.value;
+              updateStep(step.key, (current) => ({ ...current, waitWeekday }));
+            }} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select>
           </label>
         ) : null}
         {step.waitKind === "calendar_target" && step.waitTarget === "specific_datetime" ? (
           <label className="text-sm text-stone">Date
-            <input type="date" value={step.waitDate} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitDate: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+            <input type="date" value={step.waitDate} onChange={(event) => {
+              const waitDate = event.currentTarget.value;
+              updateStep(step.key, (current) => ({ ...current, waitDate }));
+            }} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
           </label>
         ) : null}
         {(step.waitKind === "calendar_target") ? (
           <label className="text-sm text-stone">Time
-            <input type="time" value={step.waitTime} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitTime: event.currentTarget.value }))} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+            <input type="time" value={step.waitTime} onChange={(event) => {
+              const waitTime = event.currentTarget.value;
+              updateStep(step.key, (current) => ({ ...current, waitTime }));
+            }} className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
           </label>
         ) : null}
         {(step.waitKind !== "duration" || step.waitUnit === "calendar_days") ? (
           <label className="text-sm text-stone">IANA timezone
-            <input value={step.waitTimeZone} onChange={(event) => updateStep(step.key, (current) => ({ ...current, waitTimeZone: event.currentTarget.value }))} placeholder="America/Toronto" className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
+            <input value={step.waitTimeZone} onChange={(event) => {
+              const waitTimeZone = event.currentTarget.value;
+              updateStep(step.key, (current) => ({ ...current, waitTimeZone }));
+            }} placeholder="America/Toronto" className="mt-1 block h-9 w-full border border-grit px-2 text-sm text-graphite outline-none focus:border-brass-deep" />
           </label>
         ) : null}
       </div>

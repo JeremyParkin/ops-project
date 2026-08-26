@@ -51,11 +51,17 @@ function getWaitRule(step: ProcessTemplateFormState["values"]["steps"][number]):
   const timeZone = step.waitTimeZone?.trim();
 
   if (step.waitKind === "duration") {
+    const unit = step.waitUnit === "calendar_days" ? "calendar_days" : "hours";
+
+    // Elapsed-hour waits must not carry a timezone (the RPC rejects one).
+    // The form's local state always keeps a timezone value even while the
+    // "IANA timezone" field is hidden for hours mode, so this can't rely on
+    // `timeZone` being empty — it must check the unit directly.
     return {
       kind: "duration",
       amount: Number(step.waitAmount),
-      unit: step.waitUnit === "calendar_days" ? "calendar_days" : "hours",
-      ...(timeZone ? { timeZone } : {}),
+      unit,
+      ...(unit === "calendar_days" && timeZone ? { timeZone } : {}),
     };
   }
   if (step.waitKind === "weekdays") {
