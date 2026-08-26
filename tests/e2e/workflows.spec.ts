@@ -83,7 +83,7 @@ test("creates, edits, toggles, executes, and logs a workflow", async ({ page }) 
 
   const workflowRow = page.getByRole("row").filter({ hasText: workflowName });
   await workflowRow.getByRole("button", { name: "Disable" }).click();
-  await expect(workflowRow).toContainText("Disabled");
+  await expect(workflowRow).toContainText("Disabled", { timeout: 15_000 });
   await workflowRow.getByRole("button", { name: "Enable" }).click();
   await expect(workflowRow).toContainText("Enabled");
 

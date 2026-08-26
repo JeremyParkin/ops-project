@@ -21,6 +21,11 @@ type SecurityFixture = {
   noMembershipUser: { email: string; password: string; id: string };
 };
 
+const allCapabilities = [
+  "workspace.manage_members", "workspace.manage_roles", "workspace.manage_settings",
+  "schema.manage", "automation.manage", "records.operate", "processes.operate", "operations.view",
+];
+
 let fixture: SecurityFixture;
 
 function uniqueEmail(label: string) {
@@ -38,6 +43,23 @@ async function createUser(label: string) {
 
   if (error || !data.user) throw new Error(error?.message ?? "Unable to create E2E user.");
   return { email: data.user.email!, password, id: data.user.id };
+}
+
+async function createCompatibilityRole(workspaceId: string) {
+  const admin = createSupabaseTestClient();
+  const roleId = randomUUID();
+  const { error: roleError } = await admin.from("workspace_roles").insert({
+    id: roleId,
+    workspace_id: workspaceId,
+    name: "E2E workspace administrator",
+    is_builtin: true,
+  });
+  if (roleError) throw new Error(roleError.message);
+  const { error: capabilityError } = await admin.from("workspace_role_capabilities").insert(
+    allCapabilities.map((capability) => ({ workspace_id: workspaceId, role_id: roleId, capability })),
+  );
+  if (capabilityError) throw new Error(capabilityError.message);
+  return roleId;
 }
 
 async function createFixture(): Promise<SecurityFixture> {
@@ -61,10 +83,14 @@ async function createFixture(): Promise<SecurityFixture> {
     { id: workspaceBId, name: `E2E Auth B ${workspaceBId.slice(0, 8)}` },
   ]);
   if (workspaceError) throw new Error(workspaceError.message);
+  const [roleAId, roleBId] = await Promise.all([
+    createCompatibilityRole(workspaceAId),
+    createCompatibilityRole(workspaceBId),
+  ]);
 
   const { error: membershipError } = await admin.from("workspace_memberships").insert([
-    { workspace_id: workspaceAId, user_id: userA.id },
-    { workspace_id: workspaceBId, user_id: userB.id },
+    { workspace_id: workspaceAId, user_id: userA.id, role_id: roleAId },
+    { workspace_id: workspaceBId, user_id: userB.id, role_id: roleBId },
   ]);
   if (membershipError) throw new Error(membershipError.message);
 
@@ -368,9 +394,19 @@ test("RLS blocks cross-workspace table and RPC access while own operations work"
   expect(directRequiredRecordInsert.error).not.toBeNull();
 
   const admin = createSupabaseTestClient();
+  const { data: workspaceBRole, error: workspaceBRoleError } = await admin
+    .from("workspace_roles")
+    .select("id")
+    .eq("workspace_id", fixture.workspaceBId)
+    .single();
+  expect(workspaceBRoleError).toBeNull();
   const { error: secondMembershipError } = await admin
     .from("workspace_memberships")
-    .insert({ workspace_id: fixture.workspaceBId, user_id: fixture.userA.id });
+    .insert({
+      workspace_id: fixture.workspaceBId,
+      user_id: fixture.userA.id,
+      role_id: workspaceBRole?.id,
+    });
   expect(secondMembershipError).toBeNull();
 
   const rejectedReassignment = await client

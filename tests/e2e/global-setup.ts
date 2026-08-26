@@ -22,9 +22,24 @@ export default async function globalSetup() {
   });
   if (error || !data.user) throw new Error(error?.message ?? "Unable to create E2E runner.");
 
+  const { data: compatibilityRole, error: roleError } = await admin
+    .from("workspace_roles")
+    .select("id")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("is_builtin", true)
+    .limit(1)
+    .single();
+  if (roleError || !compatibilityRole) {
+    throw new Error(roleError?.message ?? "Unable to load the E2E workspace role.");
+  }
+
   const { error: membershipError } = await admin
     .from("workspace_memberships")
-    .insert({ workspace_id: DEMO_WORKSPACE_ID, user_id: data.user.id });
+    .insert({
+      workspace_id: DEMO_WORKSPACE_ID,
+      user_id: data.user.id,
+      role_id: compatibilityRole.id,
+    });
   if (membershipError) throw new Error(membershipError.message);
 
   mkdirSync(path.dirname(E2E_AUTH_STORAGE_STATE), { recursive: true });

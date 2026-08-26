@@ -19,6 +19,23 @@ The key design principle is reuse. Process automation should invoke the same can
 
 The precise node lifecycle, failure behavior, configuration UI, and action scope remain implementation-design questions. This is a roadmap item, not yet an implementation specification.
 
+## User Settings & Preferences
+
+This is a horizontal product and platform foundation, rather than a numbered major phase.
+
+**Goal:** Give each user a personal settings surface for preferences that should follow them across Kinema.
+
+Likely areas include:
+
+- Appearance and theme, including dark mode.
+- Timezone.
+- Date and time formatting.
+- Notification preferences.
+- Default landing page.
+- Density and accessibility preferences where useful.
+
+Personal preferences should remain clearly separate from workspace-wide configuration, administrator controls, and roles or permissions. The roadmap does not yet prescribe a persistence model or settings UI.
+
 ## Phase 7: People, Permissions & Management
 
 After automated action nodes, the next major phase should make Kinema useful for several real users with different responsibilities, scope, and visibility. These areas belong together because permissions, organizational structure, and management views must reinforce the same operating model.
@@ -35,6 +52,8 @@ Direction:
 - Preserve strong workspace isolation and server-side enforcement.
 
 The final permission model should be designed from real product needs rather than prematurely fixed in the roadmap.
+
+Stronger roles, permissions, and administrator capabilities are also foundational for future workspace governance and hygiene policies: only authorized administrators should configure or review those controls.
 
 ### 7B - Teams & Organizational Structure
 
@@ -80,6 +99,26 @@ Potential measures:
 - Recurring bottlenecks.
 
 Kinema should not collapse employee performance into a simplistic single productivity score. Measures should be transparent, evidence-based, and interpreted with context: role differences, work complexity, workload, external waits, and process type all matter.
+
+## Workspace Governance & Hygiene Policies
+
+This is a substantial later product area, likely following the People, Permissions & Management phase.
+
+**Goal:** Let administrators define recurring rules that keep a workspace clean, complete, and operationally healthy.
+
+Potential capabilities:
+
+- Detect stale or incomplete records.
+- Detect missing ownership.
+- Identify stuck or unusually old processes.
+- Detect orphaned relationships or inactive owners.
+- Flag possible duplicate records.
+- Archive records after configured conditions or time periods.
+- Surface workspace-health issues for review.
+
+Hygiene checks should surface issues for human review. Deterministic hygiene actions may run automatically only where their safety is clear. This area should reuse Kinema's typed conditions, scheduled/background execution, deterministic automated actions, archive and lifecycle safety, roles and permissions, and operational history as they mature.
+
+Destructive cleanup automation must never be casual: it requires clear administrator control, auditability, and, where appropriate, a preview or review path before action.
 
 ## Other Later Areas
 

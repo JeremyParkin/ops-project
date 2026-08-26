@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { WorkspaceCapability } from "@/lib/auth/capabilities";
 
 export const ACTIVE_WORKSPACE_COOKIE = "active_workspace_id";
 
@@ -9,6 +10,48 @@ export type WorkspaceMembership = {
   workspaceId: string;
   workspaceName: string;
 };
+
+export type WorkspacePermissionContext = {
+  roleId: string;
+  roleName: string;
+  capabilities: Set<WorkspaceCapability>;
+};
+
+export async function getWorkspacePermissionContext(
+  workspaceId: string,
+): Promise<WorkspacePermissionContext | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("workspace_memberships")
+    .select("role_id, workspace_roles!inner(name, workspace_role_capabilities(capability))")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data || !data.role_id) return null;
+  const role = data.workspace_roles as unknown as {
+    name: string;
+    workspace_role_capabilities: Array<{ capability: WorkspaceCapability }>;
+  };
+  return {
+    roleId: data.role_id,
+    roleName: role.name,
+    capabilities: new Set(role.workspace_role_capabilities.map((item) => item.capability)),
+  };
+}
+
+export async function requireWorkspaceCapability(
+  workspaceId: string,
+  capability: WorkspaceCapability,
+) {
+  const context = await getWorkspacePermissionContext(workspaceId);
+  if (!context?.capabilities.has(capability)) {
+    throw new Error("You do not have permission to perform this action.");
+  }
+  return context;
+}
 
 export async function getCurrentUser() {
   const supabase = await createServerSupabaseClient();

@@ -5,6 +5,17 @@ import { requireE2eEnv } from "./env";
 export const DEMO_WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 const E2E_NAME_PREFIX = "E2E";
 
+const E2E_ADMIN_CAPABILITIES = [
+  "workspace.manage_members",
+  "workspace.manage_roles",
+  "workspace.manage_settings",
+  "schema.manage",
+  "automation.manage",
+  "records.operate",
+  "processes.operate",
+  "operations.view",
+];
+
 type FieldInput = {
   slug: string;
   name: string;
@@ -74,6 +85,47 @@ export function createSupabaseTestClient() {
       persistSession: false,
     },
   });
+}
+
+export async function getE2eWorkspaceAdministratorRoleId(
+  supabase: SupabaseClient,
+  workspaceId: string,
+) {
+  const { data, error } = await supabase
+    .from("workspace_roles")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("is_builtin", true)
+    .single();
+  if (error || !data) throw new Error(error?.message ?? "Unable to load the workspace administrator role.");
+  return data.id;
+}
+
+export async function createE2eWorkspaceAdministratorRole(
+  supabase: SupabaseClient,
+  workspaceId: string,
+) {
+  const roleId = randomUUID();
+  await throwOnError(
+    await supabase.from("workspace_roles").insert({
+      id: roleId,
+      workspace_id: workspaceId,
+      name: "E2E workspace administrator",
+      is_builtin: true,
+    }),
+    "create E2E workspace administrator role",
+  );
+  await throwOnError(
+    await supabase.from("workspace_role_capabilities").insert(
+      E2E_ADMIN_CAPABILITIES.map((capability) => ({
+        workspace_id: workspaceId,
+        role_id: roleId,
+        capability,
+      })),
+    ),
+    "grant E2E workspace administrator capabilities",
+  );
+  return roleId;
 }
 
 function slugify(value: string) {

@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { signOut, switchActiveWorkspace } from "@/app/auth-actions";
-import { getActiveWorkspaceId } from "@/lib/auth/workspace";
+import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import type { EntityType } from "@/lib/domain/types";
 
 type WorkspaceNavigationProps = {
   entityTypes: EntityType[];
   activeEntityTypeId?: string;
-  activeSection?: "home" | "my-work" | "workflows" | "processes" | "create-entity";
+  activeSection?: "home" | "my-work" | "workflows" | "processes" | "create-entity" | "settings";
   showArchivedEntities?: boolean;
 };
 
@@ -25,6 +25,11 @@ export async function WorkspaceNavigation({
   showArchivedEntities = false,
 }: WorkspaceNavigationProps) {
   const { memberships, workspaceId } = await getActiveWorkspaceId();
+  const permissions = await getWorkspacePermissionContext(workspaceId);
+  const canManageWorkspace = Boolean(
+    permissions?.capabilities.has("workspace.manage_members") ||
+      permissions?.capabilities.has("workspace.manage_roles"),
+  );
   const homeHref = showArchivedEntities ? "/?showArchivedEntities=true" : "/";
   const createEntityHref = showArchivedEntities
     ? "/entities/new?showArchivedEntities=true"
@@ -140,7 +145,8 @@ export async function WorkspaceNavigation({
           open={
             activeSection === "workflows" ||
             activeSection === "processes" ||
-            activeSection === "create-entity"
+            activeSection === "create-entity" ||
+            activeSection === "settings"
           }
         >
           <summary className="cursor-pointer text-sm font-semibold text-chalk">
@@ -165,6 +171,14 @@ export async function WorkspaceNavigation({
             >
               Create entity
             </Link>
+            {canManageWorkspace ? (
+              <Link
+                href="/settings"
+                className={navigationLinkClass(activeSection === "settings")}
+              >
+                Members and roles
+              </Link>
+            ) : null}
             <Link
               href={archiveToggleHref}
               className="px-3 py-2 text-sm font-medium text-grit hover:bg-slab hover:text-chalk"

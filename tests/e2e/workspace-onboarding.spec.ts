@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { requireE2eEnv } from "./helpers/env";
-import { createSupabaseTestClient } from "./helpers/supabase-test-data";
+import {
+  createE2eWorkspaceAdministratorRole,
+  createSupabaseTestClient,
+} from "./helpers/supabase-test-data";
 
 const runnerEmail = "e2e-runner@ops-project.test";
 const workspaceIds: string[] = [];
@@ -27,10 +30,11 @@ async function createWorkspaceForUser(userId: string) {
     name: `E2E Onboarding ${workspaceId.slice(0, 8)}`,
   });
   if (workspaceError) throw new Error(workspaceError.message);
+  const roleId = await createE2eWorkspaceAdministratorRole(admin, workspaceId);
 
   const { error: membershipError } = await admin
     .from("workspace_memberships")
-    .insert({ workspace_id: workspaceId, user_id: userId });
+    .insert({ workspace_id: workspaceId, user_id: userId, role_id: roleId });
   if (membershipError) throw new Error(membershipError.message);
 
   return workspaceId;

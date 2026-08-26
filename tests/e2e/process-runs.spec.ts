@@ -9,6 +9,7 @@ import {
   createSupabaseTestClient,
   createTestRun,
   DEMO_WORKSPACE_ID,
+  getE2eWorkspaceAdministratorRoleId,
   type TestEntity,
   type TestRun,
 } from "./helpers/supabase-test-data";
@@ -79,10 +80,12 @@ async function createSecondWorkspaceMember(label: string) {
   }
 
   secondMemberUserIds.push(data.user.id);
+  const roleId = await getE2eWorkspaceAdministratorRoleId(admin, DEMO_WORKSPACE_ID);
 
   const { error: membershipError } = await admin.from("workspace_memberships").insert({
     workspace_id: DEMO_WORKSPACE_ID,
     user_id: data.user.id,
+    role_id: roleId,
   });
 
   if (membershipError) {
