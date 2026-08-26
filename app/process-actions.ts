@@ -8,6 +8,7 @@ import {
   decideProcessApproval as decideProcessApprovalInRepository,
   deleteProcessTemplateIfSafe,
   restoreProcessTemplate as restoreProcessTemplateInRepository,
+  retryProcessActionStep as retryProcessActionStepInRepository,
   saveProcessTemplate as saveProcessTemplateInRepository,
   startProcessRun as startProcessRunInRepository,
 } from "@/lib/domain/process-repository";
@@ -139,6 +140,7 @@ export async function saveProcessTemplateAction(
           : undefined,
         waitRule: getWaitRule(step),
         conditionWaitRule: getConditionWaitRule(step),
+        actionConfig: step.nodeType === "action" ? step.actionConfig : undefined,
         routes: step.routes,
       })),
     });
@@ -294,6 +296,35 @@ export async function completeProcessStepRunAction(
   revalidatePath(`/process-runs/${context.processRunId}`);
 
   return { success: true, message: "Step completed." };
+}
+
+export async function retryProcessActionStepAction(
+  context: CompleteProcessStepRunContext,
+  _previousState: ProcessActionState,
+  formData: FormData,
+): Promise<ProcessActionState> {
+  const stepRunId = formData.get("stepRunId");
+
+  if (typeof stepRunId !== "string" || !stepRunId) {
+    return { success: false, message: "Invalid step." };
+  }
+
+  try {
+    await retryProcessActionStepInRepository({
+      workspaceId: context.workspaceId,
+      processRunId: context.processRunId,
+      stepRunId,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: extractRpcErrorMessage(error, "Unable to retry this action."),
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return { success: true, message: "Action retried." };
 }
 
 export async function decideProcessApprovalAction(

@@ -1,10 +1,12 @@
 import type { EntityRecord, EntityType, IsoUtcTimestamp } from "./types";
+import type { WorkflowAction } from "./workflow-types";
 
 export type ProcessNodeType =
   | "human_task"
   | "approval"
   | "wait"
   | "condition_wait"
+  | "action"
   | "parallel_split"
   | "parallel_join";
 export type ProcessRunStatus = "active" | "completed";
@@ -66,6 +68,23 @@ export type ProcessNodeConfig = {
   dueRule?: ProcessDueRule;
   waitRule?: ProcessWaitRule;
   conditionWaitRule?: ProcessConditionWaitRule;
+  actionConfig?: WorkflowAction;
+};
+
+// Durable result/history snapshot for an 'action' node execution. Mirrors
+// WorkflowActionResult's shape without reusing "index" (an action node has
+// no sibling actions in v1). status='failed' with the step still 'active' is
+// the retryable failure state -- see process_step_runs_action_shape_check.
+export type ProcessStepActionResult = {
+  status: "succeeded" | "failed";
+  actionEntityTypeId?: string;
+  actionRecordId?: string;
+  createdRecordId?: string;
+  processTemplateId?: string;
+  processRunId?: string;
+  resultMessage?: string;
+  errorMessage?: string;
+  attemptedAt: IsoUtcTimestamp;
 };
 
 export type ProcessBranchConditionOperator =
@@ -193,6 +212,7 @@ export type ProcessStepRun = {
   decidedByUserId?: string;
   decidedByLabel?: string;
   routingResult?: ProcessStepRunRoutingResult;
+  actionResult?: ProcessStepActionResult;
 };
 
 export type ProcessStepRunRoute = {
@@ -223,6 +243,7 @@ export type ProcessStepRunRoutingResult = {
     | "default_fallback"
     | "approval_outcome"
     | "condition_satisfied"
+    | "action_succeeded"
     | "parallel_split"
     | "parallel_join";
   evaluatedAt: IsoUtcTimestamp;

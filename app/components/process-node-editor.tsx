@@ -17,6 +17,11 @@ import type {
   ProcessTemplateEntityContext,
 } from "./process-template-shared";
 import { createKey } from "./process-template-shared";
+import {
+  WorkflowActionConfigFields,
+  type ActionConfigProcessTemplateOption,
+} from "./workflow-action-config-fields";
+import type { WorkflowAction } from "@/lib/domain/workflow-types";
 
 export function FieldError({ message }: { message?: string }) {
   return message ? (
@@ -577,6 +582,7 @@ export type ProcessNodeEditorProps = {
   addConditionalRoute: (stepKey: string, targetStepKey: string) => void;
   addApprovalOutcome: (stepKey: string, targetStepKey: string) => void;
   highlightRouteId?: string | null;
+  processTemplates: ActionConfigProcessTemplateOption[];
 };
 
 // The single shared per-node editing body used by both the List row and the
@@ -598,10 +604,12 @@ export function ProcessNodeEditor({
   addConditionalRoute,
   addApprovalOutcome,
   highlightRouteId,
+  processTemplates,
 }: ProcessNodeEditorProps) {
   const isApproval = step.nodeType === "approval";
   const isWait = step.nodeType === "wait";
   const isConditionWait = step.nodeType === "condition_wait";
+  const isAction = step.nodeType === "action";
 
   return (
     <>
@@ -615,6 +623,16 @@ export function ProcessNodeEditor({
           currentContext={currentContext}
           contextByEntityTypeId={contextByEntityTypeId}
           routeError={routeError}
+        />
+      ) : isAction ? (
+        <WorkflowActionConfigFields
+          idPrefix={`action-${step.key}`}
+          value={step.actionConfig ?? { actionType: "update_record", fieldMappings: [] }}
+          onChange={(next: WorkflowAction) => updateStep(step.key, (current) => ({ ...current, actionConfig: next }))}
+          sourceFields={activeFields}
+          entityContexts={Array.from(contextByEntityTypeId.values())}
+          processTemplates={processTemplates}
+          fieldError={routeError}
         />
       ) : (
         <AssigneeDueFields

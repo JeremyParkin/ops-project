@@ -7,8 +7,10 @@ import { CompleteStepButton } from "@/app/components/complete-step-button";
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
 import { ProcessDueAt } from "@/app/components/process-due-at";
 import { ProcessRunGraphView } from "@/app/components/process-run-graph-view";
+import { RetryActionStepButton } from "@/app/components/retry-action-step-button";
 import {
   isActionableForViewer,
+  isRetryableActionStep,
   joinObligationsByJoinId,
   routingResultLabel,
   statusBadgeClass,
@@ -31,6 +33,10 @@ type ProcessRunDetailViewProps = {
     state: ProcessActionState,
     formData: FormData,
   ) => Promise<ProcessActionState>;
+  retryProcessActionStepAction: (
+    state: ProcessActionState,
+    formData: FormData,
+  ) => Promise<ProcessActionState>;
 };
 
 export function ProcessRunDetailView({
@@ -40,6 +46,7 @@ export function ProcessRunDetailView({
   currentUserId,
   completeProcessStepRunAction,
   decideProcessApprovalAction,
+  retryProcessActionStepAction,
 }: ProcessRunDetailViewProps) {
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const completedCount = run.steps.filter((step) => step.status === "completed").length;
@@ -121,9 +128,11 @@ export function ProcessRunDetailView({
               >
                 <div>
                   <span
-                    className={`inline-flex items-center border px-2 py-1 text-xs font-medium uppercase tracking-wide ${statusBadgeClass(step.status)}`}
+                    className={`inline-flex items-center border px-2 py-1 text-xs font-medium uppercase tracking-wide ${
+                      isRetryableActionStep(step) ? "border-red-700/40 bg-red-50 text-red-700" : statusBadgeClass(step.status)
+                    }`}
                   >
-                    {step.status}
+                    {isRetryableActionStep(step) ? "Failed" : step.status}
                   </span>
                   <p className="mt-1 text-sm font-medium text-graphite">
                     {step.stepIndex}. {step.name}
@@ -160,7 +169,12 @@ export function ProcessRunDetailView({
                     </p>
                   ) : null}
                 </div>
-                {isActionableForViewer(step, currentUserId) ? (
+                {isRetryableActionStep(step) ? (
+                  <RetryActionStepButton
+                    stepRunId={step.id}
+                    retryProcessActionStepAction={retryProcessActionStepAction}
+                  />
+                ) : isActionableForViewer(step, currentUserId) ? (
                   step.nodeType === "human_task" ? (
                     <CompleteStepButton
                       stepRunId={step.id}
@@ -195,6 +209,7 @@ export function ProcessRunDetailView({
             currentUserId={currentUserId}
             completeProcessStepRunAction={completeProcessStepRunAction}
             decideProcessApprovalAction={decideProcessApprovalAction}
+            retryProcessActionStepAction={retryProcessActionStepAction}
           />
         )}
       </section>

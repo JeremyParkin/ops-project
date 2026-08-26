@@ -1,3 +1,4 @@
+import type { SupabaseServerClient } from "@/lib/supabase/server";
 import { getEntityContext } from "./metadata-repository";
 import { startProcessRun } from "./process-repository";
 import {
@@ -36,6 +37,18 @@ export type WorkflowExecutionSummary = {
   targetEntityTypeIds: string[];
 };
 
+// Set only when this action is a process action-node execution, never by a
+// workflow (which passes neither field and rides the caller's own per-request
+// session, exactly as before). `supabase` lets the same executor run under
+// the wait/condition-wait scheduler's admin client instead of a user session;
+// `originatingProcessStepRunId` is the durable identity create_record/
+// start_process use so a retry reuses an already-created result instead of
+// duplicating it.
+export type ActionExecutionContext = {
+  supabase?: SupabaseServerClient;
+  originatingProcessStepRunId?: string;
+};
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown workflow error.";
 }
@@ -45,11 +58,13 @@ async function executeCreateRecordAction({
   sourceContext,
   triggerRecord,
   action,
+  context,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   triggerRecord: EntityRecord;
   action: WorkflowAction;
+  context?: ActionExecutionContext;
 }) {
   if (!action.actionTargetEntityTypeId) {
     throw new Error("Create-record action is missing its target entity.");
@@ -59,6 +74,7 @@ async function executeCreateRecordAction({
     workspaceId,
     entityTypeId: action.actionTargetEntityTypeId,
     includeArchivedFields: true,
+    supabase: context?.supabase,
   });
 
   if (targetContext.entityType.archivedAt) {
@@ -74,6 +90,7 @@ async function executeCreateRecordAction({
     entityTypeId: sourceContext.entityType.id,
     recordId: triggerRecord.id,
     fields: sourceContext.fields,
+    supabase: context?.supabase,
   });
   const activeTargetFields = targetContext.fields.filter(
     (field) => !field.archivedAt,
@@ -101,12 +118,14 @@ async function executeCreateRecordAction({
         workspaceId,
         entityTypeId: field.relatedEntityTypeId,
         includeArchivedFields: true,
+        supabase: context?.supabase,
       });
       const relationRecord = await getEntityRecord({
         workspaceId,
         entityTypeId: field.relatedEntityTypeId,
         recordId,
         fields: relationContext.fields,
+        supabase: context?.supabase,
       });
       const label = getRelationOptionLabel(
         relationContext.entityType,
@@ -130,6 +149,7 @@ async function executeCreateRecordAction({
         workspaceId,
         entityTypeId: field.relatedEntityTypeId,
         recordId: value,
+        supabase: context?.supabase,
       });
     },
   );
@@ -145,6 +165,8 @@ async function executeCreateRecordAction({
     entityTypeId: targetContext.entityType.id,
     fields: activeTargetFields,
     values: validation.values,
+    supabase: context?.supabase,
+    originatingProcessStepRunId: context?.originatingProcessStepRunId,
   });
 
   return {
@@ -160,7 +182,7 @@ function valuesEqual(left: unknown, right: unknown) {
   return normalizedLeft === normalizedRight;
 }
 
-async function createRelationLabelResolver(workspaceId: string) {
+async function createRelationLabelResolver(workspaceId: string, supabase?: SupabaseServerClient) {
   const relationLabelCache = new Map<string, string>();
 
   return async (field: Awaited<ReturnType<typeof getEntityContext>>["fields"][number], recordId: string) => {
@@ -179,12 +201,14 @@ async function createRelationLabelResolver(workspaceId: string) {
       workspaceId,
       entityTypeId: field.relatedEntityTypeId,
       includeArchivedFields: true,
+      supabase,
     });
     const relationRecord = await getEntityRecord({
       workspaceId,
       entityTypeId: field.relatedEntityTypeId,
       recordId,
       fields: relationContext.fields,
+      supabase,
     });
     const label = getRelationOptionLabel(
       relationContext.entityType,
@@ -214,6 +238,7 @@ async function executeRecordUpdate({
   targetContext,
   targetRecord,
   action,
+  context,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
@@ -221,6 +246,7 @@ async function executeRecordUpdate({
   targetContext: Awaited<ReturnType<typeof getEntityContext>>;
   targetRecord: EntityRecord;
   action: WorkflowAction;
+  context?: ActionExecutionContext;
 }) {
   const sourceFieldById = new Map(
     sourceContext.fields.map((field) => [field.id, field]),
@@ -299,7 +325,7 @@ async function executeRecordUpdate({
       sourceFields: sourceContext.fields,
       targetFields: targetContext.fields,
       sourceRecord,
-      resolveRelationLabel: await createRelationLabelResolver(workspaceId),
+      resolveRelationLabel: await createRelationLabelResolver(workspaceId, context?.supabase),
     });
 
     proposedValues[targetField.key] = targetValues[targetField.key] ?? null;
@@ -332,6 +358,7 @@ async function executeRecordUpdate({
         workspaceId,
         entityTypeId: field.relatedEntityTypeId,
         recordId: value,
+        supabase: context?.supabase,
       });
     },
   );
@@ -348,6 +375,7 @@ async function executeRecordUpdate({
     recordId: targetRecord.id,
     fields: targetContext.fields,
     values: proposedValues,
+    supabase: context?.supabase,
   });
 
   return {
@@ -362,17 +390,20 @@ async function executeUpdateRecordAction({
   sourceContext,
   triggerRecord,
   action,
+  context,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   triggerRecord: EntityRecord;
   action: WorkflowAction;
+  context?: ActionExecutionContext;
 }) {
   const latestRecord = await getEntityRecord({
     workspaceId,
     entityTypeId: sourceContext.entityType.id,
     recordId: triggerRecord.id,
     fields: sourceContext.fields,
+    supabase: context?.supabase,
   });
 
   return executeRecordUpdate({
@@ -382,6 +413,7 @@ async function executeUpdateRecordAction({
     targetContext: sourceContext,
     targetRecord: latestRecord,
     action,
+    context,
   });
 }
 
@@ -390,17 +422,20 @@ async function executeUpdateRelatedRecordAction({
   sourceContext,
   triggerRecord,
   action,
+  context,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   triggerRecord: EntityRecord;
   action: WorkflowAction;
+  context?: ActionExecutionContext;
 }) {
   const latestTriggerRecord = await getEntityRecord({
     workspaceId,
     entityTypeId: sourceContext.entityType.id,
     recordId: triggerRecord.id,
     fields: sourceContext.fields,
+    supabase: context?.supabase,
   });
   const relatedField = sourceContext.fields.find(
     (field) => field.id === action.relatedFieldDefinitionId,
@@ -424,12 +459,14 @@ async function executeUpdateRelatedRecordAction({
     workspaceId,
     entityTypeId: relatedField.relatedEntityTypeId,
     includeArchivedFields: true,
+    supabase: context?.supabase,
   });
   const targetRecord = await getEntityRecord({
     workspaceId,
     entityTypeId: targetContext.entityType.id,
     recordId: relatedRecordId,
     fields: targetContext.fields,
+    supabase: context?.supabase,
   });
 
   if (targetContext.entityType.archivedAt) {
@@ -456,6 +493,7 @@ async function executeUpdateRelatedRecordAction({
       targetContext,
       targetRecord,
       action,
+      context,
     });
   } catch (error) {
     throw new RelatedTargetResolvedError(
@@ -471,11 +509,13 @@ async function executeStartProcessAction({
   sourceContext,
   triggerRecord,
   action,
+  context,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   triggerRecord: EntityRecord;
   action: WorkflowAction;
+  context?: ActionExecutionContext;
 }) {
   if (!action.processTemplateId) {
     throw new Error("Start Process action is missing its process template.");
@@ -488,6 +528,8 @@ async function executeStartProcessAction({
     processTemplateId: action.processTemplateId,
     originEntityTypeId: sourceContext.entityType.id,
     originRecordId: triggerRecord.id,
+    supabase: context?.supabase,
+    originatingProcessStepRunId: context?.originatingProcessStepRunId,
   });
 
   return {
@@ -498,26 +540,34 @@ async function executeStartProcessAction({
   };
 }
 
-async function executeSingleAction({
+// The single canonical per-action executor. Workflows call this (via
+// executeWorkflowActions below) with no `context`, so it behaves exactly as
+// before -- their own per-request session, no idempotency key. Process
+// action-node execution is the only other caller, and always passes both
+// fields of `context`.
+export async function executeSingleAction({
   workspaceId,
   sourceContext,
   triggerRecord,
   action,
+  context,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   triggerRecord: EntityRecord;
   action: WorkflowAction;
+  context?: ActionExecutionContext;
 }) {
   const actionResult =
     action.actionType === "update_record"
-      ? await executeUpdateRecordAction({ workspaceId, sourceContext, triggerRecord, action })
+      ? await executeUpdateRecordAction({ workspaceId, sourceContext, triggerRecord, action, context })
       : action.actionType === "update_related_record"
         ? await executeUpdateRelatedRecordAction({
             workspaceId,
             sourceContext,
             triggerRecord,
             action,
+            context,
           })
         : action.actionType === "start_process"
           ? await executeStartProcessAction({
@@ -525,6 +575,7 @@ async function executeSingleAction({
               sourceContext,
               triggerRecord,
               action,
+              context,
             })
           : action.actionType === "create_record"
             ? await executeCreateRecordAction({
@@ -532,6 +583,7 @@ async function executeSingleAction({
                 sourceContext,
                 triggerRecord,
                 action,
+                context,
               })
             : (() => {
                 throw new Error("Workflow action type is invalid.");

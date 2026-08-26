@@ -12,6 +12,7 @@ import {
   summarizeWaitRule,
 } from "./process-graph-summaries";
 import { ProcessNodeEditor } from "./process-node-editor";
+import type { ActionConfigProcessTemplateOption } from "./workflow-action-config-fields";
 import {
   canSwapAdjacent,
   type InsertableNodeType,
@@ -27,6 +28,7 @@ type ProcessGraphViewProps = {
   currentContext?: ProcessTemplateEntityContext;
   contextByEntityTypeId: Map<string, ProcessTemplateEntityContext>;
   members: WorkspaceMemberIdentity[];
+  processTemplates: ActionConfigProcessTemplateOption[];
   selectedKey: string | null;
   onSelectKey: (key: string | null) => void;
   updateStep: (key: string, updater: (step: LocalStep) => LocalStep) => void;
@@ -45,6 +47,7 @@ const NODE_TYPE_ACCENT: Record<LocalStep["nodeType"], string> = {
   approval: "border-brass-deep",
   wait: "border-status-slate",
   condition_wait: "border-status-slate",
+  action: "border-status-slate",
   parallel_split: "border-brass-deep border-dashed",
   parallel_join: "border-brass-deep border-dashed",
 };
@@ -54,6 +57,7 @@ const INSERTABLE_TYPE_LABELS: Record<InsertableNodeType, string> = {
   approval: "Approval",
   wait: "Wait",
   condition_wait: "Condition wait",
+  action: "Action",
 };
 
 function nodeSummary(step: LocalStep, members: WorkspaceMemberIdentity[]): string {
@@ -63,6 +67,10 @@ function nodeSummary(step: LocalStep, members: WorkspaceMemberIdentity[]): strin
 
   if (step.nodeType === "condition_wait") {
     return summarizeConditionWaitRule(step);
+  }
+
+  if (step.nodeType === "action") {
+    return "Runs automatically";
   }
 
   if (step.nodeType === "parallel_split") {
@@ -121,6 +129,7 @@ export function ProcessGraphView({
   currentContext,
   contextByEntityTypeId,
   members,
+  processTemplates,
   selectedKey,
   onSelectKey,
   updateStep,
@@ -481,6 +490,7 @@ export function ProcessGraphView({
                 currentContext={currentContext}
                 contextByEntityTypeId={contextByEntityTypeId}
                 members={members}
+                processTemplates={processTemplates}
                 routeError={state.errors[`stepRoutes.${selectedIndex}`]}
                 dueError={state.errors[`stepDueAmount.${selectedIndex}`]}
                 highlightRouteId={highlightRouteId}

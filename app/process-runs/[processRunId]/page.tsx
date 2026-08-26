@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import {
   completeProcessStepRunAction,
   decideProcessApprovalAction,
+  retryProcessActionStepAction,
 } from "@/app/process-actions";
 import { WorkspaceNavigation } from "@/app/components/entity-navigation";
 import { WorkspacePageLayout } from "@/app/components/page-primitives";
@@ -70,6 +71,10 @@ export default async function ProcessRunPage({
           processRunId,
         })}
         decideProcessApprovalAction={decideProcessApprovalAction.bind(null, {
+          workspaceId,
+          processRunId,
+        })}
+        retryProcessActionStepAction={retryProcessActionStepAction.bind(null, {
           workspaceId,
           processRunId,
         })}

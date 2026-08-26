@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, type SupabaseServerClient } from "@/lib/supabase/server";
 import { getEntityContext, listEntityTypes } from "./metadata-repository";
 import type { EntityRecord, EntityType, FieldDefinition } from "./types";
 
@@ -33,6 +33,7 @@ type ListEntityRecordsInput = {
   entityTypeId: EntityType["id"];
   fields: FieldDefinition[];
   includeArchived?: boolean;
+  supabase?: SupabaseServerClient;
 };
 
 type CreateEntityRecordInput = Pick<
@@ -40,6 +41,11 @@ type CreateEntityRecordInput = Pick<
   "workspaceId" | "entityTypeId" | "values"
 > & {
   fields: FieldDefinition[];
+  supabase?: SupabaseServerClient;
+  // Set only by process action-node execution: a durable identity that lets
+  // a retry after a crashed/uncommitted completion reuse the record a prior
+  // attempt already created, instead of creating a duplicate.
+  originatingProcessStepRunId?: string;
 };
 
 type GetEntityRecordInput = ListEntityRecordsInput & {
@@ -361,8 +367,9 @@ export async function listEntityRecords({
   entityTypeId,
   fields,
   includeArchived = false,
+  supabase: injectedSupabase,
 }: ListEntityRecordsInput) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   let query = supabase
     .from("entity_records")
     .select("*")
@@ -467,8 +474,10 @@ export async function createEntityRecord({
   entityTypeId,
   fields,
   values,
+  supabase: injectedSupabase,
+  originatingProcessStepRunId,
 }: CreateEntityRecordInput) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   const { primitiveValues, relations } = splitRecordValues(fields, values);
   const { data, error } = await supabase.rpc(
     "create_entity_record_with_relations_authorized",
@@ -477,6 +486,7 @@ export async function createEntityRecord({
       p_entity_type_id: entityTypeId,
       p_values: primitiveValues,
       p_relations: relations,
+      p_originating_process_step_run_id: originatingProcessStepRunId ?? null,
     },
   );
 
@@ -496,12 +506,14 @@ export async function getEntityRecord({
   entityTypeId,
   recordId,
   fields,
+  supabase,
 }: GetEntityRecordInput) {
   const records = await listEntityRecords({
     workspaceId,
     entityTypeId,
     fields,
     includeArchived: true,
+    supabase,
   });
   const record = records.find((candidate) => candidate.id === recordId);
 
@@ -518,8 +530,9 @@ export async function updateEntityRecord({
   recordId,
   fields,
   values,
+  supabase: injectedSupabase,
 }: UpdateEntityRecordInput) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   const { primitiveValues, relationFieldIds, relations } = splitRecordValues(
     fields,
     values,
@@ -552,13 +565,15 @@ export async function entityRecordExists({
   entityTypeId,
   recordId,
   includeArchived = false,
+  supabase: injectedSupabase,
 }: {
   workspaceId: string;
   entityTypeId: string;
   recordId: string;
   includeArchived?: boolean;
+  supabase?: SupabaseServerClient;
 }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   let query = supabase
     .from("entity_records")
     .select("id")

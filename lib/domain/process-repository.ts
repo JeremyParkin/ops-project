@@ -1,7 +1,9 @@
 import { getCurrentUser } from "@/lib/auth/workspace";
 import { getEntityContext } from "./metadata-repository";
 import { getEntityRecord, getRecordLabel } from "./record-repository";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, type SupabaseServerClient } from "@/lib/supabase/server";
+import { executeSingleAction } from "./workflow-engine";
+import type { WorkflowAction, WorkflowFieldMapping } from "./workflow-types";
 import type {
   ProcessBranchCondition,
   ProcessConditionWaitRule,
@@ -15,6 +17,7 @@ import type {
   ProcessRun,
   ProcessRunStatus,
   ProcessRunWithSteps,
+  ProcessStepActionResult,
   ProcessStepRun,
   ProcessStepRunRoute,
   ProcessStepRunRoutingResult,
@@ -102,6 +105,7 @@ type ProcessStepRunRow = {
   decided_by_user_id: string | null;
   decided_by_label: string | null;
   routing_result: ProcessStepRunRoutingResult | null;
+  action_result: ProcessStepActionResult | null;
 };
 
 type ProcessStepRunRouteRow = {
@@ -142,6 +146,7 @@ export type ProcessTemplateStepInput = {
   dueRule?: ProcessDueRule;
   waitRule?: ProcessWaitRule;
   conditionWaitRule?: ProcessConditionWaitRule;
+  actionConfig?: WorkflowAction;
   routes: Array<{
     targetStepKey: string;
     isDefault: boolean;
@@ -152,10 +157,107 @@ export type ProcessTemplateStepInput = {
   }>;
 };
 
+function mapActionConfig(actionConfig: unknown): WorkflowAction | undefined {
+  if (typeof actionConfig !== "object" || actionConfig === null || Array.isArray(actionConfig)) {
+    return undefined;
+  }
+
+  const config = actionConfig as Record<string, unknown>;
+  const actionType = config.action_type;
+
+  if (
+    actionType !== "create_record" &&
+    actionType !== "update_record" &&
+    actionType !== "update_related_record" &&
+    actionType !== "start_process"
+  ) {
+    return undefined;
+  }
+
+  const rawMappings = Array.isArray(config.field_mappings) ? config.field_mappings : [];
+
+  return {
+    actionType,
+    actionTargetEntityTypeId:
+      typeof config.action_target_entity_type_id === "string" ? config.action_target_entity_type_id : undefined,
+    relatedFieldDefinitionId:
+      typeof config.related_field_definition_id === "string" ? config.related_field_definition_id : undefined,
+    processTemplateId: typeof config.process_template_id === "string" ? config.process_template_id : undefined,
+    fieldMappings: rawMappings.flatMap((rawMapping): WorkflowFieldMapping[] => {
+      if (typeof rawMapping !== "object" || rawMapping === null) {
+        return [];
+      }
+
+      const mapping = rawMapping as Record<string, unknown>;
+      const rawSource = mapping.source;
+
+      if (typeof rawSource !== "object" || rawSource === null || typeof mapping.target_field_definition_id !== "string") {
+        return [];
+      }
+
+      const source = rawSource as Record<string, unknown>;
+      const targetFieldDefinitionId = mapping.target_field_definition_id;
+
+      if (source.type === "constant") {
+        return [{ targetFieldDefinitionId, source: { type: "constant", value: source.value as never } }];
+      }
+      if (source.type === "source_field" && typeof source.source_field_definition_id === "string") {
+        return [
+          {
+            targetFieldDefinitionId,
+            source: { type: "source_field", sourceFieldDefinitionId: source.source_field_definition_id },
+          },
+        ];
+      }
+      if (source.type === "template" && typeof source.template === "string") {
+        return [{ targetFieldDefinitionId, source: { type: "template", template: source.template } }];
+      }
+      if (source.type === "unset") {
+        return [{ targetFieldDefinitionId, source: { type: "unset" } }];
+      }
+      if (source.type === "leave_unchanged") {
+        return [{ targetFieldDefinitionId, source: { type: "leave_unchanged" } }];
+      }
+      if (source.type === "clear") {
+        return [{ targetFieldDefinitionId, source: { type: "clear" } }];
+      }
+
+      return [];
+    }),
+  };
+}
+
+function serializeActionConfig(actionConfig: WorkflowAction | undefined) {
+  if (!actionConfig) return null;
+
+  return {
+    action_type: actionConfig.actionType,
+    action_target_entity_type_id: actionConfig.actionTargetEntityTypeId ?? null,
+    related_field_definition_id: actionConfig.relatedFieldDefinitionId ?? null,
+    process_template_id: actionConfig.processTemplateId ?? null,
+    field_mappings: actionConfig.fieldMappings.map((mapping) => ({
+      target_field_definition_id: mapping.targetFieldDefinitionId,
+      source:
+        mapping.source.type === "constant"
+          ? { type: "constant", value: mapping.source.value }
+          : mapping.source.type === "source_field"
+            ? { type: "source_field", source_field_definition_id: mapping.source.sourceFieldDefinitionId }
+            : mapping.source.type === "template"
+              ? { type: "template", template: mapping.source.template }
+              : { type: mapping.source.type },
+    })),
+  };
+}
+
 function mapProcessNodeConfig(config: Record<string, unknown>): ProcessNodeConfig {
   const dueRule = config.due_rule;
   const waitRule = config.wait_rule;
   const conditionWaitRule = config.condition_wait_rule;
+  const actionConfig = mapActionConfig(config.action_config);
+
+  if (actionConfig) {
+    return { actionConfig };
+  }
 
   if (typeof conditionWaitRule === "object" && conditionWaitRule !== null && !Array.isArray(conditionWaitRule)) {
     const rule = conditionWaitRule as Record<string, unknown>;
@@ -372,6 +474,7 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     decidedByUserId: row.decided_by_user_id ?? undefined,
     decidedByLabel: row.decided_by_label ?? undefined,
     routingResult: row.routing_result ?? undefined,
+    actionResult: row.action_result ?? undefined,
   };
 }
 
@@ -565,6 +668,7 @@ export async function saveProcessTemplate({
         : null,
       wait_rule: serializeWaitRule(step.waitRule),
       condition_wait_rule: serializeConditionWaitRule(step.conditionWaitRule),
+      action_config: serializeActionConfig(step.actionConfig),
       routes: step.routes.map((route) => ({
         target_client_key: route.targetStepKey,
         is_default: route.isDefault,
@@ -666,18 +770,23 @@ export async function startProcessRun({
   processTemplateId,
   originEntityTypeId,
   originRecordId,
+  supabase: injectedSupabase,
+  originatingProcessStepRunId,
 }: {
   workspaceId: string;
   processTemplateId: string;
   originEntityTypeId: string;
   originRecordId: string;
+  supabase?: SupabaseServerClient;
+  originatingProcessStepRunId?: string;
 }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   const { data, error } = await supabase.rpc("start_process_run_authorized", {
     p_workspace_id: workspaceId,
     p_process_template_id: processTemplateId,
     p_origin_entity_type_id: originEntityTypeId,
     p_origin_record_id: originRecordId,
+    p_originating_process_step_run_id: originatingProcessStepRunId ?? null,
   });
 
   if (error) {
@@ -687,6 +796,8 @@ export async function startProcessRun({
   if (typeof data !== "string") {
     throw new Error("Unable to start process: unexpected RPC response.");
   }
+
+  await executeActiveProcessActionSteps({ workspaceId, processRunId: data, supabase });
 
   return data;
 }
@@ -710,6 +821,8 @@ export async function completeProcessStepRun({
   if (error) {
     throw new Error(`Unable to complete step: ${error.message}`);
   }
+
+  await executeActiveProcessActionSteps({ workspaceId, processRunId, supabase });
 }
 
 export async function decideProcessApproval({
@@ -734,16 +847,20 @@ export async function decideProcessApproval({
   if (error) {
     throw new Error(`Unable to decide approval: ${error.message}`);
   }
+
+  await executeActiveProcessActionSteps({ workspaceId, processRunId, supabase });
 }
 
 export async function getProcessRunWithSteps({
   workspaceId,
   processRunId,
+  supabase: injectedSupabase,
 }: {
   workspaceId: string;
   processRunId: string;
+  supabase?: SupabaseServerClient;
 }): Promise<ProcessRunWithSteps> {
-  const supabase = await createServerSupabaseClient();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   const [
     { data: runRow, error: runError },
     { data: stepRows, error: stepError },
@@ -805,6 +922,221 @@ export async function getProcessRunWithSteps({
     routes: routeRows.map(mapProcessStepRunRoute),
     joinObligations: obligationRows.map(mapProcessParallelJoinObligation),
   };
+}
+
+// The canonical system action-step executor (see Automated Action Nodes
+// design note): the caller says "execute this active ProcessStepRun," never
+// "perform this record mutation." Reads the action to perform only from the
+// step's own immutable config snapshot, executes it via the same action
+// machinery workflows use, and always ends by calling one of the two
+// narrow completion RPCs -- success advances the run through the existing
+// canonical continuation helper; failure leaves the step active and visible,
+// retryable by any workspace member. Used identically whether the step was
+// reached via human completion, approval, timer wait, condition wait,
+// another action, or parallel/system advancement -- the only difference
+// between an interactive retry and the wait/condition-wait scheduler is
+// which `supabase` client is passed in.
+async function executeAndCompleteActionStep({
+  workspaceId,
+  processRunId,
+  step,
+  originEntityTypeId,
+  originRecordId,
+  supabase,
+}: {
+  workspaceId: string;
+  processRunId: string;
+  step: ProcessStepRun;
+  originEntityTypeId: string;
+  originRecordId: string;
+  supabase: SupabaseServerClient;
+}) {
+  const attemptedAt = new Date().toISOString();
+
+  if (!step.config.actionConfig) {
+    await supabase.rpc("fail_process_action_step_authorized", {
+      p_workspace_id: workspaceId,
+      p_process_run_id: processRunId,
+      p_step_run_id: step.id,
+      p_action_result: {
+        status: "failed",
+        errorMessage: "Action step is missing its configuration.",
+        attemptedAt,
+      } satisfies ProcessStepActionResult,
+    });
+    return;
+  }
+
+  try {
+    const sourceContext = await getEntityContext({
+      workspaceId,
+      entityTypeId: originEntityTypeId,
+      includeArchivedFields: true,
+      supabase,
+    });
+    const originRecord = await getEntityRecord({
+      workspaceId,
+      entityTypeId: originEntityTypeId,
+      recordId: originRecordId,
+      fields: sourceContext.fields,
+      supabase,
+    });
+    const result = await executeSingleAction({
+      workspaceId,
+      sourceContext,
+      triggerRecord: originRecord,
+      action: step.config.actionConfig,
+      context: { supabase, originatingProcessStepRunId: step.id },
+    });
+    const { error } = await supabase.rpc("complete_process_action_step_authorized", {
+      p_workspace_id: workspaceId,
+      p_process_run_id: processRunId,
+      p_step_run_id: step.id,
+      p_action_result: {
+        status: "succeeded",
+        actionEntityTypeId: result.actionEntityTypeId,
+        actionRecordId: result.actionRecordId,
+        createdRecordId: result.createdRecordId,
+        processTemplateId: result.processTemplateId,
+        processRunId: result.processRunId,
+        resultMessage: result.resultMessage,
+        attemptedAt,
+      } satisfies ProcessStepActionResult,
+    });
+
+    if (error) {
+      throw new Error(`Unable to record action step result: ${error.message}`);
+    }
+  } catch (executionError) {
+    const errorMessage =
+      executionError instanceof Error ? executionError.message : "Unknown action execution error.";
+    const { error } = await supabase.rpc("fail_process_action_step_authorized", {
+      p_workspace_id: workspaceId,
+      p_process_run_id: processRunId,
+      p_step_run_id: step.id,
+      p_action_result: {
+        status: "failed",
+        errorMessage,
+        attemptedAt,
+      } satisfies ProcessStepActionResult,
+    });
+
+    if (error) {
+      throw new Error(`Unable to record action step failure: ${error.message}`);
+    }
+  }
+}
+
+const MAX_ACTION_ACTIVATION_PASSES = 25;
+
+// Drains every currently-active, unresolved action step in one run, one pass
+// at a time, until none remain -- covering chained action nodes and several
+// parallel branches each landing on their own action step. Called after
+// every mutation that can activate a step (start, complete, decide, and the
+// wait/condition-wait scheduler after its own dispatch RPCs), so manual and
+// workflow-triggered runs -- both of which funnel through these same
+// repository functions -- behave identically.
+export async function executeActiveProcessActionSteps({
+  workspaceId,
+  processRunId,
+  supabase: injectedSupabase,
+}: {
+  workspaceId: string;
+  processRunId: string;
+  supabase?: SupabaseServerClient;
+}): Promise<void> {
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+
+  for (let pass = 0; pass < MAX_ACTION_ACTIVATION_PASSES; pass += 1) {
+    const run = await getProcessRunWithSteps({ workspaceId, processRunId, supabase });
+    const pendingSteps = run.steps.filter(
+      (step) => step.nodeType === "action" && step.status === "active" && !step.actionResult,
+    );
+
+    if (pendingSteps.length === 0) {
+      return;
+    }
+
+    for (const step of pendingSteps) {
+      await executeAndCompleteActionStep({
+        workspaceId,
+        processRunId,
+        step,
+        originEntityTypeId: run.originEntityTypeId,
+        originRecordId: run.originRecordId,
+        supabase,
+      });
+    }
+  }
+
+  throw new Error("Process action execution did not settle after repeated activation.");
+}
+
+// The scheduler's discovery query: narrow (identity only, no mutation) and
+// cross-run, since one dispatch batch can activate action nodes across many
+// runs/workspaces. Execution still goes through the identical canonical
+// executor above, run by run -- never a bulk mutation path.
+export async function listActiveProcessActionStepRuns({
+  supabase,
+}: {
+  supabase: SupabaseServerClient;
+}): Promise<Array<{ workspaceId: string; processRunId: string }>> {
+  const { data, error } = await supabase
+    .from("process_step_runs")
+    .select("workspace_id, process_run_id")
+    .eq("node_type", "action")
+    .eq("status", "active")
+    .is("action_result", null)
+    .returns<Array<{ workspace_id: string; process_run_id: string }>>();
+
+  if (error) {
+    throw new Error(`Unable to list pending action steps: ${error.message}`);
+  }
+
+  const seen = new Set<string>();
+  const runs: Array<{ workspaceId: string; processRunId: string }> = [];
+
+  for (const row of data) {
+    const key = `${row.workspace_id}:${row.process_run_id}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      runs.push({ workspaceId: row.workspace_id, processRunId: row.process_run_id });
+    }
+  }
+
+  return runs;
+}
+
+// Retry is the identical canonical executor, scoped to one already-active
+// action step -- not a separate code path. A no-op if the step has since
+// resolved (completed by a concurrent retry, or the run is no longer active).
+export async function retryProcessActionStep({
+  workspaceId,
+  processRunId,
+  stepRunId,
+}: {
+  workspaceId: string;
+  processRunId: string;
+  stepRunId: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const run = await getProcessRunWithSteps({ workspaceId, processRunId, supabase });
+  const step = run.steps.find((candidate) => candidate.id === stepRunId);
+
+  if (!step || step.nodeType !== "action" || step.status !== "active") {
+    return;
+  }
+
+  await executeAndCompleteActionStep({
+    workspaceId,
+    processRunId,
+    step,
+    originEntityTypeId: run.originEntityTypeId,
+    originRecordId: run.originRecordId,
+    supabase,
+  });
+  await executeActiveProcessActionSteps({ workspaceId, processRunId, supabase });
 }
 
 export async function listProcessRunsForOrigin({
@@ -956,25 +1288,53 @@ export async function listMyWorkItems({
   }
 
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+  // Two queries rather than one embedded select: process_runs.
+  // originating_process_step_run_id (added for action-node idempotency) is
+  // a second relationship between these two tables, so PostgREST can no
+  // longer auto-embed process_runs from process_step_runs without an
+  // explicit constraint-name hint -- a plain re-query avoids depending on
+  // that generated name at all.
+  const { data: assignedStepRows, error: assignedStepError } = await supabase
     .from("process_step_runs")
-    .select("*, process_runs!inner(*)")
+    .select("*")
     .eq("workspace_id", workspaceId)
     .eq("assignee_user_id", user.id)
     .in("status", ["active", "pending"])
-    .eq("process_runs.status", "active")
-    .order("started_at", { foreignTable: "process_runs", ascending: true })
-    .order("step_index", { ascending: true })
-    .returns<Array<ProcessStepRunRow & { process_runs: ProcessRunRow }>>();
+    .returns<ProcessStepRunRow[]>();
 
-  if (error) {
-    throw new Error(`Unable to load My Work: ${error.message}`);
+  if (assignedStepError) {
+    throw new Error(`Unable to load My Work: ${assignedStepError.message}`);
   }
 
-  const entries = data.map((row) => ({
-    stepRun: mapProcessStepRun(row),
-    run: mapProcessRun(row.process_runs),
-  }));
+  if (assignedStepRows.length === 0) {
+    return { overdue: [], readyNow: [], upcoming: [] };
+  }
+
+  const assignedRunIds = [...new Set(assignedStepRows.map((row) => row.process_run_id))];
+  const { data: activeRunRows, error: activeRunError } = await supabase
+    .from("process_runs")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .in("id", assignedRunIds)
+    .eq("status", "active")
+    .returns<ProcessRunRow[]>();
+
+  if (activeRunError) {
+    throw new Error(`Unable to load My Work: ${activeRunError.message}`);
+  }
+
+  const activeRunById = new Map(activeRunRows.map((row) => [row.id, mapProcessRun(row)]));
+  const entries = assignedStepRows
+    .flatMap((row) => {
+      const run = activeRunById.get(row.process_run_id);
+
+      return run ? [{ stepRun: mapProcessStepRun(row), run }] : [];
+    })
+    .sort(
+      (left, right) =>
+        left.run.startedAt.localeCompare(right.run.startedAt) ||
+        left.stepRun.stepIndex - right.stepRun.stepIndex,
+    );
 
   if (entries.length === 0) {
     return { overdue: [], readyNow: [], upcoming: [] };

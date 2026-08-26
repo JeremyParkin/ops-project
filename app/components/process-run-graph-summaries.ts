@@ -74,6 +74,18 @@ export function stepSummaryLine(
       : "Waiting for its conditions to be satisfied.";
   }
 
+  if (step.nodeType === "action") {
+    if (step.actionResult?.status === "failed") {
+      return step.actionResult.errorMessage ?? "Action failed. Retry when ready.";
+    }
+
+    if (step.actionResult?.status === "succeeded") {
+      return step.actionResult.resultMessage ?? "Action completed.";
+    }
+
+    return "Runs automatically.";
+  }
+
   if (step.nodeType === "parallel_split") {
     return "Parallel paths activate automatically.";
   }
@@ -108,15 +120,17 @@ export function routingResultLabel(
       ? `Decision: ${step.approvalOutcomeLabel ?? result.approvalOutcomeLabel ?? "Recorded"}`
       : result.outcome === "condition_satisfied"
         ? "Condition satisfied"
-        : result.outcome === "parallel_split"
-          ? "Parallel branches activated"
-          : result.outcome === "parallel_join"
-            ? "Parallel paths joined"
-            : result.outcome === "default_fallback"
-              ? "Otherwise route"
-              : result.outcome === "matched_condition"
-                ? "Conditional route matched"
-                : "Continued to next step";
+        : result.outcome === "action_succeeded"
+          ? "Action completed"
+          : result.outcome === "parallel_split"
+            ? "Parallel branches activated"
+            : result.outcome === "parallel_join"
+              ? "Parallel paths joined"
+              : result.outcome === "default_fallback"
+                ? "Otherwise route"
+                : result.outcome === "matched_condition"
+                  ? "Conditional route matched"
+                  : "Continued to next step";
 
   const targetStepRunId = result.targetStepRunId;
   const targetName =
@@ -140,4 +154,12 @@ export function isActionableForViewer(step: ProcessStepRun, currentUserId: strin
   }
 
   return !step.assigneeUserId || step.assigneeUserId === currentUserId;
+}
+
+// An action step's automatic execution failed and is waiting for someone to
+// retry it. Action nodes have no assignee (structurally, per the runtime
+// shape check), so this is open to any workspace member — unlike
+// isActionableForViewer, which is assignee-scoped.
+export function isRetryableActionStep(step: ProcessStepRun) {
+  return step.nodeType === "action" && step.status === "active" && step.actionResult?.status === "failed";
 }

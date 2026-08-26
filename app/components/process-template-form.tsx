@@ -11,6 +11,7 @@ import {
   ProcessNodeEditor,
 } from "./process-node-editor";
 import { ProcessGraphView } from "./process-graph-view";
+import type { ActionConfigProcessTemplateOption } from "./workflow-action-config-fields";
 import {
   canSwapAdjacent,
   conditionWaitDefaults,
@@ -34,6 +35,7 @@ export type { ProcessTemplateEntityContext } from "./process-template-shared";
 type ProcessTemplateFormProps = {
   entityContexts: ProcessTemplateEntityContext[];
   members: WorkspaceMemberIdentity[];
+  processTemplates: ActionConfigProcessTemplateOption[];
   saveProcessTemplateAction: (
     state: ProcessTemplateFormState,
     formData: FormData,
@@ -45,6 +47,7 @@ type ProcessTemplateFormProps = {
 export function ProcessTemplateForm({
   entityContexts,
   members,
+  processTemplates,
   saveProcessTemplateAction,
   initialState,
   isEditing,
@@ -87,6 +90,7 @@ export function ProcessTemplateForm({
       conditionWaitRelationFieldDefinitionId: step.conditionWaitRelationFieldDefinitionId ?? "",
       conditionWaitTargetEntityTypeId: step.conditionWaitTargetEntityTypeId ?? "",
       conditionWaitConditions: (step.conditionWaitConditions ?? []).map(toLocalCondition),
+      actionConfig: step.actionConfig,
       routes: step.routes.map(toLocalRoute),
     })),
   );
@@ -305,6 +309,28 @@ export function ProcessTemplateForm({
           ? { ...step, routes: [{ id: createKey("route"), targetStepKey: waitKey, isDefault: true, isParallel: false, conditions: [] }] }
           : step)
         : current;
+      return [...withRoute, next];
+    });
+  }
+
+  function addAction() {
+    const actionKey = createKey("action");
+
+    setSteps((current) => {
+      const previous = current.at(-1);
+      const next: LocalStep = createDefaultStep("action", actionKey, activeFields);
+      const withRoute =
+        previous && previous.routes.length === 0
+          ? current.map((step) =>
+              step.key === previous.key
+                ? {
+                    ...step,
+                    routes: [{ id: createKey("route"), targetStepKey: actionKey, isDefault: true, isParallel: false, conditions: [] }],
+                  }
+                : step,
+            )
+          : current;
+
       return [...withRoute, next];
     });
   }
@@ -697,6 +723,7 @@ export function ProcessTemplateForm({
             : currentContext?.fields) ?? [],
         ),
       ),
+      actionConfig: step.nodeType === "action" ? step.actionConfig : undefined,
       routes: step.routes.map((route) => ({
         id: route.id,
         targetStepKey: route.targetStepKey,
@@ -854,6 +881,13 @@ export function ProcessTemplateForm({
             </button>
             <button
               type="button"
+              onClick={addAction}
+              className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
+            >
+              + Add action
+            </button>
+            <button
+              type="button"
               onClick={addParallelPaths}
               className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
             >
@@ -869,6 +903,7 @@ export function ProcessTemplateForm({
                 const isApproval = step.nodeType === "approval";
                 const isWait = step.nodeType === "wait";
                 const isConditionWait = step.nodeType === "condition_wait";
+                const isAction = step.nodeType === "action";
 
                 if (step.nodeType === "parallel_split" || step.nodeType === "parallel_join") {
                   return (
@@ -886,7 +921,7 @@ export function ProcessTemplateForm({
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
                         <label htmlFor={`step-name-${step.key}`} className="block text-xs font-medium uppercase tracking-wide text-stone">
-                          {isApproval ? "Approval" : isWait ? "Wait" : isConditionWait ? "Condition wait" : `Step ${index + 1}`}
+                          {isApproval ? "Approval" : isWait ? "Wait" : isConditionWait ? "Condition wait" : isAction ? "Action" : `Step ${index + 1}`}
                         </label>
                         <input
                           id={`step-name-${step.key}`}
@@ -943,6 +978,7 @@ export function ProcessTemplateForm({
                       currentContext={currentContext}
                       contextByEntityTypeId={contextByEntityTypeId}
                       members={members}
+                      processTemplates={processTemplates}
                       routeError={routeError}
                       dueError={state.errors[`stepDueAmount.${index}`]}
                       updateStep={updateStep}
@@ -963,6 +999,7 @@ export function ProcessTemplateForm({
               currentContext={currentContext}
               contextByEntityTypeId={contextByEntityTypeId}
               members={members}
+              processTemplates={processTemplates}
               selectedKey={selectedGraphKey}
               onSelectKey={setSelectedGraphKey}
               updateStep={updateStep}

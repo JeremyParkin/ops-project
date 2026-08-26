@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, type SupabaseServerClient } from "@/lib/supabase/server";
 import { createFieldKey, createSlug, createUniqueSlug } from "./slug";
 import type { EntityType, FieldDefinition, FieldType } from "./types";
 import {
@@ -39,6 +39,7 @@ type EntityContextInput = {
   workspaceId: string;
   entityTypeId: string;
   includeArchivedFields?: boolean;
+  supabase?: SupabaseServerClient;
 };
 
 type CreateEntityTypeWithFieldsInput = {
@@ -121,8 +122,9 @@ export async function getEntityContext({
   workspaceId,
   entityTypeId,
   includeArchivedFields = false,
+  supabase: injectedSupabase,
 }: EntityContextInput) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
 
   const { data: entityTypeRow, error: entityTypeError } = await supabase
     .from("entity_types")

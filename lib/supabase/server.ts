@@ -17,6 +17,13 @@ function getSupabaseConfig() {
   };
 }
 
+// Shared type for the handful of repository functions on the process
+// action-execution path that accept an injectable client: per-request
+// callers omit it (this per-cookie-session client, unchanged), while the
+// wait/condition-wait scheduler passes its admin client so a newly-activated
+// action node executes under service_role, not a stale/absent user session.
+export type SupabaseServerClient = Awaited<ReturnType<typeof createServerSupabaseClient>>;
+
 export async function createServerSupabaseClient() {
   const { supabaseUrl, supabasePublishableKey } = getSupabaseConfig();
   const cookieStore = await cookies();

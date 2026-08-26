@@ -4,16 +4,17 @@ import { ProcessTemplateForm } from "@/app/components/process-template-form";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 import { getEntityContext, listEntityTypes } from "@/lib/domain/metadata-repository";
 import { getRelationLookups } from "@/lib/domain/record-repository";
-import { listWorkspaceMemberIdentities } from "@/lib/domain/process-repository";
+import { listProcessTemplates, listWorkspaceMemberIdentities } from "@/lib/domain/process-repository";
 import { initialProcessTemplateFormState } from "@/lib/domain/process-validation";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewProcessTemplatePage() {
   const { workspaceId } = await getActiveWorkspaceId();
-  const [entityTypes, members] = await Promise.all([
+  const [entityTypes, members, processTemplates] = await Promise.all([
     listEntityTypes({ workspaceId }),
     listWorkspaceMemberIdentities({ workspaceId }),
+    listProcessTemplates({ workspaceId }),
   ]);
   const entityContexts = await Promise.all(
     entityTypes.map(async (entityType) => {
@@ -43,6 +44,7 @@ export default async function NewProcessTemplatePage() {
         <ProcessTemplateForm
           entityContexts={entityContexts}
           members={members}
+          processTemplates={processTemplates.map((template) => ({ id: template.id, name: template.name }))}
           saveProcessTemplateAction={createProcessTemplate}
           initialState={initialProcessTemplateFormState}
           isEditing={false}

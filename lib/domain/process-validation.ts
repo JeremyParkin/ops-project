@@ -1,4 +1,5 @@
 import type { ProcessBranchCondition, ProcessNodeType } from "./process-types";
+import type { WorkflowAction } from "./workflow-types";
 
 export type ProcessTemplateRouteFormValue = {
   id: string;
@@ -32,6 +33,7 @@ export type ProcessTemplateStepFormValue = {
   conditionWaitRelationFieldDefinitionId?: string;
   conditionWaitTargetEntityTypeId?: string;
   conditionWaitConditions?: ProcessBranchCondition[];
+  actionConfig?: WorkflowAction;
   routes: ProcessTemplateRouteFormValue[];
 };
 
@@ -78,6 +80,7 @@ function emptyStep(clientKey: string): ProcessTemplateStepFormValue {
     conditionWaitRelationFieldDefinitionId: "",
     conditionWaitTargetEntityTypeId: "",
     conditionWaitConditions: [],
+    actionConfig: undefined,
     routes: [],
   };
 }
@@ -146,6 +149,79 @@ function parseCondition(value: unknown): ProcessBranchCondition | null {
   };
 }
 
+function parseActionConfig(value: unknown): WorkflowAction | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const actionType = record.actionType;
+
+  if (
+    actionType !== "create_record" &&
+    actionType !== "update_record" &&
+    actionType !== "update_related_record" &&
+    actionType !== "start_process"
+  ) {
+    return undefined;
+  }
+
+  const rawMappings = Array.isArray(record.fieldMappings) ? record.fieldMappings : [];
+  const fieldMappings = rawMappings.flatMap((rawMapping): WorkflowAction["fieldMappings"] => {
+    if (typeof rawMapping !== "object" || rawMapping === null) {
+      return [];
+    }
+
+    const mapping = rawMapping as Record<string, unknown>;
+
+    if (typeof mapping.targetFieldDefinitionId !== "string") {
+      return [];
+    }
+
+    const targetFieldDefinitionId = mapping.targetFieldDefinitionId;
+    const rawSource = mapping.source;
+
+    if (typeof rawSource !== "object" || rawSource === null) {
+      return [];
+    }
+
+    const source = rawSource as Record<string, unknown>;
+
+    if (source.type === "constant") {
+      return [{ targetFieldDefinitionId, source: { type: "constant", value: source.value as never } }];
+    }
+    if (source.type === "source_field" && typeof source.sourceFieldDefinitionId === "string") {
+      return [
+        { targetFieldDefinitionId, source: { type: "source_field", sourceFieldDefinitionId: source.sourceFieldDefinitionId } },
+      ];
+    }
+    if (source.type === "template" && typeof source.template === "string") {
+      return [{ targetFieldDefinitionId, source: { type: "template", template: source.template } }];
+    }
+    if (source.type === "unset") {
+      return [{ targetFieldDefinitionId, source: { type: "unset" } }];
+    }
+    if (source.type === "leave_unchanged") {
+      return [{ targetFieldDefinitionId, source: { type: "leave_unchanged" } }];
+    }
+    if (source.type === "clear") {
+      return [{ targetFieldDefinitionId, source: { type: "clear" } }];
+    }
+
+    return [];
+  });
+
+  return {
+    actionType,
+    actionTargetEntityTypeId:
+      typeof record.actionTargetEntityTypeId === "string" ? record.actionTargetEntityTypeId : undefined,
+    relatedFieldDefinitionId:
+      typeof record.relatedFieldDefinitionId === "string" ? record.relatedFieldDefinitionId : undefined,
+    processTemplateId: typeof record.processTemplateId === "string" ? record.processTemplateId : undefined,
+    fieldMappings,
+  };
+}
+
 function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | null {
   try {
     const parsed = JSON.parse(value);
@@ -202,6 +278,7 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
           record.nodeType === "approval" ||
           record.nodeType === "wait" ||
           record.nodeType === "condition_wait" ||
+          record.nodeType === "action" ||
           record.nodeType === "parallel_split" ||
           record.nodeType === "parallel_join"
             ? record.nodeType
@@ -224,6 +301,7 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
         conditionWaitRelationFieldDefinitionId: asString(record.conditionWaitRelationFieldDefinitionId),
         conditionWaitTargetEntityTypeId: asString(record.conditionWaitTargetEntityTypeId),
         conditionWaitConditions: conditionWaitConditions as ProcessBranchCondition[],
+        actionConfig: parseActionConfig(record.actionConfig),
         routes,
       };
     });
@@ -273,6 +351,7 @@ function parseSubmittedSteps(formData: FormData) {
     conditionWaitRelationFieldDefinitionId: "",
     conditionWaitTargetEntityTypeId: "",
     conditionWaitConditions: [],
+    actionConfig: undefined,
     routes: [],
   }));
 }
@@ -309,7 +388,8 @@ export function validateProcessTemplateFormData(
         ((step.nodeType ?? "human_task") === "human_task" ||
           (step.nodeType ?? "human_task") === "approval" ||
           (step.nodeType ?? "human_task") === "wait" ||
-          (step.nodeType ?? "human_task") === "condition_wait") &&
+          (step.nodeType ?? "human_task") === "condition_wait" ||
+          (step.nodeType ?? "human_task") === "action") &&
         !step.name,
     )
   ) {
@@ -331,6 +411,7 @@ export function validateProcessTemplateFormData(
       nodeType !== "approval" &&
       nodeType !== "wait" &&
       nodeType !== "condition_wait" &&
+      nodeType !== "action" &&
       nodeType !== "parallel_split" &&
       nodeType !== "parallel_join"
     ) {
@@ -424,6 +505,29 @@ export function validateProcessTemplateFormData(
       }
       if (!step.conditionWaitConditions || step.conditionWaitConditions.length === 0) {
         errors[`stepRoutes.${index}`] = "A condition wait needs at least one condition.";
+      }
+    }
+
+    if (nodeType === "action") {
+      if (step.assigneeUserId || step.dueAmount) {
+        errors[`stepRoutes.${index}`] = "Action steps cannot have an assignee or due rule.";
+      }
+
+      const actionType = step.actionConfig?.actionType;
+
+      if (
+        actionType !== "create_record" &&
+        actionType !== "update_record" &&
+        actionType !== "update_related_record" &&
+        actionType !== "start_process"
+      ) {
+        errors[`stepRoutes.${index}`] = "Choose what this action does.";
+      } else if (actionType === "create_record" && !step.actionConfig?.actionTargetEntityTypeId) {
+        errors[`stepRoutes.${index}`] = "Choose which entity this action creates.";
+      } else if (actionType === "update_related_record" && !step.actionConfig?.relatedFieldDefinitionId) {
+        errors[`stepRoutes.${index}`] = "Choose the related record this action updates.";
+      } else if (actionType === "start_process" && !step.actionConfig?.processTemplateId) {
+        errors[`stepRoutes.${index}`] = "Choose which process this action starts.";
       }
     }
 

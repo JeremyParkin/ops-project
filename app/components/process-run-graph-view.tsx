@@ -5,12 +5,14 @@ import type { ProcessActionState } from "@/app/process-actions";
 import type { ProcessRunWithSteps, ProcessStepRun } from "@/lib/domain/process-types";
 import { ApprovalDecisionButtons } from "./approval-decision-buttons";
 import { CompleteStepButton } from "./complete-step-button";
+import { RetryActionStepButton } from "./retry-action-step-button";
 import { toGraphLayoutSteps } from "./process-run-graph-adapter";
 import { computeProcessGraphLayout } from "./process-graph-layout";
 import { NODE_TYPE_LABELS } from "./process-graph-summaries";
 import { ProcessDueAt } from "./process-due-at";
 import {
   isActionableForViewer,
+  isRetryableActionStep,
   joinObligationsByJoinId,
   routingResultLabel,
   statusBadgeClass,
@@ -39,6 +41,10 @@ type ProcessRunGraphViewProps = {
     state: ProcessActionState,
     formData: FormData,
   ) => Promise<ProcessActionState>;
+  retryProcessActionStepAction: (
+    state: ProcessActionState,
+    formData: FormData,
+  ) => Promise<ProcessActionState>;
 };
 
 export function ProcessRunGraphView({
@@ -46,6 +52,7 @@ export function ProcessRunGraphView({
   currentUserId,
   completeProcessStepRunAction,
   decideProcessApprovalAction,
+  retryProcessActionStepAction,
 }: ProcessRunGraphViewProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
@@ -162,9 +169,13 @@ export function ProcessRunGraphView({
                     {NODE_TYPE_LABELS[step.nodeType]}
                   </span>
                   <span
-                    className={`border px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide ${statusBadgeClass(step.status)}`}
+                    className={`border px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide ${
+                      isRetryableActionStep(step)
+                        ? "border-red-700/40 bg-red-50 text-red-700"
+                        : statusBadgeClass(step.status)
+                    }`}
                   >
-                    {isSkipped ? "Skipped" : step.status}
+                    {isRetryableActionStep(step) ? "Failed" : isSkipped ? "Skipped" : step.status}
                   </span>
                 </div>
                 <span className="line-clamp-1 text-sm font-semibold text-graphite">{step.name}</span>
@@ -193,9 +204,17 @@ export function ProcessRunGraphView({
           <div className="flex flex-col gap-3">
             <div>
               <span
-                className={`inline-flex items-center border px-2 py-1 text-xs font-medium uppercase tracking-wide ${statusBadgeClass(selectedStep.status)}`}
+                className={`inline-flex items-center border px-2 py-1 text-xs font-medium uppercase tracking-wide ${
+                  isRetryableActionStep(selectedStep)
+                    ? "border-red-700/40 bg-red-50 text-red-700"
+                    : statusBadgeClass(selectedStep.status)
+                }`}
               >
-                {selectedStep.status === "skipped" ? "Skipped" : selectedStep.status}
+                {isRetryableActionStep(selectedStep)
+                  ? "Failed"
+                  : selectedStep.status === "skipped"
+                    ? "Skipped"
+                    : selectedStep.status}
               </span>
               <p className="mt-2 text-xs font-medium uppercase tracking-wide text-stone">
                 {NODE_TYPE_LABELS[selectedStep.nodeType]}
@@ -248,7 +267,14 @@ export function ProcessRunGraphView({
               <p className="text-xs text-stone">Decided by {selectedStep.decidedByLabel ?? "a workspace member"}</p>
             ) : null}
 
-            {isActionableForViewer(selectedStep, currentUserId) ? (
+            {isRetryableActionStep(selectedStep) ? (
+              <div className="border-t border-grit pt-3">
+                <RetryActionStepButton
+                  stepRunId={selectedStep.id}
+                  retryProcessActionStepAction={retryProcessActionStepAction}
+                />
+              </div>
+            ) : isActionableForViewer(selectedStep, currentUserId) ? (
               <div className="border-t border-grit pt-3">
                 {selectedStep.nodeType === "human_task" ? (
                   <CompleteStepButton

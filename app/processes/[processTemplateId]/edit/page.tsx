@@ -7,6 +7,7 @@ import { getEntityContext, listEntityTypes } from "@/lib/domain/metadata-reposit
 import { getRelationLookups } from "@/lib/domain/record-repository";
 import {
   getProcessTemplateWithSteps,
+  listProcessTemplates,
   listWorkspaceMemberIdentities,
 } from "@/lib/domain/process-repository";
 import type { ProcessTemplateFormState } from "@/lib/domain/process-validation";
@@ -15,10 +16,11 @@ export const dynamic = "force-dynamic";
 
 async function loadEditPageData(workspaceId: string, processTemplateId: string) {
   try {
-    const [entityTypes, template, members] = await Promise.all([
+    const [entityTypes, template, members, processTemplates] = await Promise.all([
       listEntityTypes({ workspaceId, includeArchived: true }),
       getProcessTemplateWithSteps({ workspaceId, processTemplateId }),
       listWorkspaceMemberIdentities({ workspaceId }),
+      listProcessTemplates({ workspaceId }),
     ]);
 
     const entityContexts = await Promise.all(
@@ -41,7 +43,7 @@ async function loadEditPageData(workspaceId: string, processTemplateId: string) 
       }),
     );
 
-    return { entityTypes, entityContexts, template, members };
+    return { entityTypes, entityContexts, template, members, processTemplates };
   } catch {
     return null;
   }
@@ -60,7 +62,7 @@ export default async function EditProcessTemplatePage({
     notFound();
   }
 
-  const { entityTypes, entityContexts, template, members } = pageData;
+  const { entityTypes, entityContexts, template, members, processTemplates } = pageData;
   const updateProcessTemplate = saveProcessTemplateAction.bind(null, {
     workspaceId,
     processTemplateId,
@@ -126,6 +128,7 @@ export default async function EditProcessTemplatePage({
             ? step.config.conditionWaitRule.target.targetEntityTypeId
             : "",
         conditionWaitConditions: step.config.conditionWaitRule?.conditions ?? [],
+        actionConfig: step.config.actionConfig,
         routes: template.edges
           .filter((edge) => edge.sourceNodeId === step.id)
           .map((edge) => ({
@@ -157,6 +160,9 @@ export default async function EditProcessTemplatePage({
         <ProcessTemplateForm
           entityContexts={entityContexts}
           members={members}
+          processTemplates={processTemplates
+            .filter((candidate) => candidate.id !== processTemplateId)
+            .map((candidate) => ({ id: candidate.id, name: candidate.name }))}
           saveProcessTemplateAction={updateProcessTemplate}
           initialState={initialState}
           isEditing

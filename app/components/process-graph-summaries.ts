@@ -8,6 +8,7 @@ export const NODE_TYPE_LABELS: Record<ProcessNodeType, string> = {
   approval: "Approval",
   wait: "Wait",
   condition_wait: "Wait for condition",
+  action: "Action",
   parallel_split: "Parallel paths",
   parallel_join: "Join parallel paths",
 };
