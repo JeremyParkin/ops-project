@@ -1,8 +1,20 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { ApprovalDecisionButtons } from "@/app/components/approval-decision-buttons";
 import { CompleteStepButton } from "@/app/components/complete-step-button";
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
 import { ProcessDueAt } from "@/app/components/process-due-at";
+import { ProcessRunGraphView } from "@/app/components/process-run-graph-view";
+import {
+  isActionableForViewer,
+  joinObligationsByJoinId,
+  routingResultLabel,
+  statusBadgeClass,
+  stepSummaryLine,
+  waitRuleLabel,
+} from "@/app/components/process-run-graph-summaries";
 import type { ProcessActionState } from "@/app/process-actions";
 import type { ProcessRunWithSteps } from "@/lib/domain/process-types";
 
@@ -21,38 +33,6 @@ type ProcessRunDetailViewProps = {
   ) => Promise<ProcessActionState>;
 };
 
-// Pending/completed are semantic (neutral, Sage). Active is the one place
-// Brass carries meaning here — actionable work — kept to
-// Brass Deep for text/border so it holds contrast on a Paper/white surface;
-// Brass itself is reserved for the step's left-edge accent below.
-function statusBadgeClass(status: "pending" | "active" | "completed" | "skipped") {
-  if (status === "completed") {
-    return "border-status-sage/40 bg-status-sage/10 text-status-sage";
-  }
-
-  if (status === "active") {
-    return "border-brass-deep/50 bg-brass-light/20 text-brass-deep";
-  }
-
-  if (status === "skipped") {
-    return "border-grit bg-chalk text-stone";
-  }
-
-  return "border-grit bg-chalk text-stone";
-}
-
-function waitRuleLabel(step: ProcessRunWithSteps["steps"][number]) {
-  const rule = step.config.waitRule;
-  if (!rule) return "Automatic wait";
-  if (rule.kind === "duration") {
-    return `${rule.amount} ${rule.unit === "calendar_days" ? "calendar day" : "hour"}${rule.amount === 1 ? "" : "s"} after activation`;
-  }
-  if (rule.kind === "weekdays") return `${rule.amount} weekday${rule.amount === 1 ? "" : "s"} after activation`;
-  if (rule.target === "nth_weekday_next_month") return `${rule.ordinal}th weekday of next month at ${rule.time} ${rule.timeZone}`;
-  if (rule.target === "first_day_of_week_next_month") return `First day-of-week target at ${rule.time} ${rule.timeZone}`;
-  return `${rule.date} at ${rule.time} ${rule.timeZone}`;
-}
-
 export function ProcessRunDetailView({
   run,
   originLabel,
@@ -61,15 +41,11 @@ export function ProcessRunDetailView({
   completeProcessStepRunAction,
   decideProcessApprovalAction,
 }: ProcessRunDetailViewProps) {
+  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const completedCount = run.steps.filter((step) => step.status === "completed").length;
   const skippedCount = run.steps.filter((step) => step.status === "skipped").length;
   const stepById = new Map(run.steps.map((step) => [step.id, step]));
-  const obligationsByJoinId = new Map<string, typeof run.joinObligations>();
-  run.joinObligations.forEach((obligation) => {
-    const current = obligationsByJoinId.get(obligation.joinStepRunId) ?? [];
-    current.push(obligation);
-    obligationsByJoinId.set(obligation.joinStepRunId, current);
-  });
+  const obligationsByJoinId = joinObligationsByJoinId(run.joinObligations);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -106,129 +82,121 @@ export function ProcessRunDetailView({
       </section>
 
       <section className="border border-grit bg-white p-5">
-        <SectionHeader title="Steps" />
-        <ol className="mt-5 flex flex-col gap-3">
-          {run.steps.map((step) => (
-            <li
-              key={step.id}
-              className={`flex flex-wrap items-center justify-between gap-3 border p-3 ${
-                step.status === "active"
-                  ? "border-grit border-l-4 border-l-brass-deep"
-                  : "border-grit"
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <SectionHeader title="Steps" />
+          <div className="flex items-center gap-1 border border-grit p-1" role="group" aria-label="Steps view">
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              aria-pressed={viewMode === "list"}
+              className={`px-3 py-1.5 text-sm font-medium ${
+                viewMode === "list" ? "bg-brass text-graphite" : "text-stone hover:text-graphite"
               }`}
             >
-              <div>
-                <span
-                  className={`inline-flex items-center border px-2 py-1 text-xs font-medium uppercase tracking-wide ${statusBadgeClass(step.status)}`}
-                >
-                  {step.status}
-                </span>
-                <p className="mt-1 text-sm font-medium text-graphite">
-                  {step.stepIndex}. {step.name}
-                </p>
-                {step.nodeType === "human_task" || step.nodeType === "approval" ? (
-                  <p className="mt-1 text-xs text-stone">
-                    {step.assigneeLabel ? `Assigned to ${step.assigneeLabel}` : "Unassigned"}
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("graph")}
+              aria-pressed={viewMode === "graph"}
+              className={`px-3 py-1.5 text-sm font-medium ${
+                viewMode === "graph" ? "bg-brass text-graphite" : "text-stone hover:text-graphite"
+              }`}
+            >
+              Graph
+            </button>
+          </div>
+        </div>
+
+        {viewMode === "list" ? (
+          <ol className="flex flex-col gap-3">
+            {run.steps.map((step) => (
+              <li
+                key={step.id}
+                className={`flex flex-wrap items-center justify-between gap-3 border p-3 ${
+                  step.status === "active"
+                    ? "border-grit border-l-4 border-l-brass-deep"
+                    : "border-grit"
+                }`}
+              >
+                <div>
+                  <span
+                    className={`inline-flex items-center border px-2 py-1 text-xs font-medium uppercase tracking-wide ${statusBadgeClass(step.status)}`}
+                  >
+                    {step.status}
+                  </span>
+                  <p className="mt-1 text-sm font-medium text-graphite">
+                    {step.stepIndex}. {step.name}
                   </p>
-                ) : (
-                  <p className="mt-1 text-xs text-stone">
-                    {step.nodeType === "wait"
-                      ? "Wait resumes automatically."
-                      : step.nodeType === "condition_wait"
-                      ? step.conditionWaitResult?.status === "blocked"
-                        ? step.conditionWaitResult.message ?? "Waiting for a valid condition target."
-                        : "Waiting for its conditions to be satisfied."
-                      : step.nodeType === "parallel_split"
-                      ? "Parallel paths activate automatically."
-                      : (() => {
-                          const obligations = obligationsByJoinId.get(step.id) ?? [];
-                          const arrived = obligations.filter((obligation) => obligation.arrivedAt).length;
-                          return obligations.length > 0
-                            ? step.status === "completed"
-                              ? `${arrived} of ${obligations.length} branches joined.`
-                              : `Waiting for ${arrived} of ${obligations.length} branches.`
-                            : "Parallel join advances automatically.";
-                        })()}
-                  </p>
-                )}
-                {step.dueAt ? (
-                  <p className="mt-1 text-xs text-stone">
-                    <ProcessDueAt dueAt={step.dueAt} />
-                  </p>
-                ) : null}
-                {step.nodeType === "wait" ? (
-                  <p className="mt-1 text-xs text-stone">
-                    {waitRuleLabel(step)}
-                    {step.resumeAt ? (
-                      <>
-                        {" · "}
-                        <ProcessDueAt
-                          dueAt={step.resumeAt}
-                          prefix={step.status === "active" ? "Waiting until" : "Scheduled for"}
-                        />
-                      </>
-                    ) : null}
-                  </p>
-                ) : null}
-                {step.nodeType === "condition_wait" && step.conditionWaitResult?.targetRecordId ? (
-                  <p className="mt-1 text-xs text-stone">Watching current record values.</p>
-                ) : null}
-                {step.routingResult ? (
-                  <p className="mt-2 text-xs text-stone">
-                    {step.routingResult.outcome === "approval_outcome"
-                      ? `Decision: ${step.approvalOutcomeLabel ?? step.routingResult.approvalOutcomeLabel ?? "Recorded"}`
-                      : step.routingResult.outcome === "condition_satisfied"
-                        ? "Condition satisfied"
-                      : step.routingResult.outcome === "parallel_split"
-                      ? "Parallel branches activated"
-                      : step.routingResult.outcome === "parallel_join"
-                        ? "Parallel paths joined"
-                      : step.routingResult.outcome === "default_fallback"
-                      ? "Otherwise route"
-                      : step.routingResult.outcome === "matched_condition"
-                        ? "Conditional route matched"
-                        : "Continued to next step"}
-                    {step.routingResult.targetStepRunId && stepById.get(step.routingResult.targetStepRunId)
-                      ? `: ${stepById.get(step.routingResult.targetStepRunId)?.name}`
-                      : ""}
-                  </p>
-                ) : null}
-                {step.decidedAt ? (
-                  <p className="mt-1 text-xs text-stone">
-                    Decided by {step.decidedByLabel ?? "a workspace member"}
-                  </p>
-                ) : null}
-              </div>
-              {step.nodeType === "human_task" && step.status === "active" &&
-              (!step.assigneeUserId || step.assigneeUserId === currentUserId) ? (
-                <CompleteStepButton
-                  stepRunId={step.id}
-                  completeProcessStepRunAction={completeProcessStepRunAction}
-                />
-              ) : step.nodeType === "approval" && step.status === "active" ? (
-                !step.assigneeUserId || step.assigneeUserId === currentUserId ? (
-                  <ApprovalDecisionButtons
-                    stepRunId={step.id}
-                    outcomes={run.routes
-                      .filter(
-                        (route) =>
-                          route.sourceStepRunId === step.id &&
-                          route.approvalOutcomeId &&
-                          route.approvalOutcomeLabel,
-                      )
-                      .map((route) => ({
-                        id: route.approvalOutcomeId!,
-                        label: route.approvalOutcomeLabel!,
-                      }))}
-                    decideProcessApprovalAction={decideProcessApprovalAction}
-                  />
-                ) : (
+                  <p className="mt-1 text-xs text-stone">{stepSummaryLine(step, obligationsByJoinId)}</p>
+                  {step.dueAt ? (
+                    <p className="mt-1 text-xs text-stone">
+                      <ProcessDueAt dueAt={step.dueAt} />
+                    </p>
+                  ) : null}
+                  {step.nodeType === "wait" ? (
+                    <p className="mt-1 text-xs text-stone">
+                      {waitRuleLabel(step)}
+                      {step.resumeAt ? (
+                        <>
+                          {" · "}
+                          <ProcessDueAt
+                            dueAt={step.resumeAt}
+                            prefix={step.status === "active" ? "Waiting until" : "Scheduled for"}
+                          />
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
+                  {step.nodeType === "condition_wait" && step.conditionWaitResult?.targetRecordId ? (
+                    <p className="mt-1 text-xs text-stone">Watching current record values.</p>
+                  ) : null}
+                  {routingResultLabel(step, stepById) ? (
+                    <p className="mt-2 text-xs text-stone">{routingResultLabel(step, stepById)}</p>
+                  ) : null}
+                  {step.decidedAt ? (
+                    <p className="mt-1 text-xs text-stone">
+                      Decided by {step.decidedByLabel ?? "a workspace member"}
+                    </p>
+                  ) : null}
+                </div>
+                {isActionableForViewer(step, currentUserId) ? (
+                  step.nodeType === "human_task" ? (
+                    <CompleteStepButton
+                      stepRunId={step.id}
+                      completeProcessStepRunAction={completeProcessStepRunAction}
+                    />
+                  ) : (
+                    <ApprovalDecisionButtons
+                      stepRunId={step.id}
+                      outcomes={run.routes
+                        .filter(
+                          (route) =>
+                            route.sourceStepRunId === step.id &&
+                            route.approvalOutcomeId &&
+                            route.approvalOutcomeLabel,
+                        )
+                        .map((route) => ({
+                          id: route.approvalOutcomeId!,
+                          label: route.approvalOutcomeLabel!,
+                        }))}
+                      decideProcessApprovalAction={decideProcessApprovalAction}
+                    />
+                  )
+                ) : step.nodeType === "approval" && step.status === "active" && step.assigneeUserId ? (
                   <p className="text-xs text-stone">Only the assigned member can decide.</p>
-                )
-              ) : null}
-            </li>
-          ))}
-        </ol>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <ProcessRunGraphView
+            run={run}
+            currentUserId={currentUserId}
+            completeProcessStepRunAction={completeProcessStepRunAction}
+            decideProcessApprovalAction={decideProcessApprovalAction}
+          />
+        )}
       </section>
     </div>
   );
