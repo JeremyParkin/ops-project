@@ -36,6 +36,34 @@ Likely areas include:
 
 Personal preferences should remain clearly separate from workspace-wide configuration, administrator controls, and roles or permissions. The roadmap does not yet prescribe a persistence model or settings UI.
 
+## Product Experience Principles
+
+### Configure Deeply, Operate Simply
+
+Kinema can remain highly configurable underneath without making ordinary workers feel as though they are using a database, schema editor, or process builder. Builders and administrators configure entities, fields, relationships, workflows, process templates, permissions, and workspace structure. Workers should primarily encounter purposeful operational surfaces: My Work, Team Work, process and run views, approvals, and records relevant to their job.
+
+The product should provide powerful configuration underneath and opinionated, task-oriented UX on top. It should avoid the failure mode where everyone lands in the backend simply because the system is flexible.
+
+### Win on Custom Operations, Not Commodity Task Lists
+
+Kinema should not try to become a generic Asana or Monday clone. Its stronger fit is organizations whose work does not fit standard task and project tools: they need custom business objects, relationships between them, repeatable processes, automation, role- and team-aware operations, and tailored operational views.
+
+The intended position is: more structured and purpose-built than a flexible database, and more adaptable than a conventional project-management tool. Product decisions should not overfit Kinema to generic task management at the expense of that operational depth.
+
+### Make Operational Delivery Native
+
+As Kinema becomes a daily tool for employees, assignments and process events should naturally reach the relevant person. Future notification and reminder work should be a first-class operational layer for events such as new assignments, approvals needed, overdue or upcoming work, newly ready steps, satisfied waits or conditions, and failed automated actions requiring attention.
+
+The likely pattern is deterministic operational state leading to a notification rule, then an in-app notification and optionally email or another external channel. This should build on existing process and work state, not create a second workflow engine. Personal notification preferences belong in [User Settings & Preferences](#user-settings--preferences) when that foundation is designed.
+
+### Attack Setup Cost, Eventually with AI Assistance
+
+A configurable system fails if it requires an expert builder for every new workspace. Kinema should steadily reduce setup friction and, in the longer term, use AI to configure deterministic software rather than improvise routine operations.
+
+For example, a description of a monthly client-report process could lead Kinema to propose entities, fields, relationships, teams, process templates, assignments, due rules, workflows, and operational views. A user reviews and edits the proposal before creating the deterministic configuration. The long-term differentiator is AI as the expert system builder an organization would otherwise need on staff.
+
+Until that guided layer exists, exposing first-time users directly to concepts such as Entity Type, Field Definition, Workflow Action, or Process Node risks recreating the setup-cost problem Kinema is meant to solve.
+
 ## Phase 7: People, Permissions & Management
 
 After automated action nodes, the next major phase should make Kinema useful for several real users with different responsibilities, scope, and visibility. These areas belong together because permissions, organizational structure, and management views must reinforce the same operating model.
@@ -119,6 +147,28 @@ Potential capabilities:
 Hygiene checks should surface issues for human review. Deterministic hygiene actions may run automatically only where their safety is clear. This area should reuse Kinema's typed conditions, scheduled/background execution, deterministic automated actions, archive and lifecycle safety, roles and permissions, and operational history as they mature.
 
 Destructive cleanup automation must never be casual: it requires clear administrator control, auditability, and, where appropriate, a preview or review path before action.
+
+## Administrator Impersonation / Ghost Mode
+
+**Goal:** Let an authorized administrator temporarily operate Kinema as another user in the same workspace for development, troubleshooting, support, and permission validation. It should make it practical to verify exactly what a user can see and do, reproduce reported issues, test role/capability and team/manager scope, and exercise My Work, Team Work, Analytics, and future row-scoped visibility from realistic perspectives.
+
+This is not a read-only "view as" feature. The intended internal/dogfooding version supports full-control operation: actions should behave as though the target user performed them. That makes it especially valuable before public SaaS launch, when builders need to switch rapidly among test users without departing from the real application.
+
+The design must distinguish two identities:
+
+- **Real actor:** the authenticated administrator who initiates the session.
+- **Effective user:** the workspace user whose perspective, permissions, and scope are evaluated for ordinary Kinema actions.
+
+The real actor must hold a dedicated capability such as `workspace.impersonate_users`, and impersonation must use strict same-workspace validation. It must never be implemented by logging in with another user's credentials or casually swapping tokens. Instead, it needs an explicit application-level identity context that retains both identities server-side. System and service identities must not be impersonable, and the effective user must never inherit the administrator's additional powers.
+
+Eventual safeguards include a persistent visual banner naming both identities, one-click exit, audited session start and end, and audit records for mutations made under impersonation that retain both real actor and effective user. A production support mode may additionally require a reason, detailed audit history, optional read-only support access, and separately designed platform-level customer-support safeguards for a future multi-tenant SaaS model.
+
+Likely staged delivery:
+
+- **V1:** Internal/admin-only, full-control, same-workspace impersonation with a strong indicator, easy exit, effective-user authorization, and a basic audit trail.
+- **Later:** Production support controls, reason capture, richer audit history, optional read-only support mode, and any platform-level support impersonation.
+
+This work depends on and should reinforce roles and capabilities, teams/reporting, Team Work and Analytics, future row-scoped visibility, audit logging, and production support tooling. It remains future direction, not a current capability.
 
 ## Other Later Areas
 

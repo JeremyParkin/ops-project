@@ -7,7 +7,7 @@ import type { EntityType } from "@/lib/domain/types";
 type WorkspaceNavigationProps = {
   entityTypes: EntityType[];
   activeEntityTypeId?: string;
-  activeSection?: "home" | "my-work" | "team-work" | "workflows" | "processes" | "create-entity" | "settings";
+  activeSection?: "home" | "my-work" | "team-work" | "analytics" | "workflows" | "processes" | "create-entity" | "settings";
   showArchivedEntities?: boolean;
 };
 
@@ -32,7 +32,7 @@ export async function WorkspaceNavigation({
       permissions?.capabilities.has("workspace.manage_roles") ||
       permissions?.capabilities.has("workspace.manage_organization"),
   );
-  const canViewTeamWork = Boolean(permissions?.capabilities.has("operations.view")) &&
+  const canViewManagerPortfolio = Boolean(permissions?.capabilities.has("operations.view")) &&
     (await listManagedPeopleContext({ workspaceId })).length > 0;
   const homeHref = showArchivedEntities ? "/?showArchivedEntities=true" : "/";
   const createEntityHref = showArchivedEntities
@@ -109,9 +109,14 @@ export async function WorkspaceNavigation({
         <Link href="/my-work" className={navigationLinkClass(activeSection === "my-work")}>
           My Work
         </Link>
-        {canViewTeamWork ? (
+        {canViewManagerPortfolio ? (
           <Link href="/team-work" className={navigationLinkClass(activeSection === "team-work")}>
             Team Work
+          </Link>
+        ) : null}
+        {canViewManagerPortfolio ? (
+          <Link href="/analytics" className={navigationLinkClass(activeSection === "analytics")}>
+            Analytics
           </Link>
         ) : null}
       </nav>
