@@ -16,7 +16,7 @@ create table workspace_role_capabilities (
   workspace_id uuid not null references workspaces(id) on delete cascade,
   role_id uuid not null,
   capability text not null check (capability in (
-    'workspace.manage_members', 'workspace.manage_roles', 'workspace.manage_settings',
+    'workspace.manage_members', 'workspace.manage_roles', 'workspace.manage_organization', 'workspace.manage_settings',
     'schema.manage', 'automation.manage', 'records.operate', 'processes.operate',
     'operations.view'
   )),
@@ -66,7 +66,7 @@ insert into workspace_role_capabilities (workspace_id, role_id, capability)
 select role.workspace_id, role.id, capability.capability
 from workspace_roles role
 cross join (values
-  ('workspace.manage_members'), ('workspace.manage_roles'), ('workspace.manage_settings'),
+  ('workspace.manage_members'), ('workspace.manage_roles'), ('workspace.manage_organization'), ('workspace.manage_settings'),
   ('schema.manage'), ('automation.manage'), ('records.operate'), ('processes.operate'), ('operations.view')
 ) as capability(capability)
 where role.name = 'Workspace administrator';

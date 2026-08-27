@@ -25,7 +25,7 @@ begin
   if not exists (select 1 from workspace_roles where workspace_id = p_workspace_id and id = p_role_id) then raise exception 'Role not found'; end if;
   if nullif(trim(p_name), '') is null or jsonb_typeof(p_capabilities) <> 'array' then raise exception 'Role name and capabilities are required'; end if;
   for v_capability in select jsonb_array_elements_text(p_capabilities) loop
-    if v_capability not in ('workspace.manage_members','workspace.manage_roles','workspace.manage_settings','schema.manage','automation.manage','records.operate','processes.operate','operations.view') then raise exception 'Invalid capability'; end if;
+    if v_capability not in ('workspace.manage_members','workspace.manage_roles','workspace.manage_organization','workspace.manage_settings','schema.manage','automation.manage','records.operate','processes.operate','operations.view') then raise exception 'Invalid capability'; end if;
   end loop;
   update workspace_roles set name = trim(p_name), description = nullif(trim(p_description), ''), updated_at = now() where workspace_id = p_workspace_id and id = p_role_id;
   delete from workspace_role_capabilities where workspace_id = p_workspace_id and role_id = p_role_id;

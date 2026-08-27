@@ -8,6 +8,7 @@ const E2E_NAME_PREFIX = "E2E";
 const E2E_ADMIN_CAPABILITIES = [
   "workspace.manage_members",
   "workspace.manage_roles",
+  "workspace.manage_organization",
   "workspace.manage_settings",
   "schema.manage",
   "automation.manage",

@@ -28,7 +28,8 @@ export async function WorkspaceNavigation({
   const permissions = await getWorkspacePermissionContext(workspaceId);
   const canManageWorkspace = Boolean(
     permissions?.capabilities.has("workspace.manage_members") ||
-      permissions?.capabilities.has("workspace.manage_roles"),
+      permissions?.capabilities.has("workspace.manage_roles") ||
+      permissions?.capabilities.has("workspace.manage_organization"),
   );
   const homeHref = showArchivedEntities ? "/?showArchivedEntities=true" : "/";
   const createEntityHref = showArchivedEntities
@@ -176,7 +177,7 @@ export async function WorkspaceNavigation({
                 href="/settings"
                 className={navigationLinkClass(activeSection === "settings")}
               >
-                Members and roles
+                Workspace settings
               </Link>
             ) : null}
             <Link

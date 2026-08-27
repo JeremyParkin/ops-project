@@ -22,6 +22,7 @@ const initialWorkspaceRoleActionState: WorkspaceRoleActionState = {
 const capabilityLabels: Record<WorkspaceCapability, string> = {
   "workspace.manage_members": "Manage members",
   "workspace.manage_roles": "Manage roles",
+  "workspace.manage_organization": "Manage teams and organization",
   "workspace.manage_settings": "Manage workspace settings",
   "schema.manage": "Manage entities and fields",
   "automation.manage": "Manage workflows and processes",

@@ -97,7 +97,7 @@ begin
   if nullif(trim(p_name), '') is null or jsonb_typeof(p_capabilities) <> 'array' then raise exception 'Role name and capabilities are required'; end if;
   insert into workspace_roles (id, workspace_id, name, description) values (v_role_id, p_workspace_id, trim(p_name), nullif(trim(p_description), ''));
   for v_capability in select jsonb_array_elements_text(p_capabilities) loop
-    if v_capability not in ('workspace.manage_members','workspace.manage_roles','workspace.manage_settings','schema.manage','automation.manage','records.operate','processes.operate','operations.view') then raise exception 'Invalid capability'; end if;
+    if v_capability not in ('workspace.manage_members','workspace.manage_roles','workspace.manage_organization','workspace.manage_settings','schema.manage','automation.manage','records.operate','processes.operate','operations.view') then raise exception 'Invalid capability'; end if;
     insert into workspace_role_capabilities (workspace_id, role_id, capability) values (p_workspace_id, v_role_id, v_capability);
   end loop;
   return v_role_id;

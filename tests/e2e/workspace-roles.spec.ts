@@ -8,7 +8,7 @@ import { createSupabaseTestClient } from "./helpers/supabase-test-data";
 test.use({ storageState: { cookies: [], origins: [] } });
 
 const capabilities = [
-  "workspace.manage_members", "workspace.manage_roles", "workspace.manage_settings",
+  "workspace.manage_members", "workspace.manage_roles", "workspace.manage_organization", "workspace.manage_settings",
   "schema.manage", "automation.manage", "records.operate", "processes.operate", "operations.view",
 ] as const;
 
@@ -234,12 +234,19 @@ test("enforces capability-gated reads, mutations, and direct role-management RPC
   expect(selfDelete.error?.message).toContain("cannot delete your own assigned role");
 
   const temporaryRole = await adminClient.rpc("create_workspace_role_authorized", {
-    p_workspace_id: fixture.workspaceId, p_name: "Temporary role", p_description: null, p_capabilities: [],
+    p_workspace_id: fixture.workspaceId, p_name: "Temporary role", p_description: null, p_capabilities: ["workspace.manage_organization"],
   });
   expect(temporaryRole.error).toBeNull();
   const { data: temporaryRoleRows, error: temporaryRoleError } = await createSupabaseTestClient()
     .from("workspace_roles").select("id").eq("workspace_id", fixture.workspaceId).eq("name", "Temporary role").single();
   expect(temporaryRoleError).toBeNull();
+  const { data: temporaryCapabilities, error: temporaryCapabilitiesError } = await createSupabaseTestClient()
+    .from("workspace_role_capabilities")
+    .select("capability")
+    .eq("workspace_id", fixture.workspaceId)
+    .eq("role_id", temporaryRoleRows!.id);
+  expect(temporaryCapabilitiesError).toBeNull();
+  expect(temporaryCapabilities).toEqual([{ capability: "workspace.manage_organization" }]);
   const assignment = await adminClient.rpc("set_workspace_member_role_authorized", {
     p_workspace_id: fixture.workspaceId, p_user_id: fixture.users.member.id, p_role_id: temporaryRoleRows!.id,
   });
@@ -273,7 +280,7 @@ test("serializes concurrent role changes and exposes management only through the
     : fixture.users["admin-a"];
   await signIn(page, survivingAdministrator);
   await page.goto("/settings");
-  await expect(page.getByRole("heading", { name: "Members and roles" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Workspace settings" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Members", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Roles", exact: true })).toBeVisible();
   await expect(page.getByLabel(`Role for ${fixture.users.member.email}`)).toBeVisible();

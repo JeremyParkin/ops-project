@@ -69,7 +69,7 @@ export async function listCurrentUserMemberships(): Promise<WorkspaceMembership[
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("workspace_memberships")
-    .select("workspace_id, workspaces!inner(name)")
+    .select("workspace_id, workspaces!workspace_memberships_workspace_id_fkey!inner(name)")
     .eq("user_id", user.id)
     .order("created_at");
 

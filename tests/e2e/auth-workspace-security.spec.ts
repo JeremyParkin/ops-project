@@ -22,7 +22,7 @@ type SecurityFixture = {
 };
 
 const allCapabilities = [
-  "workspace.manage_members", "workspace.manage_roles", "workspace.manage_settings",
+  "workspace.manage_members", "workspace.manage_roles", "workspace.manage_organization", "workspace.manage_settings",
   "schema.manage", "automation.manage", "records.operate", "processes.operate", "operations.view",
 ];
 

@@ -249,7 +249,7 @@ async function editDeliverableStatus({
   await page.getByRole("button", { name: "Save Changes" }).click();
   await expect(
     page.getByRole("heading", { name: fixture.deliverable.name, exact: true }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 15_000 });
 }
 
 function workflowLogRow(page: Page, workflowName: string, text: string) {

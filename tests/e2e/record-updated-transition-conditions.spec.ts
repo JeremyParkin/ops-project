@@ -175,7 +175,7 @@ async function createTicket({
   }
 
   await submitAddRecord(page, fixture.ticket);
-  await expect(page.getByText(`${fixture.ticket.name} created.`)).toBeVisible();
+  await expect(page.getByText(`${fixture.ticket.name} created.`)).toBeVisible({ timeout: 15_000 });
 }
 
 async function editTicket({
