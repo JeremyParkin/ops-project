@@ -1271,19 +1271,18 @@ function compareActiveMyWorkItems(left: MyWorkItem, right: MyWorkItem) {
     : left.stepRun.stepIndex - right.stepRun.stepIndex;
 }
 
-// "My Work" is a convenience filter over data every workspace member can
-// already see (via Process Run detail), not a new visibility boundary — the
-// current user is always resolved server-side via getCurrentUser(), never
-// accepted from the caller, so this can never be used to look up someone
-// else's assignments.
-export async function listMyWorkItems({
+// This is the shared projection behind personal My Work and the Phase 7C
+// management portfolio. It only includes active work and the same
+// deterministic pending successors My Work has always exposed.
+export async function listAssignedWorkItems({
   workspaceId,
+  assigneeUserIds,
 }: {
   workspaceId: string;
+  assigneeUserIds: string[];
 }): Promise<MyWorkSummary> {
-  const user = await getCurrentUser();
-
-  if (!user) {
+  const uniqueAssigneeUserIds = [...new Set(assigneeUserIds)];
+  if (uniqueAssigneeUserIds.length === 0) {
     return { overdue: [], readyNow: [], upcoming: [] };
   }
 
@@ -1298,7 +1297,7 @@ export async function listMyWorkItems({
     .from("process_step_runs")
     .select("*")
     .eq("workspace_id", workspaceId)
-    .eq("assignee_user_id", user.id)
+    .in("assignee_user_id", uniqueAssigneeUserIds)
     .in("status", ["active", "pending"])
     .returns<ProcessStepRunRow[]>();
 
@@ -1497,4 +1496,20 @@ export async function listMyWorkItems({
     readyNow,
     upcoming: items.filter((item) => item.stepRun.status === "pending"),
   };
+}
+
+// "My Work" is a convenience filter over data every workspace member can
+// already see (via Process Run detail), not a new visibility boundary — the
+// current user is always resolved server-side via getCurrentUser(), never
+// accepted from the caller.
+export async function listMyWorkItems({
+  workspaceId,
+}: {
+  workspaceId: string;
+}): Promise<MyWorkSummary> {
+  const user = await getCurrentUser();
+
+  return user
+    ? listAssignedWorkItems({ workspaceId, assigneeUserIds: [user.id] })
+    : { overdue: [], readyNow: [], upcoming: [] };
 }

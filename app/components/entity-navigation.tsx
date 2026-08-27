@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { signOut, switchActiveWorkspace } from "@/app/auth-actions";
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
+import { listManagedPeopleContext } from "@/lib/domain/workspace-organization-repository";
 import type { EntityType } from "@/lib/domain/types";
 
 type WorkspaceNavigationProps = {
   entityTypes: EntityType[];
   activeEntityTypeId?: string;
-  activeSection?: "home" | "my-work" | "workflows" | "processes" | "create-entity" | "settings";
+  activeSection?: "home" | "my-work" | "team-work" | "workflows" | "processes" | "create-entity" | "settings";
   showArchivedEntities?: boolean;
 };
 
@@ -31,6 +32,8 @@ export async function WorkspaceNavigation({
       permissions?.capabilities.has("workspace.manage_roles") ||
       permissions?.capabilities.has("workspace.manage_organization"),
   );
+  const canViewTeamWork = Boolean(permissions?.capabilities.has("operations.view")) &&
+    (await listManagedPeopleContext({ workspaceId })).length > 0;
   const homeHref = showArchivedEntities ? "/?showArchivedEntities=true" : "/";
   const createEntityHref = showArchivedEntities
     ? "/entities/new?showArchivedEntities=true"
@@ -106,6 +109,11 @@ export async function WorkspaceNavigation({
         <Link href="/my-work" className={navigationLinkClass(activeSection === "my-work")}>
           My Work
         </Link>
+        {canViewTeamWork ? (
+          <Link href="/team-work" className={navigationLinkClass(activeSection === "team-work")}>
+            Team Work
+          </Link>
+        ) : null}
       </nav>
       <div className="my-5 border-t border-slab" />
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-grit">

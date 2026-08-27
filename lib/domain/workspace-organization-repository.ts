@@ -33,6 +33,16 @@ export type WorkspacePersonIdentity = {
   email: string;
 };
 
+export type ManagedPersonTeamSource = {
+  teamId: string;
+  teamName: string;
+};
+
+export type ManagedPersonContext = WorkspacePersonIdentity & {
+  isDirectReport: boolean;
+  teamSources: ManagedPersonTeamSource[];
+};
+
 type WorkspaceTeamRow = {
   team_id: string;
   name: string;
@@ -66,6 +76,13 @@ type WorkspacePersonRow = {
   user_id: string;
   email: string;
   is_lead?: boolean;
+};
+
+type ManagedPersonContextRow = {
+  user_id: string;
+  email: string;
+  is_direct_report: boolean;
+  team_sources: Array<{ teamId: string; teamName: string }> | null;
 };
 
 function errorMessage(error: { message: string } | null, fallback: string) {
@@ -295,6 +312,28 @@ export async function listMyDirectReports({
   });
   if (error) throw new Error(error.message);
   return ((data ?? []) as WorkspacePersonRow[]).map((person) => ({ userId: person.user_id, email: person.email }));
+}
+
+// The database function derives this from the current authenticated user and
+// checks operations.view. Callers never submit people or team IDs as scope.
+export async function listManagedPeopleContext({
+  workspaceId,
+}: {
+  workspaceId: string;
+}): Promise<ManagedPersonContext[]> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("list_managed_people_context_authorized", {
+    p_workspace_id: workspaceId,
+  });
+
+  if (error) throw new Error(error.message);
+
+  return ((data ?? []) as ManagedPersonContextRow[]).map((person) => ({
+    userId: person.user_id,
+    email: person.email,
+    isDirectReport: person.is_direct_report,
+    teamSources: person.team_sources ?? [],
+  }));
 }
 
 export async function listMyTeamMembers({
