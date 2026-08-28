@@ -42,7 +42,7 @@ test("creates, edits, toggles, executes, and logs a workflow", async ({ page }) 
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger Entity"), {
     value: fixture.deliverable.id,
   });
@@ -70,14 +70,14 @@ test("creates, edits, toggles, executes, and logs a workflow", async ({ page }) 
     value: "constant",
   });
   await workflowConstantValue(page, fixture.task.fields.status).fill("Open");
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
 
   await expect(page).toHaveURL(/\/workflows$/);
   await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
 
   await page.getByRole("link", { name: workflowName }).click();
-  await page.getByLabel("Workflow Name").fill(`${workflowName} Edited`);
-  await page.getByRole("button", { name: "Save Workflow" }).click();
+  await page.getByLabel("Automation Name").fill(`${workflowName} Edited`);
+  await page.getByRole("button", { name: "Save Automation" }).click();
   workflowName = `${workflowName} Edited`;
   await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
 

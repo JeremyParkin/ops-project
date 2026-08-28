@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import {
   addFieldDefinition,
@@ -22,7 +22,7 @@ import {
   PageHeader,
   WorkspacePageLayout,
 } from "@/app/components/page-primitives";
-import { getActiveWorkspaceId } from "@/lib/auth/workspace";
+import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import {
   getEntityContext,
   listEntityTypes,
@@ -245,13 +245,17 @@ export default async function EntityPage({
   const showArchivedEntities = showArchivedEntitiesParam === "true";
   const showArchivedFields = showArchivedFieldsParam === "true";
   const { workspaceId } = await getActiveWorkspaceId();
-  const pageData = await loadEntityPageData({
-    workspaceId,
-    entityTypeId,
-    showArchivedRecords,
-    showArchivedEntities,
-    showArchivedFields,
-  });
+  const [pageData, permissions] = await Promise.all([
+    loadEntityPageData({
+      workspaceId,
+      entityTypeId,
+      showArchivedRecords,
+      showArchivedEntities,
+      showArchivedFields,
+    }),
+    getWorkspacePermissionContext(workspaceId),
+  ]);
+  const canManageSchema = Boolean(permissions?.capabilities.has("schema.manage"));
 
   if (!pageData) {
     notFound();
@@ -284,7 +288,12 @@ export default async function EntityPage({
     records,
   });
   const isArchivedEntity = Boolean(entityType.archivedAt);
-  const isManaging = manageParam === "true" || isArchivedEntity;
+  // Schema-management content (settings/field forms) is only ever shown to a
+  // canManageSchema caller. Archived entities used to force isManaging on
+  // for everyone who could merely view them; that's now capability-gated
+  // too, so an unauthorized viewer of an archived entity gets the plain
+  // read-only records view instead of admin forms it can't submit anyway.
+  const isManaging = (manageParam === "true" || isArchivedEntity) && canManageSchema;
   const entityNameById = Object.fromEntries(
     allEntityTypes.map((listedEntityType) => [
       listedEntityType.id,
@@ -352,6 +361,14 @@ export default async function EntityPage({
     archivedEntityQuery,
   ]);
 
+  // Canonicalize away from an explicit ?manage=true rather than merely
+  // hiding the management controls: a schema.manage-less caller who
+  // requests it directly lands on the same URL an authorized "Return to
+  // records" click would use, not a partial/hidden management page.
+  if (manageParam === "true" && !canManageSchema) {
+    redirect(recordsHref);
+  }
+
   const emptyState =
     evaluatedView.records.length === 0
       ? selectedView && records.length > 0
@@ -374,15 +391,15 @@ export default async function EntityPage({
       />}
     >
         <PageHeader
-          eyebrow="Entity"
+          eyebrow="Business object"
           title={entityType.name}
           description={entityType.description}
-          actions={!isArchivedEntity ? (
+          actions={!isArchivedEntity && canManageSchema ? (
             <Link
               href={isManaging ? recordsHref : manageEntityHref}
               className="inline-flex h-10 items-center justify-center border border-slate-300 px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"
             >
-              {isManaging ? "Return to records" : "Manage entity"}
+              {isManaging ? "Return to records" : "Manage"}
             </Link>
           ) : undefined}
         />

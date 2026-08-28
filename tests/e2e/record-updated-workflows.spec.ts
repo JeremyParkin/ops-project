@@ -69,7 +69,7 @@ async function createRecordUpdatedWorkflow({
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger", { exact: true }), {
     value: "record_updated",
   });
@@ -128,7 +128,7 @@ async function createRecordUpdatedWorkflow({
     }
   }
 
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
   await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
 }
 

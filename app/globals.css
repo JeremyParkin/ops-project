@@ -19,6 +19,13 @@
   --color-slab: #2e2c27;
   --color-stone: #55534d;
   --color-grit: #8a877f;
+  /* Same warm-gray family as grit/chalk, lighter than grit specifically for
+     inactive text on the dark (graphite/slab) sidebar ground: grit-on-
+     graphite computes to ~4.8:1 (barely clears WCAG AA's 4.5:1 for normal
+     text, reads weak in practice); grit-light computes to ~6.5:1 there.
+     Not intended for use on the paper ground, where grit already has ample
+     contrast. */
+  --color-grit-light: #a39e92;
   --color-chalk: #ddd9cf;
   --color-paper: #f4f1ea;
 

@@ -159,7 +159,7 @@ async function createMultiActionWorkflow({
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
 
   if (triggerType === "record_updated") {
     await selectReactOption(page.getByLabel("Trigger", { exact: true }), {
@@ -198,7 +198,7 @@ async function createMultiActionWorkflow({
     await configureAction({ page, index, action });
   }
 
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
   await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
 }
 
@@ -502,7 +502,7 @@ test("reordering actions with Move Up changes execution order", async ({ page })
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger Entity", { exact: true }), {
     value: fixture.deliverable.id,
   });
@@ -532,7 +532,7 @@ test("reordering actions with Move Up changes execution order", async ({ page })
   // final status should end up "First" instead of the unswapped "Second".
   await actionBlock(page, 1).getByRole("button", { name: "Move Up" }).click();
 
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
   await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
 
   await createDeliverable({
@@ -554,7 +554,7 @@ test("removing an action before saving means it never executes", async ({ page }
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger Entity", { exact: true }), {
     value: fixture.deliverable.id,
   });
@@ -589,7 +589,7 @@ test("removing an action before saving means it never executes", async ({ page }
     .getByRole("button", { name: "Remove Action" })
     .click();
 
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
   await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
 
   await createDeliverable({
@@ -641,7 +641,7 @@ test("a legacy single-action workflow migrated to actions[] still loads, edits, 
   expect(workflowError).toBeNull();
 
   await page.goto(`/workflows/${workflow!.id}/edit`);
-  await expect(page.getByLabel("Workflow Name")).toHaveValue(workflowName);
+  await expect(page.getByLabel("Automation Name")).toHaveValue(workflowName);
   await expect(
     actionBlock(page, 0).getByLabel("Action", { exact: true }),
   ).toHaveValue("update_record");
@@ -652,8 +652,8 @@ test("a legacy single-action workflow migrated to actions[] still loads, edits, 
     workflowConstantValue(page, fixture.deliverable.fields.status),
   ).toHaveValue("Legacy Applied");
 
-  await page.getByLabel("Workflow Name").fill(`${workflowName} Edited`);
-  await page.getByRole("button", { name: "Save Workflow" }).click();
+  await page.getByLabel("Automation Name").fill(`${workflowName} Edited`);
+  await page.getByRole("button", { name: "Save Automation" }).click();
   await expect(
     page.getByRole("link", { name: `${workflowName} Edited` }),
   ).toBeVisible();
@@ -676,7 +676,7 @@ test("submitting a duplicate actionId is rejected server-side", async ({ page })
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger Entity", { exact: true }), {
     value: fixture.deliverable.id,
   });
@@ -689,7 +689,7 @@ test("submitting a duplicate actionId is rejected server-side", async ({ page })
     .locator('input[name="actionId"]')
     .first()
     .inputValue();
-  const createButton = page.getByRole("button", { name: "Create Workflow" });
+  const createButton = page.getByRole("button", { name: "Create Automation" });
 
   // Scope to the submit button's own form — the page also renders the
   // workspace navigation's search form earlier in the DOM, which a bare

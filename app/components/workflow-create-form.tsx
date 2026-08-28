@@ -391,7 +391,7 @@ export function WorkflowDefinitionForm({
     <section className="w-full max-w-5xl border border-slate-200 bg-white p-5">
       <div className="mb-6">
         <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
-          {mode === "create" ? "New Workflow" : "Edit Workflow"}
+          {mode === "create" ? "New Automation" : "Edit Automation"}
         </p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-950">
           Create Record Automation
@@ -900,7 +900,7 @@ function WorkflowDefinitionFormFields({
             htmlFor="workflowName"
             className="block text-sm font-medium text-slate-800"
           >
-            Workflow Name
+            Automation Name
           </label>
           <input
             id="workflowName"
@@ -1699,8 +1699,8 @@ function WorkflowDefinitionFormFields({
         {pending
           ? "Saving..."
           : mode === "create"
-            ? "Create Workflow"
-            : "Save Workflow"}
+            ? "Create Automation"
+            : "Save Automation"}
       </button>
     </>
   );

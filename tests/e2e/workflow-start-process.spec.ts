@@ -230,7 +230,7 @@ async function createStartProcessWorkflow({
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(name);
+  await page.getByLabel("Automation Name").fill(name);
   await selectReactOption(page.getByLabel("Trigger Entity", { exact: true }), {
     value: entity.id,
   });
@@ -250,7 +250,7 @@ async function createStartProcessWorkflow({
   await selectReactOption(page.getByLabel("Process Template", { exact: true }), {
     value: templateId,
   });
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
   await expect(page.getByRole("link", { name })).toBeVisible();
 }
 
@@ -294,7 +294,7 @@ test("Start Process lists compatible templates and starts the canonical snapshot
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger Entity", { exact: true }), {
     value: deliverable.id,
   });
@@ -306,7 +306,7 @@ test("Start Process lists compatible templates and starts the canonical snapshot
   await expect(templateSelect).not.toContainText(incompatibleTemplate.name);
   await expect(templateSelect).not.toContainText(archivedTemplate.name);
   await selectReactOption(templateSelect, { value: template.id });
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
   await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
 
   const record = await createDeliverable(

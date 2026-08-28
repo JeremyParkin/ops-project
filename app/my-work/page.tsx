@@ -14,7 +14,15 @@ export const dynamic = "force-dynamic";
 
 // "Ready now" rows get a restrained Brass Deep left edge — the one
 // deliberate accent on this page — "Upcoming" rows stay plain and quiet.
-function MyWorkItemRow({ item, primary }: { item: MyWorkItem; primary: boolean }) {
+function MyWorkItemRow({
+  item,
+  primary,
+  originEntityTypeName,
+}: {
+  item: MyWorkItem;
+  primary: boolean;
+  originEntityTypeName?: string;
+}) {
   return (
     <li
       className={`border border-grit p-3 ${primary ? "border-l-4 border-l-brass-deep" : ""}`}
@@ -24,12 +32,12 @@ function MyWorkItemRow({ item, primary }: { item: MyWorkItem; primary: boolean }
         <p className="mt-1 text-xs font-medium uppercase tracking-wide text-brass-deep">Approval</p>
       ) : null}
       <p className="mt-1 text-sm text-stone">{item.run.processTemplateName}</p>
-      <Link
-        href={item.originHref}
-        className="mt-1 inline-block text-sm text-stone underline-offset-4 hover:underline"
-      >
-        {item.originRecordLabel}
-      </Link>
+      <p className="mt-1 text-sm text-stone">
+        <Link href={item.originHref} className="underline-offset-4 hover:underline">
+          {item.originRecordLabel}
+        </Link>
+        {originEntityTypeName ? ` · ${originEntityTypeName}` : ""}
+      </p>
       {item.stepRun.dueAt ? (
         <p className="mt-1 text-xs font-medium text-stone">
           <ProcessDueAt dueAt={item.stepRun.dueAt} />
@@ -53,10 +61,14 @@ function MyWorkItemRow({ item, primary }: { item: MyWorkItem; primary: boolean }
 
 export default async function MyWorkPage() {
   const { workspaceId } = await getActiveWorkspaceId();
-  const [entityTypes, summary] = await Promise.all([
+  const [entityTypes, allEntityTypes, summary] = await Promise.all([
     listEntityTypes({ workspaceId }),
+    listEntityTypes({ workspaceId, includeArchived: true }),
     listMyWorkItems({ workspaceId }),
   ]);
+  const entityTypeNameById = new Map(
+    allEntityTypes.map((entityType) => [entityType.id, entityType.name]),
+  );
 
   return (
     <WorkspacePageLayout
@@ -74,11 +86,16 @@ export default async function MyWorkPage() {
           description={`${summary.overdue.length} step${summary.overdue.length === 1 ? "" : "s"}`}
         />
         {summary.overdue.length === 0 ? (
-          <p className="mt-4 text-sm text-stone">No overdue steps.</p>
+          <p className="mt-4 text-sm text-stone">Nothing overdue. You&apos;re on track.</p>
         ) : (
           <ul className="mt-4 flex flex-col gap-3">
             {summary.overdue.map((item) => (
-              <MyWorkItemRow key={item.stepRun.id} item={item} primary />
+              <MyWorkItemRow
+                key={item.stepRun.id}
+                item={item}
+                primary
+                originEntityTypeName={entityTypeNameById.get(item.run.originEntityTypeId)}
+              />
             ))}
           </ul>
         )}
@@ -94,7 +111,12 @@ export default async function MyWorkPage() {
         ) : (
           <ul className="mt-4 flex flex-col gap-3">
             {summary.readyNow.map((item) => (
-              <MyWorkItemRow key={item.stepRun.id} item={item} primary />
+              <MyWorkItemRow
+                key={item.stepRun.id}
+                item={item}
+                primary
+                originEntityTypeName={entityTypeNameById.get(item.run.originEntityTypeId)}
+              />
             ))}
           </ul>
         )}
@@ -110,7 +132,12 @@ export default async function MyWorkPage() {
         ) : (
           <ul className="mt-4 flex flex-col gap-3">
             {summary.upcoming.map((item) => (
-              <MyWorkItemRow key={item.stepRun.id} item={item} primary={false} />
+              <MyWorkItemRow
+                key={item.stepRun.id}
+                item={item}
+                primary={false}
+                originEntityTypeName={entityTypeNameById.get(item.run.originEntityTypeId)}
+              />
             ))}
           </ul>
         )}

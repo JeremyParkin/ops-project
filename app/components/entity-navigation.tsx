@@ -15,7 +15,7 @@ function navigationLinkClass(isActive: boolean) {
   return `px-3 py-2 text-sm font-medium ${
     isActive
       ? "bg-brass text-graphite"
-      : "text-grit hover:bg-slab hover:text-chalk"
+      : "text-grit-light hover:bg-slab hover:text-chalk"
   }`;
 }
 
@@ -27,12 +27,16 @@ export async function WorkspaceNavigation({
 }: WorkspaceNavigationProps) {
   const { memberships, workspaceId } = await getActiveWorkspaceId();
   const permissions = await getWorkspacePermissionContext(workspaceId);
+  const capabilities = permissions?.capabilities;
   const canManageWorkspace = Boolean(
-    permissions?.capabilities.has("workspace.manage_members") ||
-      permissions?.capabilities.has("workspace.manage_roles") ||
-      permissions?.capabilities.has("workspace.manage_organization"),
+    capabilities?.has("workspace.manage_members") ||
+      capabilities?.has("workspace.manage_roles") ||
+      capabilities?.has("workspace.manage_organization"),
   );
-  const canViewManagerPortfolio = Boolean(permissions?.capabilities.has("operations.view")) &&
+  const canManageSchema = Boolean(capabilities?.has("schema.manage"));
+  const canManageAutomation = Boolean(capabilities?.has("automation.manage"));
+  const canConfigure = canManageWorkspace || canManageSchema || canManageAutomation;
+  const canViewManagerPortfolio = Boolean(capabilities?.has("operations.view")) &&
     (await listManagedPeopleContext({ workspaceId })).length > 0;
   const homeHref = showArchivedEntities ? "/?showArchivedEntities=true" : "/";
   const createEntityHref = showArchivedEntities
@@ -84,24 +88,6 @@ export async function WorkspaceNavigation({
           </button>
         </form>
       ) : null}
-      <form action="/search" method="get" className="mb-5 flex gap-2">
-        <label className="sr-only" htmlFor="workspace-record-search">
-          Search records
-        </label>
-        <input
-          id="workspace-record-search"
-          name="q"
-          type="search"
-          className="min-w-0 flex-1 border border-grit bg-paper px-2 py-1.5 text-sm text-graphite placeholder:text-stone"
-          placeholder="Search records"
-        />
-        <button
-          type="submit"
-          className="border border-grit px-2 py-1.5 text-sm font-medium text-chalk hover:bg-slab"
-        >
-          Search
-        </button>
-      </form>
       <nav className="flex flex-col gap-1" aria-label="Workspace navigation">
         <Link href={homeHref} className={navigationLinkClass(activeSection === "home")}>
           Home
@@ -120,9 +106,27 @@ export async function WorkspaceNavigation({
           </Link>
         ) : null}
       </nav>
+      <form action="/search" method="get" className="mt-3 flex gap-2">
+        <label className="sr-only" htmlFor="workspace-record-search">
+          Search records
+        </label>
+        <input
+          id="workspace-record-search"
+          name="q"
+          type="search"
+          className="min-w-0 flex-1 border border-grit bg-paper px-2 py-1.5 text-sm text-graphite placeholder:text-stone"
+          placeholder="Search records"
+        />
+        <button
+          type="submit"
+          className="border border-grit px-2 py-1.5 text-sm font-medium text-chalk hover:bg-slab"
+        >
+          Search
+        </button>
+      </form>
       <div className="my-5 border-t border-slab" />
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-grit">
-        Entities
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-grit-light">
+        Business objects
       </div>
       <nav className="flex flex-col gap-1" aria-label="Entity navigation">
         {entityTypes.map((entityType) => {
@@ -143,7 +147,7 @@ export async function WorkspaceNavigation({
                 {entityType.archivedAt ? (
                   <span
                     className={`text-xs uppercase tracking-wide ${
-                      isActive ? "text-graphite/70" : "text-grit"
+                      isActive ? "text-graphite/70" : "text-grit-light"
                     }`}
                   >
                     Archived
@@ -155,56 +159,66 @@ export async function WorkspaceNavigation({
         })}
       </nav>
       <div className="mt-4 border-t border-slab pt-4">
-        <details
-          open={
-            activeSection === "workflows" ||
-            activeSection === "processes" ||
-            activeSection === "create-entity" ||
-            activeSection === "settings"
-          }
-        >
-          <summary className="cursor-pointer text-sm font-semibold text-chalk">
-            Workspace setup
-          </summary>
-          <nav className="mt-2 flex flex-col gap-1" aria-label="Workspace setup">
-            <Link
-              href="/workflows"
-              className={navigationLinkClass(activeSection === "workflows")}
-            >
-              Workflows
-            </Link>
-            <Link
-              href="/processes"
-              className={navigationLinkClass(activeSection === "processes")}
-            >
-              Processes
-            </Link>
-            <Link
-              href={createEntityHref}
-              className={navigationLinkClass(activeSection === "create-entity")}
-            >
-              Create entity
-            </Link>
-            {canManageWorkspace ? (
-              <Link
-                href="/settings"
-                className={navigationLinkClass(activeSection === "settings")}
-              >
-                Workspace settings
-              </Link>
-            ) : null}
-            <Link
-              href={archiveToggleHref}
-              className="px-3 py-2 text-sm font-medium text-grit hover:bg-slab hover:text-chalk"
-            >
-              {showArchivedEntities ? "Hide archived entities" : "Archived entities"}
-            </Link>
-          </nav>
-        </details>
-        <form action={signOut} className="mt-3">
+        {canConfigure ? (
+          <details
+            open={
+              activeSection === "workflows" ||
+              activeSection === "processes" ||
+              activeSection === "create-entity" ||
+              activeSection === "settings"
+            }
+          >
+            <summary className="cursor-pointer text-sm font-semibold text-chalk">
+              Configure
+            </summary>
+            <nav className="mt-2 flex flex-col gap-1" aria-label="Configure">
+              {canManageAutomation ? (
+                <Link
+                  href="/workflows"
+                  className={navigationLinkClass(activeSection === "workflows")}
+                >
+                  Automations
+                </Link>
+              ) : null}
+              {canManageAutomation ? (
+                <Link
+                  href="/processes"
+                  className={navigationLinkClass(activeSection === "processes")}
+                >
+                  Processes
+                </Link>
+              ) : null}
+              {canManageSchema ? (
+                <Link
+                  href={createEntityHref}
+                  className={navigationLinkClass(activeSection === "create-entity")}
+                >
+                  Data model
+                </Link>
+              ) : null}
+              {canManageWorkspace ? (
+                <Link
+                  href="/settings"
+                  className={navigationLinkClass(activeSection === "settings")}
+                >
+                  Workspace settings
+                </Link>
+              ) : null}
+              {canManageSchema ? (
+                <Link
+                  href={archiveToggleHref}
+                  className="px-3 py-2 text-sm font-medium text-grit-light hover:bg-slab hover:text-chalk"
+                >
+                  {showArchivedEntities ? "Hide archived entities" : "Archived entities"}
+                </Link>
+              ) : null}
+            </nav>
+          </details>
+        ) : null}
+        <form action={signOut} className={canConfigure ? "mt-3" : ""}>
           <button
             type="submit"
-            className="text-sm font-medium text-grit underline-offset-4 hover:text-chalk hover:underline"
+            className="text-sm font-medium text-grit-light underline-offset-4 hover:text-chalk hover:underline"
           >
             Sign out
           </button>

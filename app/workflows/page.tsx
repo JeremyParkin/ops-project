@@ -65,7 +65,7 @@ export default async function WorkflowsPage() {
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
-                Workflows
+                Configure
               </p>
               <h1 className="mt-2 text-3xl font-semibold text-slate-950">
                 Automations
@@ -75,7 +75,7 @@ export default async function WorkflowsPage() {
               href="/workflows/new"
               className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
             >
-              New Workflow
+              New Automation
             </Link>
           </div>
 
@@ -155,7 +155,7 @@ export default async function WorkflowsPage() {
                 {workflows.length === 0 ? (
                   <tr>
                     <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                      No workflows yet.
+                      No automations yet.
                     </td>
                   </tr>
                 ) : null}
@@ -173,7 +173,7 @@ export default async function WorkflowsPage() {
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
                   <th className="border-b border-slate-200 px-4 py-3 font-medium">
-                    Workflow
+                    Automation
                   </th>
                   <th className="border-b border-slate-200 px-4 py-3 font-medium">
                     Status
@@ -190,7 +190,7 @@ export default async function WorkflowsPage() {
                 {logs.map((log) => (
                   <tr key={log.id}>
                     <td className="px-4 py-3">
-                      {workflowNameById.get(log.workflowId) ?? "Workflow"}
+                      {workflowNameById.get(log.workflowId) ?? "Automation"}
                     </td>
                     <td className="px-4 py-3">{log.status}</td>
                     <td className="px-4 py-3">

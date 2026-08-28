@@ -73,7 +73,7 @@ async function createTransitionWorkflow({
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger", { exact: true }), {
     value: "record_updated",
   });
@@ -148,7 +148,7 @@ async function createTransitionWorkflow({
     }
   }
 
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
   await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
 }
 
@@ -531,7 +531,7 @@ test("server-side validation rejects a transition condition on an unwatched fiel
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger", { exact: true }), {
     value: "record_updated",
   });
@@ -573,7 +573,7 @@ test("server-side validation rejects a transition condition on an unwatched fiel
   await expect(watchedCheckbox).toBeChecked();
   await watchedCheckbox.uncheck();
 
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
 
   await expect(page.getByText("Please fix the highlighted fields.")).toBeVisible();
   await expect(page.getByText(/must be a watched field/i)).toBeVisible();
@@ -625,7 +625,7 @@ test("0 and false are treated as real transition values, not unset", async ({ pa
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger", { exact: true }), {
     value: "record_updated",
   });
@@ -669,7 +669,7 @@ test("0 and false are treated as real transition values, not unset", async ({ pa
     value: "false",
   });
 
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
   await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
 
   await gotoEntity(page, counter);

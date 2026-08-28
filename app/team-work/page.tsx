@@ -14,7 +14,15 @@ import { listEntityTypes } from "@/lib/domain/metadata-repository";
 
 export const dynamic = "force-dynamic";
 
-function TeamWorkRow({ item, attention }: { item: ManagedWorkItem; attention: string }) {
+function TeamWorkRow({
+  item,
+  attention,
+  originEntityTypeName,
+}: {
+  item: ManagedWorkItem;
+  attention: string;
+  originEntityTypeName?: string;
+}) {
   const provenance = [
     ...(item.person.isDirectReport ? ["Direct report"] : []),
     ...item.person.teamSources.map((team) => `Team: ${team.teamName}`),
@@ -39,6 +47,7 @@ function TeamWorkRow({ item, attention }: { item: ManagedWorkItem; attention: st
         <Link href={item.originHref} className="underline-offset-4 hover:text-graphite hover:underline">
           {item.originRecordLabel}
         </Link>
+        {originEntityTypeName ? ` · ${originEntityTypeName}` : ""}
       </td>
       <td className="p-3 text-sm text-stone">
         {item.stepRun.dueAt ? <ProcessDueAt dueAt={item.stepRun.dueAt} /> : "No due date"}
@@ -62,10 +71,12 @@ function WorkSection({
   title,
   description,
   items,
+  entityTypeNameById,
 }: {
   title: string;
   description: string;
   items: ManagedWorkItem[];
+  entityTypeNameById: Map<string, string>;
 }) {
   return (
     <section className="mx-auto w-full max-w-6xl border border-grit bg-white p-5">
@@ -87,7 +98,12 @@ function WorkSection({
             </thead>
             <tbody>
               {items.map((item) => (
-                <TeamWorkRow key={item.stepRun.id} item={item} attention={title} />
+                <TeamWorkRow
+                  key={item.stepRun.id}
+                  item={item}
+                  attention={title}
+                  originEntityTypeName={entityTypeNameById.get(item.run.originEntityTypeId)}
+                />
               ))}
             </tbody>
           </table>
@@ -109,11 +125,15 @@ export default async function TeamWorkPage({
     redirect("/");
   }
 
-  const [entityTypes, people, params] = await Promise.all([
+  const [entityTypes, allEntityTypes, people, params] = await Promise.all([
     listEntityTypes({ workspaceId }),
+    listEntityTypes({ workspaceId, includeArchived: true }),
     getManagedPeopleContext({ workspaceId }),
     searchParams,
   ]);
+  const entityTypeNameById = new Map(
+    allEntityTypes.map((entityType) => [entityType.id, entityType.name]),
+  );
 
   if (people.length === 0) {
     redirect("/");
@@ -182,9 +202,9 @@ export default async function TeamWorkPage({
         ))}
       </section>
 
-      <WorkSection title="Overdue" description={`${portfolio.overdue.length} active step${portfolio.overdue.length === 1 ? "" : "s"}`} items={portfolio.overdue} />
-      <WorkSection title="Ready now" description={`${portfolio.readyNow.length} active step${portfolio.readyNow.length === 1 ? "" : "s"}`} items={portfolio.readyNow} />
-      <WorkSection title="Upcoming" description={`${portfolio.upcoming.length} deterministically reachable step${portfolio.upcoming.length === 1 ? "" : "s"}`} items={portfolio.upcoming} />
+      <WorkSection title="Overdue" description={`${portfolio.overdue.length} active step${portfolio.overdue.length === 1 ? "" : "s"}`} items={portfolio.overdue} entityTypeNameById={entityTypeNameById} />
+      <WorkSection title="Ready now" description={`${portfolio.readyNow.length} active step${portfolio.readyNow.length === 1 ? "" : "s"}`} items={portfolio.readyNow} entityTypeNameById={entityTypeNameById} />
+      <WorkSection title="Upcoming" description={`${portfolio.upcoming.length} deterministically reachable step${portfolio.upcoming.length === 1 ? "" : "s"}`} items={portfolio.upcoming} entityTypeNameById={entityTypeNameById} />
     </WorkspacePageLayout>
   );
 }

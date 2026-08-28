@@ -68,10 +68,10 @@ export function EntityCreateForm({
     <section className="w-full max-w-4xl border border-slate-200 bg-white p-5">
       <div className="mb-6">
         <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
-          New Entity
+          Data model
         </p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-950">
-          Define Entity Type
+          Create object
         </h1>
         {state.message ? (
           <p className="mt-2 text-sm text-red-700" role="status">
@@ -266,7 +266,7 @@ function EntityCreateFormFields({
                       htmlFor={`fieldRelatedEntityTypeId:${field.rowId}`}
                       className="block text-sm font-medium text-slate-800"
                     >
-                      Related Entity
+                      Related object
                     </label>
                     <select
                       id={`fieldRelatedEntityTypeId:${field.rowId}`}
@@ -341,7 +341,7 @@ function EntityCreateFormFields({
           disabled={pending}
           className="inline-flex h-10 w-fit items-center justify-center bg-brass px-4 text-sm font-medium text-graphite disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone"
         >
-          {pending ? "Creating..." : "Create Entity"}
+          {pending ? "Creating..." : "Create object"}
         </button>
     </>
   );

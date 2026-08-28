@@ -61,7 +61,7 @@ async function createRelatedWorkflow({
   await page.goto("/workflows/new");
   await page.waitForLoadState("networkidle");
   await waitForWorkflowFormReady(page);
-  await page.getByLabel("Workflow Name").fill(workflowName);
+  await page.getByLabel("Automation Name").fill(workflowName);
   await selectReactOption(page.getByLabel("Trigger", { exact: true }), {
     value: triggerType,
   });
@@ -95,7 +95,7 @@ async function createRelatedWorkflow({
     );
   }
 
-  await page.getByRole("button", { name: "Create Workflow" }).click();
+  await page.getByRole("button", { name: "Create Automation" }).click();
   if (expectCreated) {
     await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
   }

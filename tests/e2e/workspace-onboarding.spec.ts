@@ -94,10 +94,10 @@ test("empty workspace onboarding creates Clients, Projects, and Tasks atomically
   await expect(page.getByRole("heading", { name: "Project", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Task", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Add Project" })).toBeVisible();
-  await page.getByText("Workspace setup", { exact: true }).click();
-  await expect(page.getByRole("link", { name: "Workflows", exact: true })).toBeVisible();
+  await page.getByText("Configure", { exact: true }).click();
+  await expect(page.getByRole("link", { name: "Automations", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Project", exact: true }).click();
-  await page.getByRole("link", { name: "Manage entity" }).click();
+  await page.getByRole("link", { name: "Manage", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Entity Settings" })).toBeVisible();
 
   const admin = createSupabaseTestClient();
@@ -154,9 +154,9 @@ test("archived-only workspaces remain established and do not re-enter onboarding
   });
   expect(error).toBeNull();
 
-  await activateWorkspace(page, workspaceId, "No active entities yet.");
+  await activateWorkspace(page, workspaceId, "No active business objects yet.");
   await expect(page.getByRole("heading", { name: "Set up your workspace" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "No active entities yet." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No active business objects yet." })).toBeVisible();
 });
 
 test("standalone structures omit unavailable relations and custom setup uses the existing form", async ({
@@ -165,7 +165,7 @@ test("standalone structures omit unavailable relations and custom setup uses the
   const workspaceId = await createWorkspaceForUser(await getRunnerUserId());
   await activateWorkspace(page, workspaceId);
   await page.getByRole("link", { name: "Start from scratch" }).click();
-  await expect(page.getByRole("heading", { name: "Define Entity Type" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create object" })).toBeVisible();
 
   await page.goto("/");
   await page.getByText("Tasks", { exact: true }).click();
