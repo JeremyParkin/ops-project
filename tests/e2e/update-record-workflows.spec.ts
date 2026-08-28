@@ -12,6 +12,7 @@ import {
 import {
   addRecordSection,
   chooseRecordField,
+  expectAfterMutation,
   fillRecordField,
   gotoEntity,
   rowForText,
@@ -133,7 +134,11 @@ async function createUpdateRecordWorkflow({
   }
 
   await page.getByRole("button", { name: "Create Automation" }).click();
-  await expect(page.getByRole("link", { name: workflowName })).toBeVisible();
+  // Post-submit: the workflow create form's Server Action redirects back to
+  // the automations list, which re-fetches and re-renders -- observed to
+  // occasionally exceed the default 5s timeout under full-suite load (same
+  // signature as the other sites already using this helper).
+  await expectAfterMutation(page.getByRole("link", { name: workflowName }));
 }
 
 async function createTicket({

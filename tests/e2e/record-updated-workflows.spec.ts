@@ -12,6 +12,7 @@ import {
 import {
   addRecordSection,
   chooseRecordField,
+  expectAfterMutation,
   expectTableValue,
   fillRecordField,
   gotoEntity,
@@ -190,7 +191,10 @@ async function createTicket({
   }
 
   await submitAddRecord(page, fixture.ticket);
-  await expect(page.getByText(`${fixture.ticket.name} created.`)).toBeVisible();
+  // Post-submit: the create form's Server Action round-trip -- occasionally
+  // exceeds the default 5s timeout under full-suite load (documented flake
+  // history).
+  await expectAfterMutation(page.getByText(`${fixture.ticket.name} created.`));
 }
 
 async function editTicket({

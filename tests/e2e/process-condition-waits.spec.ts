@@ -13,6 +13,7 @@ import {
   type TestRun,
 } from "./helpers/supabase-test-data";
 import { requireE2eEnv } from "./helpers/env";
+import { expectAfterMutation } from "./helpers/ui";
 
 test.describe.configure({ mode: "serial" });
 
@@ -339,7 +340,10 @@ test("resumes a condition wait after a workflow-originated record update", async
   await page.goto(`/entities/${entity.id}/records/${recordId}/edit`);
   await page.locator(`[name="${entity.fields.trigger.key}"]`).fill("go");
   await page.getByRole("button", { name: "Save Changes" }).click();
-  await expect(page.getByRole("heading", { name: entity.name, exact: true })).toBeVisible();
+  // Post-submit: record-edit's Server Action redirects back to the entity
+  // page, which re-fetches and re-renders -- occasionally exceeds the
+  // default 5s timeout under full-suite load (documented flake history).
+  await expectAfterMutation(page.getByRole("heading", { name: entity.name, exact: true }));
 
   await dispatchWakeups();
   expect((await stepsForRun(processRunId)).find((step) => step.id === conditionStep.id)?.status).toBe("completed");

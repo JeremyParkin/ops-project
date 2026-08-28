@@ -7,6 +7,7 @@ import {
   createEntityRecord,
   createSupabaseTestClient,
   createTestRun,
+  deleteE2eUsers,
   DEMO_WORKSPACE_ID,
   type TestEntity,
   type TestRun,
@@ -302,9 +303,10 @@ test.describe("capability-gated Configure navigation", () => {
     } finally {
       const { error: cleanupError } = await admin.from("workspaces").delete().eq("id", workspaceId);
       expect(cleanupError).toBeNull();
-      for (const user of [worker, schemaManager, automationManager, fullAdmin]) {
-        await admin.auth.admin.deleteUser(user.id);
-      }
+      await deleteE2eUsers(
+        [worker, schemaManager, automationManager, fullAdmin].map((user) => user.id),
+        admin,
+      );
     }
   });
 
@@ -379,9 +381,7 @@ test.describe("capability-gated Configure navigation", () => {
     } finally {
       const { error: cleanupError } = await admin.from("workspaces").delete().eq("id", workspaceId);
       expect(cleanupError).toBeNull();
-      for (const user of [worker, schemaManager]) {
-        await admin.auth.admin.deleteUser(user.id);
-      }
+      await deleteE2eUsers([worker.id, schemaManager.id], admin);
     }
   });
 });

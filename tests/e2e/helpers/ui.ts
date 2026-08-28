@@ -1,6 +1,20 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { TestEntity, TestField } from "./supabase-test-data";
 
+// Every mutating form in the app submits a Server Action via useActionState,
+// then either renders an inline confirmation in place or (server-side
+// redirect) lands on a re-rendered destination page -- both round-trips
+// normally resolve in well under a second, but occasionally exceed
+// Playwright's default 5s expect timeout under a long single-worker
+// full-suite run, never in isolation. Use this only for that exact
+// assertion shape (confirming the result of a just-submitted mutation), not
+// as a general-purpose "slow assertion" escape hatch.
+const MUTATION_CONFIRMATION_TIMEOUT_MS = 15_000;
+
+export async function expectAfterMutation(locator: Locator) {
+  await expect(locator).toBeVisible({ timeout: MUTATION_CONFIRMATION_TIMEOUT_MS });
+}
+
 export async function gotoEntity(page: Page, entity: TestEntity, manage = false) {
   await page.goto(`/entities/${entity.id}${manage ? "?manage=true" : ""}`);
   await page.waitForLoadState("networkidle");

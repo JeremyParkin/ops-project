@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { requireE2eEnv } from "./helpers/env";
-import { createSupabaseTestClient } from "./helpers/supabase-test-data";
+import { createSupabaseTestClient, deleteE2eUsers } from "./helpers/supabase-test-data";
 
 test.use({ storageState: { cookies: [], origins: [] } });
 test.describe.configure({ mode: "serial" });
@@ -219,10 +219,10 @@ async function cleanupFixture(current: TeamWorkFixture) {
   const admin = createSupabaseTestClient();
   const { error: workspaceError } = await admin.from("workspaces").delete().in("id", [current.workspaceId, current.otherWorkspaceId]);
   if (workspaceError) throw new Error(workspaceError.message);
-  for (const user of Object.values(current.users)) {
-    const { error } = await admin.auth.admin.deleteUser(user.id);
-    if (error) throw new Error(error.message);
-  }
+  await deleteE2eUsers(
+    Object.values(current.users).map((user) => user.id),
+    admin,
+  );
 }
 
 async function cleanupStaleFixtures() {

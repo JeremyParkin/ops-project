@@ -19,6 +19,7 @@ import {
 import type { ProcessTemplate } from "@/lib/domain/process-types";
 import {
   addRecordSection,
+  expectAfterMutation,
   fillRecordField,
   gotoEntity,
   selectReactOption,
@@ -477,7 +478,10 @@ test("Start Process supports record updates and duplicate active runs fail witho
     await page.goto(`/entities/${deliverable.id}/records/${record.id}/edit`);
     await page.locator(`[name="${deliverable.fields.status.key}"]`).fill(value);
     await page.getByRole("button", { name: "Save Changes" }).click();
-    await expect(page.getByRole("heading", { name: deliverable.name, exact: true })).toBeVisible();
+    // Post-submit: record-edit's Server Action redirects back to the entity
+    // page, which re-fetches and re-renders -- occasionally exceeds the
+    // default 5s timeout under full-suite load (documented flake history).
+    await expectAfterMutation(page.getByRole("heading", { name: deliverable.name, exact: true }));
   }
 
   await updateStatus("Ready");
