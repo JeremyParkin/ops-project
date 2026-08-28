@@ -121,7 +121,7 @@ function TeamEditor({
               defaultValue={team.name}
               required
               disabled={updatePending}
-              className="mt-1 h-10 w-full border border-grit bg-paper px-3 text-sm text-graphite disabled:bg-slab"
+              className="mt-1 h-10 w-full border border-grit bg-paper px-3 text-sm text-graphite disabled:bg-chalk disabled:text-stone"
             />
           </label>
           <p className="pt-6 text-sm text-stone">
@@ -135,7 +135,7 @@ function TeamEditor({
             name="description"
             defaultValue={team.description ?? ""}
             disabled={updatePending}
-            className="mt-1 h-10 w-full border border-grit bg-paper px-3 text-sm text-graphite disabled:bg-slab"
+            className="mt-1 h-10 w-full border border-grit bg-paper px-3 text-sm text-graphite disabled:bg-chalk disabled:text-stone"
           />
         </label>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -230,7 +230,7 @@ function ReportingRelationshipEditor({
       </div>
       <label className="text-sm text-stone" htmlFor={`manager-${member.userId}`}>
         Direct manager
-        <select id={`manager-${member.userId}`} name="managerUserId" defaultValue={member.managerUserId ?? ""} disabled={pending} className="mt-1 h-10 w-full border border-grit bg-paper px-3 text-sm text-graphite disabled:bg-slab">
+        <select id={`manager-${member.userId}`} name="managerUserId" defaultValue={member.managerUserId ?? ""} disabled={pending} className="mt-1 h-10 w-full border border-grit bg-paper px-3 text-sm text-graphite disabled:bg-chalk disabled:text-stone">
           <option value="">No direct manager</option>
           {managers.map((manager) => <option key={manager.userId} value={manager.userId}>{manager.email}</option>)}
         </select>
@@ -268,7 +268,7 @@ export function WorkspaceOrganizationManagement({
             <label className="text-sm text-graphite" htmlFor="new-team-name">Team name<input id="new-team-name" name="name" required className="mt-1 h-10 w-full border border-grit bg-paper px-3 text-sm" /></label>
             <label className="text-sm text-graphite" htmlFor="new-team-description">Description<input id="new-team-description" name="description" className="mt-1 h-10 w-full border border-grit bg-paper px-3 text-sm" /></label>
           </div>
-          <button type="submit" disabled={createPending} className="mt-4 h-10 bg-brass px-4 text-sm font-semibold text-graphite hover:bg-brass-deep disabled:cursor-not-allowed disabled:bg-slab">
+          <button type="submit" disabled={createPending} className="mt-4 h-10 bg-brass px-4 text-sm font-semibold text-graphite hover:bg-brass-deep disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone">
             {createPending ? "Creating..." : "Create team"}
           </button>
           <ActionMessage state={createState} />
