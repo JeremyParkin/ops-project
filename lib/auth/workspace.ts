@@ -77,7 +77,7 @@ export async function listCurrentUserMemberships(): Promise<WorkspaceMembership[
 
   return (data ?? []).map((membership) => ({
     workspaceId: membership.workspace_id,
-    workspaceName: (membership.workspaces as { name: string }[])[0]?.name ?? "",
+    workspaceName: (membership.workspaces as unknown as { name: string })?.name ?? "",
   }));
 }
 

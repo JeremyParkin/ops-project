@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 type WorkspacePageLayoutProps = {
-  navigation: ReactNode;
+  contextNav?: ReactNode;
   children: ReactNode;
 };
 
@@ -19,12 +19,12 @@ type SectionHeaderProps = {
 };
 
 export function WorkspacePageLayout({
-  navigation,
+  contextNav,
   children,
 }: WorkspacePageLayoutProps) {
   return (
     <main className="flex flex-1 flex-col gap-6 bg-background px-4 py-5 text-foreground sm:px-8 sm:py-7 lg:flex-row lg:px-10">
-      {navigation}
+      {contextNav}
       <div className="flex min-w-0 flex-1 flex-col gap-6">{children}</div>
     </main>
   );

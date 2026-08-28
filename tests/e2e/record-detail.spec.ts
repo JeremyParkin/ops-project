@@ -177,7 +177,10 @@ test("clicking a record opens detail with display heading and primitive values",
   await expect(
     page.getByRole("heading", { name: `${run.label} ACM`, exact: true }),
   ).toBeVisible();
-  await expect(page.locator("p").filter({ hasText: client.name })).toBeVisible();
+  // Scoped past the contextual object rail ("aside"), which also renders
+  // the entity name as its own label -- this checks the record page's own
+  // PageHeader eyebrow specifically.
+  await expect(page.locator("main > div p").filter({ hasText: client.name })).toBeVisible();
   await expect(page.getByText("Company Name")).toBeVisible();
   await expect(page.getByText(`${run.label} Acme Corp`)).toBeVisible();
   await expect(page.getByText("Region")).toBeVisible();

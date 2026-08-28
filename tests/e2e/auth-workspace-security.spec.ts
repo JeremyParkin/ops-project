@@ -228,11 +228,10 @@ test("protects routes, signs users in and out, and rejects no-membership users",
 
   await signIn(page, fixture.userA);
   await expect(page).toHaveURL(/\/$/);
-  await expect(
-    page.getByLabel("Entity navigation").getByRole("link", { name: "E2E Auth Alpha" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "E2E Auth Alpha", exact: true })).toBeVisible();
   await expect(page.getByText("E2E Auth Bravo", { exact: true })).toHaveCount(0);
 
+  await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in/);
 
@@ -247,9 +246,7 @@ test("ignores an unauthorized active-workspace cookie", async ({ page, context }
   ]);
   await signIn(page, fixture.userA);
 
-  await expect(
-    page.getByLabel("Entity navigation").getByRole("link", { name: "E2E Auth Alpha" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "E2E Auth Alpha", exact: true })).toBeVisible();
   await expect(page.getByText("E2E Auth Bravo", { exact: true })).toHaveCount(0);
 });
 

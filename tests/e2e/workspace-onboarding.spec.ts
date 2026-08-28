@@ -45,9 +45,10 @@ async function activateWorkspace(
   workspaceId: string,
   expectedHeading = "Set up your workspace",
 ) {
+  const workspaceName = `E2E Onboarding ${workspaceId.slice(0, 8)}`;
   await page.goto("/");
-  await page.getByLabel("Active workspace").selectOption(workspaceId);
-  await page.getByRole("button", { name: "Switch" }).click();
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("button", { name: workspaceName, exact: true }).click();
   await expect(page.getByRole("heading", { name: expectedHeading })).toBeVisible();
 }
 
@@ -94,9 +95,10 @@ test("empty workspace onboarding creates Clients, Projects, and Tasks atomically
   await expect(page.getByRole("heading", { name: "Project", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Task", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Add Project" })).toBeVisible();
-  await page.getByText("Configure", { exact: true }).click();
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
   await expect(page.getByRole("link", { name: "Automations", exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Project", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("heading", { name: "Project", exact: true }).click();
   await page.getByRole("link", { name: "Manage", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Entity Settings" })).toBeVisible();
 

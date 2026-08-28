@@ -88,7 +88,7 @@ test("keeps saved-view configuration and record lifecycle controls secondary", a
   expect(viewResult.error).toBeNull();
 
   await page.goto(`/entities/${entity.id}?view=all`);
-  await expect(page.getByRole("link", { name: "All Records" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: `All ${entity.name}` })).toHaveAttribute(
     "aria-current",
     "page",
   );

@@ -33,6 +33,7 @@ type EntityViewsPanelProps = {
     state: DeleteViewActionState,
     formData: FormData,
   ) => Promise<DeleteViewActionState>;
+  openManageByDefault?: boolean;
 };
 
 type FormMode = "create" | "edit";
@@ -548,6 +549,7 @@ export function EntityViewsPanel({
   createViewAction,
   updateViewAction,
   deleteViewAction,
+  openManageByDefault = false,
 }: EntityViewsPanelProps) {
   const defaultView = views.find((view) => view.isDefault);
   const selectedViewName = selectedView?.name ?? "All Records";
@@ -571,38 +573,11 @@ export function EntityViewsPanel({
         </Link>
       </div>
 
-      <div className="border-t border-slate-200 px-4 py-3">
-        <nav className="flex flex-wrap gap-2" aria-label={`${entityType.name} views`}>
-          <Link
-            href={`/entities/${entityType.id}?view=all`}
-            aria-current={!selectedView ? "page" : undefined}
-            className={`border px-3 py-2 text-sm font-medium ${
-              !selectedView
-                ? "border-brass bg-brass text-graphite"
-                : "border-grit text-stone hover:bg-chalk"
-            }`}
-          >
-            All Records
-          </Link>
-          {views.map((view) => (
-            <Link
-              key={view.id}
-              href={`/entities/${entityType.id}?view=${view.id}`}
-              aria-current={selectedView?.id === view.id ? "page" : undefined}
-              className={`border px-3 py-2 text-sm font-medium ${
-                selectedView?.id === view.id
-                  ? "border-brass bg-brass text-graphite"
-                  : "border-grit text-stone hover:bg-chalk"
-              }`}
-            >
-              {view.name}
-              {view.isDefault ? " · Default" : ""}
-            </Link>
-          ))}
-        </nav>
-      </div>
-
-      <details className="border-t border-slate-200 p-4" open={warnings.length > 0}>
+      <details
+        id="manage-views"
+        className="border-t border-slate-200 p-4"
+        open={warnings.length > 0 || openManageByDefault}
+      >
         <summary className="cursor-pointer text-sm font-medium text-slate-700">
           Manage views
         </summary>

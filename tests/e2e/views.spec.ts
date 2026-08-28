@@ -312,7 +312,7 @@ test("default view can be used and cleared back to All Records", async ({
   await expect(rowForText(page, `${run.label} QA Prep`)).toBeVisible();
   await expect(rowForText(page, `${run.label} Launch`)).toHaveCount(0);
 
-  await page.getByRole("link", { name: "All Records" }).click();
+  await page.getByRole("link", { name: `All ${work.name}` }).click();
   await expect(rowForText(page, `${run.label} Launch`)).toBeVisible();
 });
 
@@ -377,7 +377,7 @@ test("archived filter references fail closed with repair warning", async ({
     page.getByText("This view cannot be evaluated correctly."),
   ).toBeVisible();
   await expect(rowForText(page, `${run.label} QA Prep`)).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "All Records" })).toBeVisible();
+  await expect(page.getByRole("link", { name: `All ${work.name}` })).toBeVisible();
 });
 
 test("field hard delete is blocked by saved view dependency and deleting a view preserves records", async () => {

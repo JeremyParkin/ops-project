@@ -687,6 +687,7 @@ test("renders through existing Team Work drill-ins, with the disclaimer visible 
   await page.goto("/analytics?period=14");
   await expect(page).toHaveURL(/\/analytics$/);
 
+  await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("/sign-in");
   await signIn(page, fixture.users["no-scope"]);

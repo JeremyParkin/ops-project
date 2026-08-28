@@ -280,6 +280,7 @@ test("enforces operations.view and derives a deduplicated current management sco
 
 test("renders Team Work through existing process and record drill-ins without action controls", async ({ page }) => {
   await signIn(page, fixture.users.manager);
+  await page.getByRole("button", { name: "Work", exact: true }).click();
   const teamWorkNavigation = page.getByRole("link", { name: "Team Work", exact: true });
   await expect(teamWorkNavigation).toBeVisible();
   await teamWorkNavigation.click();

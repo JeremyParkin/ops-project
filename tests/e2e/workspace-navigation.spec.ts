@@ -109,14 +109,15 @@ test("home provides shared navigation and keeps the entity card on its default v
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Home", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Automations", exact: true })).toHaveCount(0);
-  await page.getByText("Configure", { exact: true }).click();
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
   await expect(page.getByRole("link", { name: "Automations", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Data model", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Workspace settings", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   // Home's business-object cards are deliberately decluttered (8A): only
   // Open + Add, no per-card view shortcuts -- view switching lives on the
-  // entity page itself, covered by views.spec.ts. Opening from Home still
-  // respects the entity's default view.
+  // entity page's contextual rail, covered below and in views.spec.ts.
+  // Opening from Home still respects the entity's default view.
   const card = entityCard(page, entity);
   await expect(card.getByRole("link", { name: "Open" })).toBeVisible();
   await expect(card.getByRole("link", { name: `Add ${entity.name}` })).toBeVisible();
@@ -127,18 +128,25 @@ test("home provides shared navigation and keeps the entity card on its default v
   await expect(rowForText(page, `${run.label} Ready`)).toBeVisible();
   await expect(rowForText(page, `${run.label} Draft`)).toHaveCount(0);
 
-  await page.getByRole("link", { name: "All Records", exact: true }).click();
+  // The contextual rail (not a global sidebar) carries saved-view
+  // navigation for this object: "All {name}" plus each saved view.
+  const rail = page.getByRole("complementary", { name: `${entity.name} navigation` });
+  await expect(rail.getByRole("link", { name: `All ${entity.name}` })).toBeVisible();
+  await expect(rail.getByRole("link", { name: `${run.label} Ready Only · Default` })).toBeVisible();
+  await expect(rail.getByRole("link", { name: `${run.label} First`, exact: true })).toBeVisible();
+  await expect(rail.getByRole("link", { name: `${run.label} Second`, exact: true })).toBeVisible();
+  await expect(rail.getByRole("link", { name: `${run.label} Hidden`, exact: true })).toBeVisible();
+
+  await rail.getByRole("link", { name: `All ${entity.name}` }).click();
   await expect(page).toHaveURL(new RegExp(`/entities/${entity.id}\\?view=all$`));
   await expect(rowForText(page, `${run.label} Draft`)).toBeVisible();
 
-  await page.getByText("Configure", { exact: true }).click();
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
   await page.getByRole("link", { name: "Automations", exact: true }).click();
   await expect(page).toHaveURL(/\/workflows$/);
-  await page.getByRole("link", { name: "Data model", exact: true }).click();
-  await expect(page).toHaveURL(/\/entities\/new$/);
 });
 
-test("archived entities stay out of normal home navigation but remain available through management mode", async ({
+test("archived entities stay out of normal home navigation but remain available through the All objects page", async ({
   page,
 }) => {
   const run = createScenarioRun();
@@ -154,18 +162,17 @@ test("archived entities stay out of normal home navigation but remain available 
   expect(archiveResult.error).toBeNull();
 
   await page.goto("/");
+  await expect(page.getByRole("heading", { name: entity.name, exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Business", exact: true }).click();
   await expect(page.getByRole("link", { name: entity.name, exact: true })).toHaveCount(0);
-  await page.getByText("Configure", { exact: true }).click();
-  await page.getByRole("link", { name: "Archived entities" }).click();
-  await expect(page).toHaveURL(/showArchivedEntities=true/);
+  await page.getByRole("link", { name: "All objects", exact: true }).click();
+  await expect(page).toHaveURL(/\/entities$/);
+  await expect(page.getByRole("heading", { name: entity.name, exact: true })).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Show archived objects", exact: true }).click();
+  await expect(page).toHaveURL(/showArchived=true/);
   await expect(page.getByRole("heading", { name: entity.name, exact: true })).toBeVisible();
-  await expect(
-    page
-      .getByRole("navigation", { name: "Entity navigation" })
-      .getByRole("link")
-      .filter({ hasText: entity.name }),
-  ).toHaveCount(1);
-  await expect(page.getByText("Archived", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("Archived", { exact: true })).toBeVisible();
 });
 
 type TestUser = { id: string; email: string; password: string };
@@ -211,7 +218,7 @@ async function signInNavUser(page: Page, user: TestUser) {
 test.describe("capability-gated Configure navigation", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("a pure worker sees no Configure section; schema.manage and automation.manage each see only their own links", async ({
+  test("Configure holds exactly the destinations each capability grants, with Data model reusing the same All Objects surface Business links to", async ({
     page,
   }) => {
     const admin = createSupabaseTestClient();
@@ -224,45 +231,78 @@ test.describe("capability-gated Configure navigation", () => {
     const workerRole = await createNavRole(workspaceId, "Worker", ["records.operate", "processes.operate"]);
     const schemaRole = await createNavRole(workspaceId, "Schema manager", ["schema.manage"]);
     const automationRole = await createNavRole(workspaceId, "Automation manager", ["automation.manage"]);
+    const adminRole = await createNavRole(workspaceId, "Full admin", [
+      "workspace.manage_members",
+      "automation.manage",
+      "schema.manage",
+    ]);
 
     const worker = await createNavUser("worker");
     const schemaManager = await createNavUser("schema");
     const automationManager = await createNavUser("automation");
+    const fullAdmin = await createNavUser("admin");
 
     const { error: membershipError } = await admin.from("workspace_memberships").insert([
       { workspace_id: workspaceId, user_id: worker.id, role_id: workerRole },
       { workspace_id: workspaceId, user_id: schemaManager.id, role_id: schemaRole },
       { workspace_id: workspaceId, user_id: automationManager.id, role_id: automationRole },
+      { workspace_id: workspaceId, user_id: fullAdmin.id, role_id: adminRole },
     ]);
     expect(membershipError).toBeNull();
 
     try {
+      // 1. Ordinary worker: Business/All objects is available and usable as
+      // a plain browsing surface, but Configure (and Data model within it)
+      // never appears -- no schema-management concepts are exposed.
       await signInNavUser(page, worker);
-      await expect(page.getByText("Configure", { exact: true })).toHaveCount(0);
-      await expect(page.getByRole("link", { name: "Automations", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("link", { name: "Data model", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Configure", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Business", exact: true }).click();
+      await page.getByRole("link", { name: "All objects", exact: true }).click();
+      await expect(page).toHaveURL(/\/entities$/);
+      await expect(page.getByRole("heading", { name: "All objects" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Create object", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Show archived objects", exact: true })).toHaveCount(0);
 
+      // 2. schema.manage alone: Configure appears with exactly Data model,
+      // which reuses the same /entities route Business links to (no second
+      // object-management system) but now shows the authorized controls.
       await page.context().clearCookies();
       await signInNavUser(page, schemaManager);
-      await page.getByText("Configure", { exact: true }).click();
+      await page.getByRole("button", { name: "Configure", exact: true }).click();
       await expect(page.getByRole("link", { name: "Data model", exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Archived entities", exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "Automations", exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Processes", exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Workspace settings", exact: true })).toHaveCount(0);
+      await page.getByRole("link", { name: "Data model", exact: true }).click();
+      await expect(page).toHaveURL(/\/entities$/);
+      await expect(page.getByRole("link", { name: "Create object", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Show archived objects", exact: true })).toBeVisible();
 
+      // 3. automation.manage alone: Configure shows Automations + Processes
+      // but not Data model or Workspace settings.
       await page.context().clearCookies();
       await signInNavUser(page, automationManager);
-      await page.getByText("Configure", { exact: true }).click();
+      await page.getByRole("button", { name: "Configure", exact: true }).click();
       await expect(page.getByRole("link", { name: "Automations", exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "Processes", exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "Data model", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("link", { name: "Archived entities", exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Workspace settings", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Business", exact: true }).click();
+      await page.getByRole("link", { name: "All objects", exact: true }).click();
+      await expect(page.getByRole("link", { name: "Create object", exact: true })).toHaveCount(0);
+
+      // 4. Full admin: every Configure destination appears.
+      await page.context().clearCookies();
+      await signInNavUser(page, fullAdmin);
+      await page.getByRole("button", { name: "Configure", exact: true }).click();
+      await expect(page.getByRole("link", { name: "Automations", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Processes", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Data model", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Workspace settings", exact: true })).toBeVisible();
     } finally {
       const { error: cleanupError } = await admin.from("workspaces").delete().eq("id", workspaceId);
       expect(cleanupError).toBeNull();
-      for (const user of [worker, schemaManager, automationManager]) {
+      for (const user of [worker, schemaManager, automationManager, fullAdmin]) {
         await admin.auth.admin.deleteUser(user.id);
       }
     }

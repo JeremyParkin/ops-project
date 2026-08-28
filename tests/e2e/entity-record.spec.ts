@@ -35,14 +35,14 @@ test("navigates entities, validates, creates, and edits records", async ({
   page,
 }) => {
   await gotoEntity(page, fixture.client);
-  await page.getByRole("link", { name: fixture.deliverable.name }).click();
+  await gotoEntity(page, fixture.deliverable);
   await expect(
     page.getByRole("heading", {
       name: fixture.deliverable.name,
       exact: true,
     }),
   ).toBeVisible();
-  await page.getByRole("link", { name: fixture.client.name }).click();
+  await gotoEntity(page, fixture.client);
   await expect(
     page.getByRole("heading", { name: fixture.client.name, exact: true }),
   ).toBeVisible();
