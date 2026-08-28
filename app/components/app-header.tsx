@@ -147,7 +147,7 @@ export function AppHeader({
             <NavMenu key={`configure-${pathname}`} label="Configure" active={isConfigure}>
               {canManageAutomation ? <MenuLink href="/workflows">Automations</MenuLink> : null}
               {canManageAutomation ? <MenuLink href="/processes">Processes</MenuLink> : null}
-              {canManageSchema ? <MenuLink href="/entities">Data model</MenuLink> : null}
+              {canManageSchema ? <MenuLink href="/entities?manage=true">Data model</MenuLink> : null}
               {canManageWorkspace ? (
                 <MenuLink href="/settings">Workspace settings</MenuLink>
               ) : null}
@@ -182,7 +182,7 @@ export function AppHeader({
                 <MenuLabel>Configure</MenuLabel>
                 {canManageAutomation ? <MenuLink href="/workflows">Automations</MenuLink> : null}
                 {canManageAutomation ? <MenuLink href="/processes">Processes</MenuLink> : null}
-                {canManageSchema ? <MenuLink href="/entities">Data model</MenuLink> : null}
+                {canManageSchema ? <MenuLink href="/entities?manage=true">Data model</MenuLink> : null}
                 {canManageWorkspace ? (
                   <MenuLink href="/settings">Workspace settings</MenuLink>
                 ) : null}

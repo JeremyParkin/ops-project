@@ -147,7 +147,7 @@ test("home provides shared navigation and keeps the entity card on its default v
   await expect(page).toHaveURL(/\/workflows$/);
 });
 
-test("archived entities stay out of normal home navigation but remain available through the All objects page", async ({
+test("archived entities stay out of normal home navigation and the plain All objects page, but remain available through Configure/Data model", async ({
   page,
 }) => {
   const run = createScenarioRun();
@@ -169,9 +169,19 @@ test("archived entities stay out of normal home navigation but remain available 
   await page.getByRole("link", { name: "All objects", exact: true }).click();
   await expect(page).toHaveURL(/\/entities$/);
   await expect(page.getByRole("heading", { name: entity.name, exact: true })).toHaveCount(0);
+  // The plain (Business) browsing surface never offers archived objects,
+  // even to a caller who could see them in the configuration surface --
+  // no "Show archived objects" control here at all, not even hidden state.
+  await expect(page.getByRole("link", { name: "Show archived objects", exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  await page.getByRole("link", { name: "Data model", exact: true }).click();
+  await expect(page).toHaveURL(/\/entities\?manage=true$/);
+  await expect(page.getByRole("heading", { name: "Data model" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: entity.name, exact: true })).toHaveCount(0);
 
   await page.getByRole("link", { name: "Show archived objects", exact: true }).click();
-  await expect(page).toHaveURL(/showArchived=true/);
+  await expect(page).toHaveURL(/\/entities\?manage=true&showArchived=true$/);
   await expect(page.getByRole("heading", { name: entity.name, exact: true })).toBeVisible();
   await expect(page.getByText("Archived", { exact: true })).toBeVisible();
 });
@@ -219,7 +229,7 @@ async function signInNavUser(page: Page, user: TestUser) {
 test.describe("capability-gated Configure navigation", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("Configure holds exactly the destinations each capability grants, with Data model reusing the same All Objects surface Business links to", async ({
+  test("Configure holds exactly the destinations each capability grants; Business/All objects and Configure/Data model present distinct browsing vs. configuration modes of the same /entities route", async ({
     page,
   }) => {
     const admin = createSupabaseTestClient();
@@ -252,9 +262,11 @@ test.describe("capability-gated Configure navigation", () => {
     expect(membershipError).toBeNull();
 
     try {
-      // 1. Ordinary worker: Business/All objects is available and usable as
-      // a plain browsing surface, but Configure (and Data model within it)
-      // never appears -- no schema-management concepts are exposed.
+      // 1. Ordinary worker: Business/All objects is a plain, worker-oriented
+      // browsing surface -- eyebrow "Business", title "All objects", no
+      // Create/archive controls. Configure (and Data model within it) never
+      // appears, and manually requesting the configuration mode via
+      // ?manage=true is canonicalized away rather than partially honored.
       await signInNavUser(page, worker);
       await expect(page.getByRole("button", { name: "Configure", exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "Business", exact: true }).click();
@@ -264,9 +276,15 @@ test.describe("capability-gated Configure navigation", () => {
       await expect(page.getByRole("link", { name: "Create object", exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Show archived objects", exact: true })).toHaveCount(0);
 
+      await page.goto("/entities?manage=true");
+      await expect(page).toHaveURL(/\/entities$/);
+      await expect(page.getByRole("heading", { name: "Data model" })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Create object", exact: true })).toHaveCount(0);
+
       // 2. schema.manage alone: Configure appears with exactly Data model,
-      // which reuses the same /entities route Business links to (no second
-      // object-management system) but now shows the authorized controls.
+      // which lands on ?manage=true and reads as a distinct, builder-
+      // oriented configuration surface -- eyebrow "Configure", title "Data
+      // model", Create object and the archived-objects toggle both present.
       await page.context().clearCookies();
       await signInNavUser(page, schemaManager);
       await page.getByRole("button", { name: "Configure", exact: true }).click();
@@ -275,9 +293,19 @@ test.describe("capability-gated Configure navigation", () => {
       await expect(page.getByRole("link", { name: "Processes", exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Workspace settings", exact: true })).toHaveCount(0);
       await page.getByRole("link", { name: "Data model", exact: true }).click();
-      await expect(page).toHaveURL(/\/entities$/);
+      await expect(page).toHaveURL(/\/entities\?manage=true$/);
+      await expect(page.getByRole("heading", { name: "Data model" })).toBeVisible();
       await expect(page.getByRole("link", { name: "Create object", exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "Show archived objects", exact: true })).toBeVisible();
+
+      // Same capability, same underlying /entities data and component --
+      // but the plain Business entry point still shows the worker-oriented
+      // browsing presentation, not the configuration one: the split is
+      // driven by how the page was reached, not by capability alone.
+      await page.goto("/entities");
+      await expect(page.getByRole("heading", { name: "All objects" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Create object", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Show archived objects", exact: true })).toHaveCount(0);
 
       // 3. automation.manage alone: Configure shows Automations + Processes
       // but not Data model or Workspace settings.
