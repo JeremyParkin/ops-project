@@ -36,14 +36,26 @@ export default async function Home({
     ? allEntityTypes
     : allEntityTypes.filter((entityType) => !entityType.archivedAt);
   const isNewWorkspace = allEntityTypes.length === 0;
+  const canManageSchema = Boolean(permissions?.capabilities.has("schema.manage"));
 
   if (isNewWorkspace) {
     return (
       <WorkspacePageLayout>
         <PageHeader eyebrow="Workspace" title="Home" />
-        <WorkspaceOnboarding
-          createWorkspaceStarterStructureAction={createWorkspaceStarterStructure}
-        />
+        {canManageSchema ? (
+          <WorkspaceOnboarding
+            createWorkspaceStarterStructureAction={createWorkspaceStarterStructure}
+          />
+        ) : (
+          <section className="mx-auto w-full max-w-3xl border border-grit bg-white p-6">
+            <h2 className="text-xl font-semibold text-graphite">
+              Nothing has been set up yet.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone">
+              Ask a workspace admin to create your first business object.
+            </p>
+          </section>
+        )}
       </WorkspacePageLayout>
     );
   }

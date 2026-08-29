@@ -40,6 +40,49 @@ async function createWorkspaceForUser(userId: string) {
   return workspaceId;
 }
 
+// A worker-shaped role -- records.operate/processes.operate only, deliberately
+// no schema.manage -- added to an existing workspace so a genuinely empty
+// workspace can be exercised from both a builder's and an ordinary worker's
+// perspective at once.
+async function addWorkerToWorkspace(workspaceId: string) {
+  const admin = createSupabaseTestClient();
+  const roleId = randomUUID();
+  const { error: roleError } = await admin
+    .from("workspace_roles")
+    .insert({ id: roleId, workspace_id: workspaceId, name: "E2E worker" });
+  if (roleError) throw new Error(roleError.message);
+  const { error: capabilityError } = await admin.from("workspace_role_capabilities").insert([
+    { workspace_id: workspaceId, role_id: roleId, capability: "records.operate" },
+    { workspace_id: workspaceId, role_id: roleId, capability: "processes.operate" },
+  ]);
+  if (capabilityError) throw new Error(capabilityError.message);
+
+  const password = `E2E-onboarding-worker-${randomUUID()}!`;
+  const email = `e2e-onboarding-worker-${randomUUID()}@example.test`;
+  const { data: userData, error: userError } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (userError || !userData.user) throw new Error(userError?.message ?? "Unable to create worker user.");
+  userIds.push(userData.user.id);
+
+  const { error: membershipError } = await admin
+    .from("workspace_memberships")
+    .insert({ workspace_id: workspaceId, user_id: userData.user.id, role_id: roleId });
+  if (membershipError) throw new Error(membershipError.message);
+
+  return { email, password, userId: userData.user.id };
+}
+
+async function signInAsUser(page: Page, email: string, password: string) {
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("/");
+}
+
 async function activateWorkspace(
   page: Page,
   workspaceId: string,
@@ -185,6 +228,39 @@ test("standalone structures omit unavailable relations and custom setup uses the
   expect(fields?.some((field) => field.type === "relation")).toBe(false);
 });
 
+test.describe("empty workspace authority boundary", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("a worker without schema.manage sees an honest empty state and cannot reach schema creation through the UI", async ({
+    page,
+  }) => {
+    const workspaceId = await createWorkspaceForUser(await getRunnerUserId());
+    const worker = await addWorkerToWorkspace(workspaceId);
+
+    await signInAsUser(page, worker.email, worker.password);
+
+    // Single-membership worker lands directly on their only workspace --
+    // no account-menu switch needed.
+    await expect(
+      page.getByRole("heading", { name: "Nothing has been set up yet." }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Ask a workspace admin to create your first business object."),
+    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Set up your workspace" })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Create workspace structure" }),
+    ).toHaveCount(0);
+    await expect(page.getByText("Start from scratch")).toHaveCount(0);
+
+    await page.goto("/entities/new");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(
+      page.getByRole("heading", { name: "Nothing has been set up yet." }),
+    ).toBeVisible();
+  });
+});
+
 test("Clients and Opportunities create the approved sales relation", async ({ page }) => {
   const workspaceId = await createWorkspaceForUser(await getRunnerUserId());
   await activateWorkspace(page, workspaceId);
@@ -224,7 +300,7 @@ test("Clients and Opportunities create the approved sales relation", async ({ pa
   );
 });
 
-test("the authorized setup RPC is membership checked and rolls back invalid payloads", async () => {
+test("the authorized setup RPC requires schema.manage, rejects unauthorized/forged/anonymous callers, and rolls back invalid payloads", async () => {
   const admin = createSupabaseTestClient();
   const password = `E2E-onboarding-${randomUUID()}!`;
   const { data: userData, error: userError } = await admin.auth.admin.createUser({
@@ -271,6 +347,24 @@ test("the authorized setup RPC is membership checked and rolls back invalid payl
     .eq("workspace_id", allowedWorkspaceId);
   expect(rolledBackError).toBeNull();
   expect(rolledBackEntities).toHaveLength(0);
+
+  // A workspace member without schema.manage cannot call the RPC directly,
+  // not just through the UI -- the authority boundary is enforced at the
+  // database layer, not merely hidden client-side.
+  const worker = await addWorkerToWorkspace(allowedWorkspaceId);
+  const workerClient = await createAuthenticatedClient(worker.email, worker.password);
+  const workerResult = await workerClient.rpc("create_entity_types_with_fields_authorized", {
+    p_workspace_id: allowedWorkspaceId,
+    p_entities: malformedPayload.slice(0, 1),
+  });
+  expect(workerResult.error).not.toBeNull();
+
+  const { data: entitiesAfterWorkerAttempt, error: entitiesAfterWorkerAttemptError } = await admin
+    .from("entity_types")
+    .select("id")
+    .eq("workspace_id", allowedWorkspaceId);
+  expect(entitiesAfterWorkerAttemptError).toBeNull();
+  expect(entitiesAfterWorkerAttempt).toHaveLength(0);
 
   const forgedResult = await client.rpc("create_entity_types_with_fields_authorized", {
     p_workspace_id: forbiddenWorkspaceId,

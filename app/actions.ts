@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getActiveWorkspaceId } from "@/lib/auth/workspace";
+import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import type { EntityRecord, FieldDefinition } from "@/lib/domain/types";
 import {
   type EntityDefinitionFormState,
@@ -914,6 +914,17 @@ export async function createWorkspaceStarterStructure(
   }
 
   const { workspaceId } = await getActiveWorkspaceId();
+  const permissions = await getWorkspacePermissionContext(workspaceId);
+
+  if (!permissions?.capabilities.has("schema.manage")) {
+    return {
+      success: false,
+      message:
+        "You do not have permission to set up this workspace. Ask a workspace admin to create your first business object.",
+      selectedOptionIds,
+    };
+  }
+
   const existingEntities = await listEntityTypes({
     workspaceId,
     includeArchived: true,
