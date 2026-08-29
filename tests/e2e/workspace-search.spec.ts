@@ -69,7 +69,7 @@ test("search groups active records by entity and links to their details", async 
   });
 
   await page.goto("/");
-  await page.getByRole("searchbox", { name: "Search records" }).fill("  acme ");
+  await page.getByRole("searchbox", { name: "Search", exact: true }).fill("  acme ");
   await page.getByRole("button", { name: "Search", exact: true }).first().click();
 
   await expect(page).toHaveURL(/\/search\?q=/);

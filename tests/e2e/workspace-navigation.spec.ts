@@ -386,7 +386,12 @@ test.describe("capability-gated Configure navigation", () => {
       // worker: normal read/records view, still no Manage entry point.
       await page.goto(`/entities/${entityId}`);
       await expect(page.getByRole("heading", { name: "E2E Manage Boundary", exact: true })).toBeVisible();
-      await expect(page.getByText("Business object", { exact: true })).toBeVisible();
+      // Scoped past the contextual object rail ("aside"), which also renders
+      // the entity name as its own label -- this checks the page's own
+      // PageHeader eyebrow specifically.
+      await expect(
+        page.locator("main > div p").filter({ hasText: /^E2E Manage Boundary$/ }),
+      ).toBeVisible();
       await expect(page.getByRole("link", { name: "Manage", exact: true })).toHaveCount(0);
       await expect(page.getByRole("heading", { name: "Entity Settings" })).toHaveCount(0);
 

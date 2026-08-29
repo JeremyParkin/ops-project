@@ -102,6 +102,6 @@ test("keeps saved-view configuration and record lifecycle controls secondary", a
   await page.goto(`/entities/${entity.id}/records/${recordId}`);
   await expect(page.getByRole("link", { name: "Edit", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Archive" })).toHaveCount(0);
-  await page.getByText("Record actions", { exact: true }).click();
+  await page.getByText("More actions", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
 });

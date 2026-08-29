@@ -225,7 +225,9 @@ function RecordCreateFormContents({
                   }
                   className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
                 >
-                  <option value="">Choose record</option>
+                  <option value="">
+                    {relatedEntityName ? `Choose ${relatedEntityName}` : "Choose an option"}
+                  </option>
                   {options.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}

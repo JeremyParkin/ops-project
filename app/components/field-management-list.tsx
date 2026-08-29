@@ -1,6 +1,7 @@
 import {
   archiveField,
   deleteField,
+  moveFieldDefinition,
   restoreField,
   updateFieldDefinition,
 } from "@/app/actions";
@@ -35,7 +36,7 @@ export function FieldManagementList({
       </div>
 
       <div className="divide-y divide-slate-100">
-        {orderedFields.map((field) => {
+        {orderedFields.map((field, index) => {
           const updateFieldAction = updateFieldDefinition.bind(null, {
             workspaceId,
             entityTypeId,
@@ -56,6 +57,18 @@ export function FieldManagementList({
             entityTypeId,
             fieldDefinitionId: field.id,
           });
+          const moveFieldUpAction = moveFieldDefinition.bind(null, {
+            workspaceId,
+            entityTypeId,
+            fieldDefinitionId: field.id,
+            direction: "up",
+          });
+          const moveFieldDownAction = moveFieldDefinition.bind(null, {
+            workspaceId,
+            entityTypeId,
+            fieldDefinitionId: field.id,
+            direction: "down",
+          });
 
           return (
             <div key={field.id} className="py-4 first:pt-0 last:pb-0">
@@ -70,6 +83,10 @@ export function FieldManagementList({
                 archiveFieldAction={archiveFieldAction}
                 restoreFieldAction={restoreFieldAction}
                 deleteFieldAction={deleteFieldAction}
+                moveFieldUpAction={moveFieldUpAction}
+                moveFieldDownAction={moveFieldDownAction}
+                isFirst={index === 0}
+                isLast={index === orderedFields.length - 1}
                 workflowReferenceCount={
                   workflowReferenceCountByFieldId[field.id] ?? 0
                 }

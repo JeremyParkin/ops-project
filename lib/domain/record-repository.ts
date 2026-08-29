@@ -33,6 +33,11 @@ type ListEntityRecordsInput = {
   entityTypeId: EntityType["id"];
   fields: FieldDefinition[];
   includeArchived?: boolean;
+  // Restricts the fetch to these specific record IDs instead of the whole
+  // entity type -- for callers (relation label/lookup resolution) that
+  // already know exactly which records they need, so they don't pull every
+  // record of a potentially large entity type just to read a handful.
+  ids?: string[];
   supabase?: SupabaseServerClient;
 };
 
@@ -367,8 +372,13 @@ export async function listEntityRecords({
   entityTypeId,
   fields,
   includeArchived = false,
+  ids,
   supabase: injectedSupabase,
 }: ListEntityRecordsInput) {
+  if (ids && ids.length === 0) {
+    return [];
+  }
+
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   let query = supabase
     .from("entity_records")
@@ -376,6 +386,10 @@ export async function listEntityRecords({
     .eq("workspace_id", workspaceId)
     .eq("entity_type_id", entityTypeId)
     .order("created_at", { ascending: true });
+
+  if (ids) {
+    query = query.in("id", ids);
+  }
 
   if (!includeArchived) {
     query = query.is("archived_at", null);
@@ -619,10 +633,18 @@ export async function getRelationLookups({
   workspaceId,
   fields,
   currentRecord,
+  restrictToCurrentRecordValues = false,
 }: {
   workspaceId: string;
   fields: FieldDefinition[];
   currentRecord?: EntityRecord;
+  // When true, only fetches the specific target records currentRecord's own
+  // relation fields point to (for resolving their display labels), rather
+  // than every record of each related entity type. Only safe for callers
+  // that don't need optionsByFieldKey (e.g. a read-only detail view) --
+  // list/edit-form callers that populate a relation dropdown still need the
+  // full active-option set and must leave this false.
+  restrictToCurrentRecordValues?: boolean;
 }) {
   const relationFields = fields.filter(
     (field) => field.type === "relation" && field.relatedEntityTypeId,
@@ -650,11 +672,23 @@ export async function getRelationLookups({
         workspaceId,
         entityTypeId: targetEntityTypeId,
       });
+      const restrictedIds =
+        restrictToCurrentRecordValues && currentRecord
+          ? [
+              ...new Set(
+                relationFields
+                  .filter((field) => field.relatedEntityTypeId === targetEntityTypeId)
+                  .map((field) => currentRecord.values[field.key])
+                  .filter((value): value is string => typeof value === "string"),
+              ),
+            ]
+          : undefined;
       const targetRecords = await listEntityRecords({
         workspaceId,
         entityTypeId: targetEntityTypeId,
         fields: targetFields,
         includeArchived: true,
+        ids: restrictedIds,
       });
 
       targetData.set(targetEntityTypeId, {
@@ -947,6 +981,7 @@ export async function listIncomingRelationsForRecord({
               workspaceId,
               entityTypeId: sourceEntityTypeId,
               fields: sourceFields,
+              ids: sourceRecordIds,
             })
           : [];
       const sourceRecordById = new Map(

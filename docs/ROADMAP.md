@@ -170,6 +170,29 @@ Likely staged delivery:
 
 This work depends on and should reinforce roles and capabilities, teams/reporting, Team Work and Analytics, future row-scoped visibility, audit logging, and production support tooling. It remains future direction, not a current capability.
 
+## Business Object Data Model Refinements
+
+Worker/builder dogfooding of the Phase 8B record detail experience surfaced three real data-model gaps. Each is deliberately kept out of Phase 8B itself, since each needs a schema change and its own design pass rather than being folded into a presentation-layer milestone.
+
+### Singular + Plural Object Labels
+
+`EntityType` currently stores exactly one `name`, used everywhere regardless of grammatical context — correct for a record-page eyebrow ("Task"), wrong for a collection heading ("Task" instead of "Tasks") or an "All Task"-style navigation link. The preferred model is a second, nullable `pluralName`: seeded once at entity creation from a simple `+s`/`+es` default (a starting value only, never authoritative rendering logic), then builder-editable afterward like `name`/`description` already are. Consumers to migrate once this lands: the entity list page's title, the Home business-object card title, the contextual rail's "All {name}" link, and the All Objects index. Explicitly do not solve this with runtime pluralization heuristics — the one that already exists (`formatEntityGroupName` in `record-detail-view.tsx`, a crude `name.endsWith("s") ? name : name + "s"` used only for reverse-relation group headings) should eventually be replaced by real plural labels, not imitated elsewhere.
+
+### Choice / Select Field Type
+
+Fields like Status, Priority, Region, and Engagement Type are modeled as free-text today, which undermines filtering, automation conditions, and cross-record consistency. `FieldType` is a closed union threaded through the DB check constraint, field validation, the field-create UI, record validation, inline-edit eligibility, saved-view filter operators, and workflow condition value pickers — a new type is genuinely cross-cutting, not a small addition. Recommended v1: single-select only; builder-defined options stored with **stable IDs** (not raw strings), mirroring the existing precedent for process approval outcomes (outcome IDs survive rename; labels are edited without reinterpreting historical record values). The stored record value stays the option ID; display resolves ID→label the same way relation labels already resolve ID→label. Multi-select, option colors, and archivable options are explicitly deferred past v1 unless separately approved.
+
+### Multi-Value / Many-to-Many Relations
+
+Confirmed at the schema level (`entity_record_relation_values` has `unique (workspace_id, source_record_id, field_definition_id)`): every forward relation field is hard-constrained to at most one target per record. Reverse "collections" are purely derived by querying the other direction, not a different storage shape. Today's recommended pattern for a one-to-many need (e.g., several Analysts on one Account) is to put the relation field on the "many" side pointing at the "one" side — a join-style entity if necessary — and let the "one" side see it as a derived reverse group, exactly as `Deal → Account` and `Milestone → Engagement` already work. True many-to-many (an Analyst who also needs to see their own multiple Accounts as a first-class forward field, or per-pairing metadata) needs either array-valued relation storage or an explicit join-entity concept — real schema/architecture work, not committed to a design here.
+
+## Query & List Performance
+
+A Phase 8B dogfood performance review found `getRelationLookups` and `listIncomingRelationsForRecord` were each fetching an entire related entity type's table just to resolve a handful of labels; both were narrowed to fetch only the specific record IDs actually needed (see PROJECT_CONTEXT.md's Phase 8B closing pass). Two related, larger items were identified but deliberately not addressed as part of that fix:
+
+- **Entity list page pagination.** The primary records table (and other full-table reads like it) has no `LIMIT`/pagination at the database level — already a documented Intentional Limitation, not new, but worth solving alongside any future list-scale work.
+- **Real aggregate Home counts.** The Home page's per-object-type active-record counts currently fetch one column of every active record in the workspace and count client-side in JavaScript, rather than using a SQL aggregate (`count(*) group by entity_type_id` via an RPC, or parallel `count: "exact", head: true` calls). Runs on every Home page load; worth fixing as real usage volume grows.
+
 ## Other Later Areas
 
 These are candidates for later planning, without committed sequencing or detailed milestone definitions:

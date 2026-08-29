@@ -242,7 +242,7 @@ test("reverse relationships are grouped by source entity and relation field", as
   const { client, acmeId } = await createDetailScenario(run);
 
   await page.goto(`/entities/${client.id}/records/${acmeId}`);
-  await expect(page.getByRole("heading", { name: "Related Records" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Related", exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: `${run.label} Detail Deliverables via Client`,
@@ -327,7 +327,7 @@ test("archive, restore, and safe delete actions work from detail", async ({
   const run = createScenarioRun();
   const { client, acmeId } = await createDetailScenario(run);
   const recordActions = page.locator("details").filter({
-    has: page.getByText("Record actions", { exact: true }),
+    has: page.getByText("More actions", { exact: true }),
   });
 
   await page.goto(`/entities/${client.id}/records/${acmeId}`);
@@ -335,11 +335,13 @@ test("archive, restore, and safe delete actions work from detail", async ({
   await page.getByRole("button", { name: "Archive" }).click();
   await expect(page.getByText("Record archived.")).toBeVisible();
   await expect(page.locator("span").filter({ hasText: /^Archived$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Company Name" })).toHaveCount(0);
   if (!(await page.getByRole("button", { name: "Restore" }).isVisible())) {
     await recordActions.locator("summary").click();
   }
   await page.getByRole("button", { name: "Restore" }).click();
   await expect(page.getByText("Record restored.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Company Name" })).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
   if (!(await page.getByRole("button", { name: "Delete" }).isVisible())) {
@@ -347,4 +349,177 @@ test("archive, restore, and safe delete actions work from detail", async ({
   }
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText(/Cannot delete this/)).toBeVisible();
+});
+
+async function createOverviewScenario(run: TestRun) {
+  const supabase = createSupabaseTestClient();
+  const entity = await createEntity(supabase, run, "Overview Widget", [
+    { slug: "name", name: "Name", type: "text", required: true },
+    { slug: "alpha", name: "Alpha", type: "text" },
+    { slug: "bravo", name: "Bravo", type: "text" },
+    { slug: "charlie", name: "Charlie", type: "text" },
+    { slug: "delta", name: "Delta", type: "text" },
+    { slug: "echo", name: "Echo", type: "text" },
+    { slug: "foxtrot", name: "Foxtrot", type: "text" },
+    { slug: "golf", name: "Golf", type: "text" },
+  ]);
+  const recordId = await createEntityRecord({
+    entity,
+    valuesBySlug: {
+      name: `${run.label} Widget One`,
+      alpha: "Alpha value",
+      charlie: "Charlie value",
+      echo: "Echo value",
+    },
+  });
+
+  return { entity, recordId };
+}
+
+test("Overview prefers populated fields up to the cap, with All fields revealing the canonical rest", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { entity, recordId } = await createOverviewScenario(run);
+
+  await page.goto(`/entities/${entity.id}/records/${recordId}`);
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+  // "All fields" duplicates the capped summary's fields inside its own
+  // (initially collapsed) list, so scope to the always-visible summary <dl>
+  // -- the first one on the page -- to avoid matching the hidden copy.
+  const overviewList = page.locator("dl").first();
+
+  // 6 populated-first fields (3 populated + 3 empty backfilled by position)
+  // are visible without expanding; the last empty field (Golf, position 8)
+  // is beyond the cap and only appears once "All fields" is opened.
+  for (const label of ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]) {
+    await expect(overviewList.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("Golf", { exact: true })).not.toBeVisible();
+
+  // Inline editing reuses the same EditableTableCell/updateRecordField
+  // wiring as the records table.
+  await overviewList.getByRole("button", { name: "Edit Alpha" }).click();
+  const input = page.locator('input[name="value"]');
+  await input.fill("Alpha updated");
+  await input.press("Enter");
+  await expect(overviewList.getByRole("button", { name: "Edit Alpha" })).toBeVisible();
+  await expect(overviewList.getByText("Alpha updated")).toBeVisible();
+
+  await page.getByText("All fields").click();
+  await expect(page.getByText("Golf", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(overviewList.getByText("Alpha updated")).toBeVisible();
+});
+
+test("a sparse record still renders Overview structure instead of looking empty", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const entity = await createEntity(supabase, run, "Sparse Widget", [
+    { slug: "name", name: "Name", type: "text", required: true },
+    { slug: "note", name: "Note", type: "text" },
+  ]);
+  const recordId = await createEntityRecord({
+    entity,
+    valuesBySlug: { name: `${run.label} Sparse One` },
+  });
+
+  await page.goto(`/entities/${entity.id}/records/${recordId}`);
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(page.getByText("Note", { exact: true })).toBeVisible();
+  await expect(page.getByText("—", { exact: true })).toBeVisible();
+});
+
+async function createUnifiedRelatedScenario(run: TestRun) {
+  const supabase = createSupabaseTestClient();
+  const manager = await createEntity(supabase, run, "Related Manager", [
+    { slug: "name", name: "Name", type: "text", required: true },
+  ]);
+  const client = await createEntity(supabase, run, "Related Widget Client", [
+    { slug: "name", name: "Name", type: "text", required: true },
+    {
+      slug: "manager",
+      name: "Manager",
+      type: "relation",
+      relatedEntityTypeId: manager.id,
+    },
+  ]);
+  const deliverable = await createEntity(supabase, run, "Related Widget Deliverable", [
+    { slug: "title", name: "Title", type: "text", required: true },
+    {
+      slug: "client",
+      name: "Client",
+      type: "relation",
+      relatedEntityTypeId: client.id,
+    },
+  ]);
+  const managerId = await createEntityRecord({
+    entity: manager,
+    valuesBySlug: { name: `${run.label} Jordan Lee` },
+  });
+  const clientId = await createEntityRecord({
+    entity: client,
+    valuesBySlug: { name: `${run.label} Acme` },
+    relationsBySlug: { manager: managerId },
+  });
+  const deliverableIds: string[] = [];
+  for (let index = 1; index <= 7; index += 1) {
+    deliverableIds.push(
+      await createEntityRecord({
+        entity: deliverable,
+        valuesBySlug: { title: `${run.label} Deliverable ${index}` },
+        relationsBySlug: { client: clientId },
+      }),
+    );
+  }
+
+  return { manager, client, deliverable, managerId, clientId, deliverableIds };
+}
+
+test("Overview holds the forward relation field; Related holds only the reverse group, capping the preview with an expand", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { client, clientId } = await createUnifiedRelatedScenario(run);
+
+  await page.goto(`/entities/${client.id}/records/${clientId}`);
+
+  // The forward "Manager" relation lives in Overview, alongside primitive
+  // fields, not in Related -- it renders read-only (chip/link), never as an
+  // inline-editable cell.
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(page.getByText("Manager", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: `${run.label} Jordan Lee` })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Manager" })).toHaveCount(0);
+
+  // Related holds only the reverse-derived group -- no "Manager" heading
+  // there.
+  await expect(page.getByRole("heading", { name: "Related", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Manager", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: `${run.label} Related Widget Deliverables via Client` }),
+  ).toBeVisible();
+
+  // 7 related deliverables, capped preview of 5, with the remaining 2
+  // behind an expand.
+  for (let index = 1; index <= 5; index += 1) {
+    await expect(
+      page.getByRole("link", { name: `${run.label} Deliverable ${index}` }),
+    ).toBeVisible();
+  }
+  await expect(page.getByRole("link", { name: `${run.label} Deliverable 6` })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: `${run.label} Deliverable 7` })).toHaveCount(0);
+
+  await page.getByText("2 more").click();
+  await expect(page.getByRole("link", { name: `${run.label} Deliverable 6` })).toBeVisible();
+  await expect(page.getByRole("link", { name: `${run.label} Deliverable 7` })).toBeVisible();
+
+  await page.getByRole("link", { name: `${run.label} Jordan Lee` }).click();
+  await expect(
+    page.getByRole("heading", { name: `${run.label} Jordan Lee`, exact: true }),
+  ).toBeVisible();
 });

@@ -111,15 +111,18 @@ export function FieldCreateForm({
               htmlFor="fieldRelatedEntityTypeId"
               className="block text-sm font-medium text-slate-800"
             >
-              Related Entity
+              Related object
             </label>
+            <p className="mt-1 text-sm text-slate-600">
+              Links each record here to one record in the selected object.
+            </p>
             <select
               id="fieldRelatedEntityTypeId"
               name="fieldRelatedEntityTypeId"
               defaultValue={state.values.relatedEntityTypeId}
-              className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+              className="mt-2 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
             >
-              <option value="">Choose entity</option>
+              <option value="">Choose an object</option>
               {entityTypes.map((entityType) => (
                 <option key={entityType.id} value={entityType.id}>
                   {entityType.name}

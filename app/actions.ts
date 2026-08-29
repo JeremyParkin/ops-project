@@ -54,6 +54,7 @@ import {
   restoreFieldDefinition,
   restoreEntityType,
   setEntityDisplayField,
+  swapFieldPositions,
   updateEntityTypeMetadata,
   updateFieldDefinition as updateFieldDefinitionInRepository,
 } from "@/lib/domain/metadata-repository";
@@ -114,6 +115,10 @@ type UpdateRecordContext = CreateRecordContext & {
 
 type UpdateFieldDefinitionContext = CreateRecordContext & {
   fieldDefinitionId: string;
+};
+
+type MoveFieldDefinitionContext = UpdateFieldDefinitionContext & {
+  direction: "up" | "down";
 };
 
 type EntityViewContext = CreateRecordContext & {
@@ -1209,6 +1214,73 @@ export async function restoreField(
   return {
     success: true,
     message: "Field restored.",
+  };
+}
+
+export async function moveFieldDefinition(
+  context: MoveFieldDefinitionContext,
+  previousState: FieldLifecycleActionState,
+  formData: FormData,
+): Promise<FieldLifecycleActionState> {
+  void previousState;
+  void formData;
+
+  try {
+    const { entityType, fields } = await getEntityContext(context);
+
+    if (entityType.archivedAt) {
+      return {
+        success: false,
+        message: "Archived entities are read-only. Restore this entity before editing fields.",
+      };
+    }
+
+    const orderedFields = [...fields].sort((left, right) => left.position - right.position);
+    const currentIndex = orderedFields.findIndex(
+      (field) => field.id === context.fieldDefinitionId,
+    );
+
+    if (currentIndex === -1) {
+      return {
+        success: false,
+        message: "Unable to reorder the field. Please try again.",
+      };
+    }
+
+    const neighborIndex =
+      context.direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    const neighbor = orderedFields[neighborIndex];
+
+    if (!neighbor) {
+      return {
+        success: false,
+        message:
+          context.direction === "up"
+            ? "This field is already first."
+            : "This field is already last.",
+      };
+    }
+
+    const current = orderedFields[currentIndex];
+
+    await swapFieldPositions({
+      workspaceId: context.workspaceId,
+      entityTypeId: context.entityTypeId,
+      firstFieldId: current.id,
+      secondFieldId: neighbor.id,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to reorder the field. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Field order updated.",
   };
 }
 

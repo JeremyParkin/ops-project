@@ -65,7 +65,7 @@ export function RecordDetailActions({
         ) : null}
         <details className="relative">
           <summary className="inline-flex h-10 cursor-pointer items-center justify-center border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            Record actions
+            More actions
           </summary>
           <div className="absolute right-0 z-10 mt-2 flex min-w-44 flex-col gap-3 border border-slate-200 bg-white p-3 shadow-sm">
             {isArchived ? (

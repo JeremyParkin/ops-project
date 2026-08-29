@@ -197,14 +197,14 @@ export function AppHeader({
           className="order-last flex w-full min-w-0 items-center gap-2 pt-2 lg:order-none lg:ml-4 lg:w-56 lg:pt-0"
         >
           <label className="sr-only" htmlFor="header-record-search">
-            Search records
+            Search
           </label>
           <input
             id="header-record-search"
             name="q"
             type="search"
             className="h-9 min-w-0 flex-1 border border-slab bg-paper px-2 text-sm text-graphite placeholder:text-stone"
-            placeholder="Search records"
+            placeholder="Search"
           />
           <button
             type="submit"

@@ -25,6 +25,16 @@ type FieldEditFormProps = {
     state: FieldLifecycleActionState,
     formData: FormData,
   ) => Promise<FieldLifecycleActionState>;
+  moveFieldUpAction: (
+    state: FieldLifecycleActionState,
+    formData: FormData,
+  ) => Promise<FieldLifecycleActionState>;
+  moveFieldDownAction: (
+    state: FieldLifecycleActionState,
+    formData: FormData,
+  ) => Promise<FieldLifecycleActionState>;
+  isFirst: boolean;
+  isLast: boolean;
   workflowReferenceCount: number;
   viewReferenceCount: number;
 };
@@ -56,6 +66,10 @@ export function FieldEditForm({
   archiveFieldAction,
   restoreFieldAction,
   deleteFieldAction,
+  moveFieldUpAction,
+  moveFieldDownAction,
+  isFirst,
+  isLast,
   workflowReferenceCount,
   viewReferenceCount,
 }: FieldEditFormProps) {
@@ -84,6 +98,22 @@ export function FieldEditForm({
       message: "",
     },
   );
+  const [moveUpState, moveUpAction, moveUpPending] = useActionState(
+    moveFieldUpAction,
+    {
+      success: false,
+      message: "",
+    },
+  );
+  const [moveDownState, moveDownAction, moveDownPending] = useActionState(
+    moveFieldDownAction,
+    {
+      success: false,
+      message: "",
+    },
+  );
+  const moveMessage = moveUpState.message || moveDownState.message;
+  const moveSuccess = moveUpState.message ? moveUpState.success : moveDownState.success;
   const statusState = field.archivedAt
     ? deleteState.message
       ? deleteState
@@ -227,6 +257,34 @@ export function FieldEditForm({
           <FieldError message={state.errors._form} />
         </div>
       </form>
+      <div className="flex flex-wrap items-center gap-2">
+        <form action={moveUpAction}>
+          <button
+            type="submit"
+            disabled={isFirst || moveUpPending}
+            className="inline-flex h-9 items-center justify-center border border-slate-300 px-3 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Move Up
+          </button>
+        </form>
+        <form action={moveDownAction}>
+          <button
+            type="submit"
+            disabled={isLast || moveDownPending}
+            className="inline-flex h-9 items-center justify-center border border-slate-300 px-3 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Move Down
+          </button>
+        </form>
+        {moveMessage ? (
+          <p
+            className={`text-sm ${moveSuccess ? "text-emerald-700" : "text-red-700"}`}
+            role="status"
+          >
+            {moveMessage}
+          </p>
+        ) : null}
+      </div>
       <form
         action={archiveAction}
         onSubmit={(event) => {

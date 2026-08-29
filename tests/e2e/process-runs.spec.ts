@@ -714,7 +714,7 @@ test.describe("process runs", () => {
     await page.waitForURL(/\/process-runs\//);
 
     await page.goto(`/entities/${entity.id}/records/${recordId}`);
-    await page.getByText("Record actions", { exact: true }).click();
+    await page.getByText("More actions", { exact: true }).click();
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete" }).click();
     await expect(

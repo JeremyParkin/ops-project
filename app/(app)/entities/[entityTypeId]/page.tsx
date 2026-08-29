@@ -371,7 +371,7 @@ export default async function EntityPage({
       }
     >
         <PageHeader
-          eyebrow="Business object"
+          eyebrow={entityType.name}
           title={entityType.name}
           description={entityType.description}
           actions={!isArchivedEntity && canManageSchema ? (

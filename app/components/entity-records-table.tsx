@@ -235,7 +235,7 @@ export function EntityRecordsTable({
                         {actionContext ? (
                           <details className="text-sm">
                             <summary className="cursor-pointer font-medium text-stone underline-offset-4 hover:underline">
-                              Record actions
+                              More actions
                             </summary>
                             <div className="mt-3 rounded-sm border border-grit bg-white p-3">
                               <RecordRowActions

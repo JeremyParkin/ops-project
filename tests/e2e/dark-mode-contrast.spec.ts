@@ -69,7 +69,7 @@ test("search page text stays readable against its background when the browser pr
 }) => {
   await page.goto("/search");
 
-  await expect(page.getByRole("heading", { name: "Search records" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Search", exact: true })).toBeVisible();
 
   const heading = await readTextAndBackgroundLightness(page, "h1");
   expect(heading.backgroundLightness).toBeGreaterThan(0.85);

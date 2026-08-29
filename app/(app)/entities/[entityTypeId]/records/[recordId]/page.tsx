@@ -4,6 +4,7 @@ import {
   archiveRecord,
   deleteRecordFromDetail,
   restoreRecord,
+  updateRecordField,
 } from "@/app/actions";
 import { ObjectContextNav } from "@/app/components/object-context-nav";
 import { WorkspacePageLayout } from "@/app/components/page-primitives";
@@ -129,6 +130,7 @@ async function loadRecordDetailPageData(
         workspaceId,
         fields: entityContext.fields,
         currentRecord: record,
+        restrictToCurrentRecordValues: true,
       }),
       listIncomingRelationsForRecord({
         workspaceId,
@@ -181,6 +183,14 @@ export default async function RecordDetailPage({
     ...context,
     recordId: record.id,
   };
+  const editHref =
+    entityType.archivedAt
+      ? undefined
+      : `/entities/${entityType.id}/records/${record.id}/edit?returnTo=detail`;
+  const updateFieldAction =
+    entityType.archivedAt || record.archivedAt
+      ? undefined
+      : updateRecordField.bind(null, actionContext);
 
   return (
     <WorkspacePageLayout
@@ -192,7 +202,7 @@ export default async function RecordDetailPage({
           href={`/entities/${entityType.id}`}
           className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
         >
-          Back to {entityType.name}
+          ← {entityType.name}
         </Link>
         <RecordDetailView
           entityType={entityType}
@@ -201,11 +211,8 @@ export default async function RecordDetailPage({
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
           incomingRelationGroups={incomingRelationGroups}
           processSectionEntries={record.archivedAt ? [] : processSectionEntries}
-          editHref={
-            entityType.archivedAt
-              ? undefined
-              : `/entities/${entityType.id}/records/${record.id}/edit?returnTo=detail`
-          }
+          editHref={editHref}
+          updateFieldAction={updateFieldAction}
           archiveRecordAction={archiveRecord.bind(null, actionContext)}
           restoreRecordAction={restoreRecord.bind(null, actionContext)}
           deleteRecordAction={deleteRecordFromDetail.bind(null, actionContext)}

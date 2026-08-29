@@ -112,7 +112,7 @@ export default async function RecordEditPage({
           href={`/entities/${entityType.id}`}
           className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
         >
-          Back to {entityType.name}
+          ← {entityType.name}
         </Link>
         <RecordEditForm
           entityType={entityType}

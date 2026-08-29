@@ -294,7 +294,7 @@ function ViewForm({
                   defaultValue={String(filter.value ?? "")}
                   className="h-10 border border-slate-300 bg-white px-3 text-sm text-slate-950"
                 >
-                  <option value="">Choose record</option>
+                  <option value="">Choose an option</option>
                   {(relationOptionsByFieldKey[field.key] ?? []).map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}

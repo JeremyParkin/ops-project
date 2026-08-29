@@ -19,18 +19,18 @@ export default async function SearchPage({
     <WorkspacePageLayout>
           <PageHeader
             eyebrow="Workspace"
-            title="Search records"
+            title="Search"
             description={
               query
                 ? `${groups.reduce((count, group) => count + group.results.length, 0)} result${groups.reduce((count, group) => count + group.results.length, 0) === 1 ? "" : "s"} for “${query}”`
-                : "Find active records across your workspace."
+                : "Find what you're looking for across your workspace."
             }
           />
         <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
           <header className="border-b border-slate-200 pb-5">
             <form action="/search" method="get" className="mt-4 flex max-w-xl gap-2">
               <label className="sr-only" htmlFor="search-query">
-                Search records
+                Search
               </label>
               <input
                 id="search-query"
@@ -38,7 +38,7 @@ export default async function SearchPage({
                 type="search"
                 defaultValue={query}
                 className="min-w-0 flex-1 border border-slate-300 bg-white px-3 py-2 text-slate-950"
-                placeholder="Search active records"
+                placeholder="Search your workspace"
               />
               <button
                 type="submit"
@@ -51,13 +51,13 @@ export default async function SearchPage({
 
           {!query ? (
             <div className="py-8 text-center">
-              <p className="text-sm text-slate-600">Enter a search term to find active records.</p>
+              <p className="text-sm text-slate-600">Enter a search term to get started.</p>
             </div>
           ) : groups.length === 0 ? (
             <div className="py-8 text-center">
-              <h2 className="text-lg font-semibold text-slate-950">No matching records</h2>
+              <h2 className="text-lg font-semibold text-slate-950">No matches</h2>
               <p className="mt-2 text-sm text-slate-600">
-                No active records match “{query}”. Try a different name or text value.
+                Nothing matches “{query}”. Try a different name or text value.
               </p>
             </div>
           ) : (

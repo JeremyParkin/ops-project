@@ -406,6 +406,38 @@ export async function archiveFieldDefinition({
   }
 }
 
+// field_definitions has a unique (entity_type_id, position) constraint (and
+// position must be > 0), so a direct two-row swap momentarily collides (the
+// first row's new value is still held by the second row) unless routed
+// through a sentinel position no real field could ever reach (positions
+// only ever increase from 1). swap_field_definition_positions (migration
+// 0059) performs that same three-step sentinel swap inside one PL/pgSQL
+// function -- one transaction -- so a request interrupted mid-swap rolls
+// back entirely instead of permanently stranding a field at the sentinel.
+export async function swapFieldPositions({
+  workspaceId,
+  entityTypeId,
+  firstFieldId,
+  secondFieldId,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+  firstFieldId: string;
+  secondFieldId: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("swap_field_definition_positions", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_first_field_id: firstFieldId,
+    p_second_field_id: secondFieldId,
+  });
+
+  if (error) {
+    throw new Error(`Unable to reorder fields: ${error.message}`);
+  }
+}
+
 export async function restoreFieldDefinition({
   workspaceId,
   entityTypeId,
