@@ -565,12 +565,20 @@ export function EntityViewsPanel({
             {recordCount} record{recordCount === 1 ? "" : "s"} in {selectedViewName}
           </p>
         </div>
-        <Link
-          href="#add-record"
-          className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
-        >
-          Add {entityType.name}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="#add-record"
+            className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
+          >
+            Add {entityType.name}
+          </Link>
+          <Link
+            href={`/entities/${entityType.id}/import`}
+            className="inline-flex h-10 items-center justify-center border border-grit px-4 text-sm font-medium text-stone hover:bg-slab/5"
+          >
+            Import CSV
+          </Link>
+        </div>
       </div>
 
       <details

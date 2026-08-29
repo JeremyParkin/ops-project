@@ -112,12 +112,20 @@ export function EntityRecordsTable({
         <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone">
           {emptyState.description}
         </p>
-        <Link
-          href="#add-record"
-          className="mt-5 inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
-        >
-          Add {entityType.name}
-        </Link>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="#add-record"
+            className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
+          >
+            Add {entityType.name}
+          </Link>
+          <Link
+            href={`/entities/${entityType.id}/import`}
+            className="inline-flex h-10 items-center justify-center border border-grit px-4 text-sm font-medium text-stone hover:bg-slab/5"
+          >
+            Import CSV
+          </Link>
+        </div>
       </section>
     );
   }

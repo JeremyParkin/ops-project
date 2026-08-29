@@ -442,7 +442,7 @@ export async function listEntityRecords({
   return records;
 }
 
-function splitRecordValues(fields: FieldDefinition[], values: EntityRecord["values"]) {
+export function splitRecordValues(fields: FieldDefinition[], values: EntityRecord["values"]) {
   const primitiveValues: EntityRecord["values"] = {};
   const relations: Array<{
     field_definition_id: string;
@@ -513,6 +513,53 @@ export async function createEntityRecord({
   }
 
   return data;
+}
+
+// Commits an entire CSV import batch as one transaction via
+// bulk_create_entity_records_authorized (migration 0061). importId is the
+// batch's durable idempotency key, claimed atomically inside the RPC -- a
+// retried or double-submitted call with the same importId returns the
+// already-committed count instead of inserting a second time; it is never
+// generated or trusted from anywhere but this one call site's caller.
+export async function bulkCreateEntityRecords({
+  workspaceId,
+  entityTypeId,
+  fields,
+  rows,
+  importId,
+  supabase: injectedSupabase,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+  fields: FieldDefinition[];
+  rows: EntityRecord["values"][];
+  importId: string;
+  supabase?: SupabaseServerClient;
+}) {
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+  const payload = rows.map((values) => {
+    const { primitiveValues, relations } = splitRecordValues(fields, values);
+    return { values: primitiveValues, relations };
+  });
+
+  const { data, error } = await supabase.rpc("bulk_create_entity_records_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_import_id: importId,
+    p_rows: payload,
+  });
+
+  if (error) {
+    throw new Error(`Unable to import records: ${error.message}`);
+  }
+
+  const result = Array.isArray(data) ? data[0] : undefined;
+
+  if (!result || typeof result.imported_row_count !== "number") {
+    throw new Error("Unable to import records: unexpected RPC response.");
+  }
+
+  return result.imported_row_count as number;
 }
 
 export async function getEntityRecord({
