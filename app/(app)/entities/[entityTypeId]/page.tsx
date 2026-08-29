@@ -461,7 +461,7 @@ export default async function EntityPage({
             isArchivedEntity ? undefined : `/entities/${entityType.id}/records`
           }
           recordActionContext={isArchivedEntity ? undefined : context}
-          emptyState={isArchivedEntity ? undefined : emptyState}
+          emptyState={isArchivedEntity || isManaging ? undefined : emptyState}
         />
         <div className="mx-auto w-full max-w-6xl bg-white">
           <Link
