@@ -19,6 +19,7 @@ type AppHeaderProps = {
   canManageWorkspace: boolean;
   canManageAutomation: boolean;
   canManageSchema: boolean;
+  canManageSettings: boolean;
   quickJumpEntityTypes: QuickJumpEntityType[];
   hasMoreEntityTypes: boolean;
   unreadNotificationCount: number;
@@ -64,6 +65,7 @@ export function AppHeader({
   canManageWorkspace,
   canManageAutomation,
   canManageSchema,
+  canManageSettings,
   quickJumpEntityTypes,
   hasMoreEntityTypes,
   unreadNotificationCount,
@@ -72,15 +74,14 @@ export function AppHeader({
 }: AppHeaderProps) {
   const pathname = usePathname();
   const isNotifications = pathname.startsWith("/notifications");
-  // Configure holds Automations/Processes/Data model/Workspace settings, each
-  // independently gated on its own capability. "Data model" reuses the same
-  // /entities (All Objects) surface Business links to -- Configure is simply
-  // a second, schema-minded entry point into it, not a separate management
-  // system. Because canConfigure exactly unions the same three capabilities
-  // that gate the individual items below, no combination ever produces an
-  // empty dropdown: schema.manage alone shows Data model, automation.manage
-  // alone shows Automations+Processes, etc.
-  const canConfigure = canManageWorkspace || canManageAutomation || canManageSchema;
+  // Configure holds Automations/Processes/Data model/Workspace settings/
+  // Workspace Health, each independently gated on its own capability. "Data
+  // model" reuses the same /entities (All Objects) surface Business links
+  // to -- Configure is simply a second, schema-minded entry point into it,
+  // not a separate management system. Because canConfigure exactly unions
+  // the same capabilities that gate the individual items below, no
+  // combination ever produces an empty dropdown.
+  const canConfigure = canManageWorkspace || canManageAutomation || canManageSchema || canManageSettings;
   const isHome = pathname === "/";
   const isWork = pathname.startsWith("/my-work") || pathname.startsWith("/team-work");
   const isBusiness = pathname.startsWith("/entities");
@@ -153,6 +154,9 @@ export function AppHeader({
               {canManageSchema ? <MenuLink href="/entities?manage=true">Data model</MenuLink> : null}
               {canManageWorkspace ? (
                 <MenuLink href="/settings">Workspace settings</MenuLink>
+              ) : null}
+              {canManageSettings ? (
+                <MenuLink href="/settings/health">Workspace Health</MenuLink>
               ) : null}
             </NavMenu>
           ) : null}

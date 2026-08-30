@@ -1,213 +1,178 @@
 # Kinema Roadmap
 
-This roadmap describes likely product directions after the current Process Graph work. It is intentionally directional: the repository and `PROJECT_CONTEXT.md` remain the source of truth for what exists today, while each milestone should receive its own product and architecture design before implementation.
+This roadmap is a forward planning document. It describes what Kinema should build next and why, not a historical archive of completed implementation work.
 
-## Near-Term Next Milestone
+Completed foundation work, including Phases 1-7 and completed portions of Phase 8, is documented in `docs/PROJECT_CONTEXT.md`. That file remains the canonical record of implemented state, architecture decisions, known limitations, and milestone history.
 
-### Automated Action Nodes
+## Product Direction
 
-The next planned milestone is automated Process nodes: a Process step that performs a deterministic system action without waiting for a person.
+Kinema is a configurable business-operations platform: structured enough to protect operational data, flexible enough to model each organization's real objects, relationships, processes, roles, and workflows.
 
-The goal is to let a Process coordinate operational work and the underlying business records in one coherent flow. Candidate actions include:
+Roadmap decisions should keep these principles intact:
 
-- Create a record.
-- Update a record.
-- Update one direct related record.
-- Start another process.
+- AI configures deterministic software; AI does not execute routine operational work that the product can perform reliably.
+- The system should be flexible but safe: preserve stable identities, avoid silent rewrites, and prefer reversible lifecycle states over destructive changes.
+- Worker UX should hide configuration complexity. Builders configure objects, fields, relationships, automations, process templates, roles, and policies; workers should experience purposeful operational surfaces.
+- Build generic foundations with specific experiences. A new business object should work immediately in records, tables, relations, views, automation, process, search, and activity surfaces.
+- Avoid accidental data inconsistency. Do not casually cascade, null, delete, or reinterpret dependent data.
+- Compete on configurable operational structure, not commodity project-management lists.
 
-The key design principle is reuse. Process automation should invoke the same canonical deterministic action machinery already used by Workflows where that is sensible, rather than creating a second automation engine with subtly different validation, mapping, logging, or integrity rules.
+## Phase 8 - Operational Foundation
 
-The precise node lifecycle, failure behavior, configuration UI, and action scope remain implementation-design questions. This is a roadmap item, not yet an implementation specification.
+Phase 8 turns Kinema from a capable prototype into a daily operational system: clearer worker surfaces, better business-object navigation, import/search/activity, recurrence, notifications, and administrator governance.
 
-## User Settings & Preferences
+### 8E - Admin & Governance
 
-This is a horizontal product and platform foundation, rather than a numbered major phase.
+**Status:** Completed once the current Workspace Health slice closes. Implemented details and history live in `PROJECT_CONTEXT.md`.
 
-**Goal:** Give each user a personal settings surface for preferences that should follow them across Kinema.
+Future governance, audit, workspace-health, impersonation, and production-support evolution should be planned under [Governance, Audit & Workspace Hygiene](#governance-audit--workspace-hygiene), not as open-ended Phase 8E work.
 
-Likely areas include:
+### 8F - Connectivity
 
-- Appearance and theme, including dark mode.
-- Timezone.
-- Date and time formatting.
-- Notification preferences.
-- Default landing page.
-- Density and accessibility preferences where useful.
+**Status:** Remaining Phase 8 work.
 
-Personal preferences should remain clearly separate from workspace-wide configuration, administrator controls, and roles or permissions. The roadmap does not yet prescribe a persistence model or settings UI.
+**Goal:** Establish the practical edges Kinema needs to exchange data and operational events with the outside world, without pretending to be an integration marketplace.
 
-## Product Experience Principles
+Likely scope:
 
-### Configure Deeply, Operate Simply
+- API foundations for authenticated programmatic access to core workspace data and operations.
+- Webhooks or outbound event delivery for meaningful operational events.
+- Import/export maturity beyond the current one-object CSV import, including CSV export and clearer data movement workflows.
+- Outbound email/provider infrastructure where useful for invitations, notifications, and later collaboration.
+- External event or webhook waits if they fit the existing deterministic Process model.
+- Operational safeguards for external side effects: idempotency, retry visibility, failure states, auditability, and administrator configuration.
 
-Kinema can remain highly configurable underneath without making ordinary workers feel as though they are using a database, schema editor, or process builder. Builders and administrators configure entities, fields, relationships, workflows, process templates, permissions, and workspace structure. Workers should primarily encounter purposeful operational surfaces: My Work, Team Work, process and run views, approvals, and records relevant to their job.
+Boundaries:
 
-The product should provide powerful configuration underneath and opinionated, task-oriented UX on top. It should avoid the failure mode where everyone lands in the backend simply because the system is flexible.
+- Keep integration behavior deterministic and inspectable.
+- Prefer a small set of durable provider/event primitives over a broad marketplace.
+- Keep email/provider infrastructure separable from the collaborative workflows that may later use it.
 
-### Win on Custom Operations, Not Commodity Task Lists
+## Phase 9 - Table & View Experience
 
-Kinema should not try to become a generic Asana or Monday clone. Its stronger fit is organizations whose work does not fit standard task and project tools: they need custom business objects, relationships between them, repeatable processes, automation, role- and team-aware operations, and tailored operational views.
+**Goal:** Make Kinema's core business-object table experience genuinely delightful for everyday work: Airtable-class in quality, but grounded in Kinema's stronger operational model.
 
-The intended position is: more structured and purpose-built than a flexible database, and more adaptable than a conventional project-management tool. Product decisions should not overfit Kinema to generic task management at the expense of that operational depth.
+This is a major product phase, not cosmetic polish. Business objects are the center of Kinema's data model; their collection and view experience should feel fast, legible, editable, and trustworthy.
 
-### Make Operational Delivery Native
+### Table Fundamentals
 
-As Kinema becomes a daily tool for employees, assignments and process events should naturally reach the relevant person. Future notification and reminder work should be a first-class operational layer for events such as new assignments, approvals needed, overdue or upcoming work, newly ready steps, satisfied waits or conditions, and failed automated actions requiring attention.
+- Sorting that feels reliable, persists where appropriate, and respects typed values.
+- Filtering that is easier to create, understand, edit, and recover from.
+- Stronger Saved Views: clearer view management, defaults, stale-reference handling, view-specific column/sort/filter state, and possibly richer operators.
+- Column show/hide, reorder, and resizing.
+- Sticky headers, useful row affordances, better density controls, and polished visual hierarchy.
+- Loading, empty, filtered-empty, and error states that help users decide the next action.
 
-The likely pattern is deterministic operational state leading to a notification rule, then an in-app notification and optionally email or another external channel. This should build on existing process and work state, not create a second workflow engine. Personal notification preferences belong in [User Settings & Preferences](#user-settings--preferences) when that foundation is designed.
+### Editing & Data Quality
 
-### Attack Setup Cost, Eventually with AI Assistance
+- Cautious in-place editing beyond the current primitive-cell foundation, with explicit commit/cancel behavior and server-authoritative validation.
+- Relation editing that is richer than today's mostly read-only table/detail treatment.
+- Clickable URLs, email values, and relation chips where appropriate.
+- Bulk actions for common safe operations, designed around reversibility and dependency checks.
+- Singular and plural business-object labels so collection headings, navigation labels, and record-detail labels can be correct without runtime pluralization guesses.
 
-A configurable system fails if it requires an expert builder for every new workspace. Kinema should steadily reduce setup friction and, in the longer term, use AI to configure deterministic software rather than improvise routine operations.
+### Field & Relation Model Improvements
 
-For example, a description of a monthly client-report process could lead Kinema to propose entities, fields, relationships, teams, process templates, assignments, due rules, workflows, and operational views. A user reviews and edits the proposal before creating the deterministic configuration. The long-term differentiator is AI as the expert system builder an organization would otherwise need on staff.
+- **Choice / Select field type:** single-select v1 with builder-defined options stored as stable IDs, not raw labels. This should support consistent filtering, automation conditions, display, and later color/status treatment. Multi-select, option colors, and archivable options should be deliberate follow-ons, not accidental scope creep.
+- **Color-coded select/status values:** likely after or alongside single-select, with care for accessibility and non-color cues.
+- **Multi-value / many-to-many relations:** support real many-to-many needs through a designed storage/model approach, whether array-valued relation storage, explicit join entities, or another architecture. This should not be patched around with presentation-only reverse lists.
+- Better relation creation/editing flows, including cases where users need to create, link, unlink, and inspect related records without losing context.
 
-Until that guided layer exists, exposing first-time users directly to concepts such as Entity Type, Field Definition, Workflow Action, or Process Node risks recreating the setup-cost problem Kinema is meant to solve.
+### Scale & Performance
 
-## Phase 7: People, Permissions & Management
+- DB-backed pagination for entity list pages and other full-table reads.
+- Large-table performance work, including virtualization only if real usage warrants it.
+- Real aggregate counts where the UI currently derives counts by fetching rows.
+- Continued search/list performance tuning only when product scale or measured query behavior justifies it.
 
-After automated action nodes, the next major phase should make Kinema useful for several real users with different responsibilities, scope, and visibility. These areas belong together because permissions, organizational structure, and management views must reinforce the same operating model.
+## Phase 10 - Collaboration
 
-### 7A - Roles & Permissions Foundation
+**Goal:** Add the human collaboration layer around Kinema's operational objects and process work.
 
-**Goal:** Move beyond workspace-wide, all-or-nothing membership.
+Phase 10 should make it natural for people to discuss, request input, and preserve context directly where work happens.
 
-Direction:
+Likely scope:
 
-- Model roles as configurable bundles of capabilities, not only fixed Admin, Manager, and User labels.
-- Control who can view, edit, and configure entities, processes, and operational data.
-- Support future visibility rules such as "my records," "my team's records," and scoped business areas.
-- Preserve strong workspace isolation and server-side enforcement.
+- Comments or discussions on business-object records.
+- Comments or contextual discussion on process runs and tasks where the workflow warrants it.
+- @mentions with durable mention records and notification delivery.
+- Requests for input and lightweight collaboration patterns tied to records, tasks, or approvals.
+- Durable conversation history with clear authorship, timestamps, and permission behavior.
+- Notification integration for comments, mentions, and input requests.
+- Email delivery and preferences for collaborative notifications, using provider infrastructure if Phase 8F establishes it.
+- Attachments/files if they have not landed earlier, especially when needed to support comments, record context, or process evidence.
 
-The final permission model should be designed from real product needs rather than prematurely fixed in the roadmap.
+Design constraints:
 
-Stronger roles, permissions, and administrator capabilities are also foundational for future workspace governance and hygiene policies: only authorized administrators should configure or review those controls.
+- Keep collaboration attached to deterministic operational state; comments should not become an alternate task engine.
+- Separate notification infrastructure from collaboration semantics. Phase 8F may provide email/provider capability; Phase 10 decides how comments and mentions use it.
+- Preserve workspace boundaries, actor history, impersonation semantics, and future audit expectations.
 
-### 7B - Teams & Organizational Structure
+## Later Strategic Capabilities
 
-**Goal:** Represent responsibility relationships within an organization.
+These areas are important, but should be sequenced after Phases 8F-10 unless a concrete product need pulls a smaller slice forward.
 
-Potential concepts:
+### Personal Settings & Preferences
 
-- Teams and groups.
-- Manager and report relationships.
-- Team membership.
-- Responsibility scopes.
+- User settings foundation separate from workspace-wide configuration and administrator controls.
+- Appearance/theme, including any future dark-mode support.
+- User timezone and date/time formatting preferences.
+- Notification preferences, channel toggles, digests, and due-soon thresholds.
+- Default landing page or navigation preferences such as favorites, pins, or recents.
+- Density and accessibility preferences where they materially improve everyday work.
 
-This foundation should make it possible to understand work assigned to an individual, their team, people reporting to a manager, or an accountable business group.
+### Governance, Audit & Workspace Hygiene
 
-### 7C - Manager / Portfolio Experience
+- Workspace Health V2: pending deactivated-assignee findings, additional deterministic structural checks, and better fix workflows; extend checks only when they are explainable and directly actionable.
+- Recurring hygiene policies for stale records, missing ownership, stuck processes, orphaned relationships, inactive owners, possible duplicates, and configurable archive rules.
+- Preview/review paths for any hygiene action that could alter or hide data.
+- Field-level record-change and relation-change history.
+- General workspace activity/audit explorer, including imports, workflow execution, process failures, administrative changes, richer actor/effective-actor history, and support/impersonation events.
+- Impersonation/support-mode evolution: effective-user-aware UI gating, effective-user-aware notifications, reason capture, optional read-only support access, and stronger production support traceability.
+- Hardening of remaining raw/schema mutation paths where retained `SECURITY INVOKER` behavior can bypass app-layer validation.
+- Durable workflow log preservation; deleting a workflow should eventually not erase meaningful execution history.
+- Row-scoped visibility, team-based record visibility, ownership, and possibly multi-role membership if the permission model needs them.
 
-**Goal:** Give managers a useful view across people and work, not simply a larger My Work queue.
+### Process, Automation & Notifications
 
-Potential views and signals:
+- Process reminders, escalations, delegation, reassignment, and manager/team alerts.
+- Dynamic assignment from origin fields, roles, teams, expressions, round-robin, groups, or workload rules.
+- Process skip, reopen, cancel, rework, and stronger runtime change management.
+- Richer Process graph manipulation where usage justifies it: drag-to-position, drag-to-connect, layout persistence, and safer branch/region movement.
+- Additional Process node types such as subprocesses or carefully bounded external/action nodes.
+- Better workflow observability, durable background execution, more actions/conditions, and an explicit `unset` sentinel for transition conditions.
+- Business calendars, holidays, SLA-style due calculations, and timezone-aware analytics/reporting.
 
-- Active work across a team.
-- Overdue, blocked, and waiting processes.
-- Portfolio on-track and at-risk status.
-- Workload distribution.
-- Approvals needing attention.
-- Bottlenecks and aging work.
+### Data, Views & Search Beyond Phase 9
 
-The emphasis should be operational attention and understanding, not dashboard clutter.
+- Alternate saved-view modes such as Kanban, calendar, gallery, or dashboards when the table foundation is strong.
+- Advanced search across workflows, views, settings, archived records, comments, and files.
+- Fuzzy or indexed search only if real scale or query patterns require it.
+- Schema-from-CSV, multi-object import, relation matching improvements, and background import jobs if synchronous flows stop being sufficient.
+- Custom record layouts or page-builder-like detail experiences, kept generic enough to preserve Kinema's metadata-driven model.
 
-### 7D - Operational Analytics & Performance Trends
+### Production & Platform Readiness
 
-**Goal:** Use durable process history to reveal trends over time.
+- Self-serve workspace creation/signup, profile management, and workspace administration flows beyond invitations.
+- Separate/local Supabase test environment and CI-ready test isolation.
+- Deployment hardening, environment management, monitoring, backups, and operational runbooks.
+- Retention and cleanup policies for notifications, events, imports, and other operational logs.
 
-Potential measures:
+### AI-Assisted Configuration
 
-- Cycle and turnaround time.
-- On-time completion.
-- Overdue rates.
-- Throughput.
-- Workload over time.
-- Approval turnaround.
-- Rework and revision frequency.
-- Recurring bottlenecks.
+Longer term, Kinema should reduce setup cost by helping users generate deterministic configuration from natural language or examples.
 
-Kinema should not collapse employee performance into a simplistic single productivity score. Measures should be transparent, evidence-based, and interpreted with context: role differences, work complexity, workload, external waits, and process type all matter.
+Potential direction:
 
-## Workspace Governance & Hygiene Policies
+- Propose business objects, fields, relationships, select options, roles, teams, process templates, due rules, automations, views, and permissions from a user's description of their operation.
+- Let users review, edit, diff, and approve proposed configuration before anything is created.
+- Reuse the same validators, dependency checks, and safe lifecycle rules as manual configuration.
+- Treat AI as the expert system builder, not as an unbounded executor of everyday work.
 
-This is a substantial later product area, likely following the People, Permissions & Management phase.
+## Explicit Non-Goals For Now
 
-**Goal:** Let administrators define recurring rules that keep a workspace clean, complete, and operationally healthy.
-
-Potential capabilities:
-
-- Detect stale or incomplete records.
-- Detect missing ownership.
-- Identify stuck or unusually old processes.
-- Detect orphaned relationships or inactive owners.
-- Flag possible duplicate records.
-- Archive records after configured conditions or time periods.
-- Surface workspace-health issues for review.
-
-Hygiene checks should surface issues for human review. Deterministic hygiene actions may run automatically only where their safety is clear. This area should reuse Kinema's typed conditions, scheduled/background execution, deterministic automated actions, archive and lifecycle safety, roles and permissions, and operational history as they mature.
-
-Destructive cleanup automation must never be casual: it requires clear administrator control, auditability, and, where appropriate, a preview or review path before action.
-
-## Administrator Impersonation / Ghost Mode
-
-**Goal:** Let an authorized administrator temporarily operate Kinema as another user in the same workspace for development, troubleshooting, support, and permission validation. It should make it practical to verify exactly what a user can see and do, reproduce reported issues, test role/capability and team/manager scope, and exercise My Work, Team Work, Analytics, and future row-scoped visibility from realistic perspectives.
-
-This is not a read-only "view as" feature. The intended internal/dogfooding version supports full-control operation: actions should behave as though the target user performed them. That makes it especially valuable before public SaaS launch, when builders need to switch rapidly among test users without departing from the real application.
-
-The design must distinguish two identities:
-
-- **Real actor:** the authenticated administrator who initiates the session.
-- **Effective user:** the workspace user whose perspective, permissions, and scope are evaluated for ordinary Kinema actions.
-
-The real actor must hold a dedicated capability such as `workspace.impersonate_users`, and impersonation must use strict same-workspace validation. It must never be implemented by logging in with another user's credentials or casually swapping tokens. Instead, it needs an explicit application-level identity context that retains both identities server-side. System and service identities must not be impersonable, and the effective user must never inherit the administrator's additional powers.
-
-Eventual safeguards include a persistent visual banner naming both identities, one-click exit, audited session start and end, and audit records for mutations made under impersonation that retain both real actor and effective user. A production support mode may additionally require a reason, detailed audit history, optional read-only support access, and separately designed platform-level customer-support safeguards for a future multi-tenant SaaS model.
-
-Likely staged delivery:
-
-- **V1:** Internal/admin-only, full-control, same-workspace impersonation with a strong indicator, easy exit, effective-user authorization, and a basic audit trail.
-- **Later:** Production support controls, reason capture, richer audit history, optional read-only support mode, and any platform-level support impersonation.
-
-This work depends on and should reinforce roles and capabilities, teams/reporting, Team Work and Analytics, future row-scoped visibility, audit logging, and production support tooling. It remains future direction, not a current capability.
-
-## Business Object Data Model Refinements
-
-Worker/builder dogfooding of the Phase 8B record detail experience surfaced three real data-model gaps. Each is deliberately kept out of Phase 8B itself, since each needs a schema change and its own design pass rather than being folded into a presentation-layer milestone.
-
-### Singular + Plural Object Labels
-
-`EntityType` currently stores exactly one `name`, used everywhere regardless of grammatical context — correct for a record-page eyebrow ("Task"), wrong for a collection heading ("Task" instead of "Tasks") or an "All Task"-style navigation link. The preferred model is a second, nullable `pluralName`: seeded once at entity creation from a simple `+s`/`+es` default (a starting value only, never authoritative rendering logic), then builder-editable afterward like `name`/`description` already are. Consumers to migrate once this lands: the entity list page's title, the Home business-object card title, the contextual rail's "All {name}" link, and the All Objects index. Explicitly do not solve this with runtime pluralization heuristics — the one that already exists (`formatEntityGroupName` in `record-detail-view.tsx`, a crude `name.endsWith("s") ? name : name + "s"` used only for reverse-relation group headings) should eventually be replaced by real plural labels, not imitated elsewhere.
-
-### Choice / Select Field Type
-
-Fields like Status, Priority, Region, and Engagement Type are modeled as free-text today, which undermines filtering, automation conditions, and cross-record consistency. `FieldType` is a closed union threaded through the DB check constraint, field validation, the field-create UI, record validation, inline-edit eligibility, saved-view filter operators, and workflow condition value pickers — a new type is genuinely cross-cutting, not a small addition. Recommended v1: single-select only; builder-defined options stored with **stable IDs** (not raw strings), mirroring the existing precedent for process approval outcomes (outcome IDs survive rename; labels are edited without reinterpreting historical record values). The stored record value stays the option ID; display resolves ID→label the same way relation labels already resolve ID→label. Multi-select, option colors, and archivable options are explicitly deferred past v1 unless separately approved.
-
-### Multi-Value / Many-to-Many Relations
-
-Confirmed at the schema level (`entity_record_relation_values` has `unique (workspace_id, source_record_id, field_definition_id)`): every forward relation field is hard-constrained to at most one target per record. Reverse "collections" are purely derived by querying the other direction, not a different storage shape. Today's recommended pattern for a one-to-many need (e.g., several Analysts on one Account) is to put the relation field on the "many" side pointing at the "one" side — a join-style entity if necessary — and let the "one" side see it as a derived reverse group, exactly as `Deal → Account` and `Milestone → Engagement` already work. True many-to-many (an Analyst who also needs to see their own multiple Accounts as a first-class forward field, or per-pairing metadata) needs either array-valued relation storage or an explicit join-entity concept — real schema/architecture work, not committed to a design here.
-
-## Query & List Performance
-
-A Phase 8B dogfood performance review found `getRelationLookups` and `listIncomingRelationsForRecord` were each fetching an entire related entity type's table just to resolve a handful of labels; both were narrowed to fetch only the specific record IDs actually needed (see PROJECT_CONTEXT.md's Phase 8B closing pass). Two related, larger items were identified but deliberately not addressed as part of that fix:
-
-- **Entity list page pagination.** The primary records table (and other full-table reads like it) has no `LIMIT`/pagination at the database level — already a documented Intentional Limitation, not new, but worth solving alongside any future list-scale work.
-- **Real aggregate Home counts.** The Home page's per-object-type active-record counts currently fetch one column of every active record in the workspace and count client-side in JavaScript, rather than using a SQL aggregate (`count(*) group by entity_type_id` via an RPC, or parallel `count: "exact", head: true` calls). Runs on every Home page load; worth fixing as real usage volume grows.
-
-## Other Later Areas
-
-These are candidates for later planning, without committed sequencing or detailed milestone definitions:
-
-- Notifications and reminders.
-- Business calendars and holiday-aware working days.
-- Richer My Work and operational queues.
-- Improved process dashboards.
-- Automated and external integrations.
-- Further graph-builder interaction, including drag and drop only if real usage justifies it.
-- External event and webhook waits.
-- AI-assisted configuration of entities, processes, and roles.
-
-## Product Sequencing Principle
-
-Kinema should avoid endlessly adding Process-engine primitives for their own sake. After Automated Action Nodes, the priority is making the system useful for multiple people with different responsibilities, authority, and visibility.
-
-Real-world dogfooding should determine the ordering within the Phase 7 family. The underlying business logic should remain deterministic even where the product offers configurable experiences. Roadmap entries are direction, not commitments to exact schemas, permissions, or UX.
+- Do not build a generic project-management clone at the expense of configurable operational structure.
+- Do not add a huge integration marketplace before the API/webhook/provider foundations are clear.
+- Do not introduce destructive cleanup automation without administrator review, auditability, and clear rollback or preview semantics.
+- Do not hand routine process execution to AI. Deterministic automation and Process execution remain the product's job.
+- Do not broaden roadmap phases just because adjacent ideas exist. Each phase should ship coherent, usable product value.
