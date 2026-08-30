@@ -3,6 +3,7 @@ import { WorkspaceOrganizationManagement } from "@/app/components/workspace-orga
 import { WorkspaceTimezoneSettings } from "@/app/components/workspace-timezone-settings";
 import { PageHeader, WorkspacePageLayout } from "@/app/components/page-primitives";
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
+import { resolveImpersonationContext } from "@/lib/auth/impersonation";
 import { getWorkspaceTimezone } from "@/lib/domain/recurrence-repository";
 import { listWorkspaceMembersWithRoles, listWorkspaceRoles } from "@/lib/domain/workspace-role-repository";
 import { listWorkspaceInvitations } from "@/lib/domain/workspace-invitation-repository";
@@ -12,11 +13,36 @@ export const dynamic = "force-dynamic";
 
 export default async function WorkspaceSettingsPage() {
   const { workspaceId, user } = await getActiveWorkspaceId();
-  const permissions = await getWorkspacePermissionContext(workspaceId);
+  const [permissions, impersonation] = await Promise.all([
+    getWorkspacePermissionContext(workspaceId),
+    resolveImpersonationContext(workspaceId),
+  ]);
+
+  // Governance (members/roles/organization/settings) is real-actor-only and
+  // deliberately unreachable while impersonating -- the nav already hides
+  // the link to this page, but a direct URL must be blocked too, or hiding
+  // Configure would only ever be cosmetic.
+  if (impersonation.isImpersonating) {
+    return (
+      <WorkspacePageLayout>
+        <PageHeader
+          eyebrow="Configure"
+          title="Workspace settings"
+          description="Manage workspace responsibilities and organizational structure without changing who can read workspace records."
+        />
+        <section className="mx-auto w-full max-w-6xl border border-grit bg-paper p-5">
+          <h2 className="text-lg font-semibold text-graphite">Not available while impersonating.</h2>
+          <p className="mt-2 text-sm text-stone">Exit impersonation to manage workspace settings.</p>
+        </section>
+      </WorkspacePageLayout>
+    );
+  }
+
   const canManageMembers = permissions?.capabilities.has("workspace.manage_members") ?? false;
   const canManageRoles = permissions?.capabilities.has("workspace.manage_roles") ?? false;
   const canManageOrganization = permissions?.capabilities.has("workspace.manage_organization") ?? false;
   const canManageSettings = permissions?.capabilities.has("workspace.manage_settings") ?? false;
+  const canImpersonate = permissions?.capabilities.has("workspace.impersonate_users") ?? false;
   const roles = canManageMembers || canManageRoles
     ? await listWorkspaceRoles({ workspaceId })
     : [];
@@ -52,6 +78,7 @@ export default async function WorkspaceSettingsPage() {
               invitations={invitations}
               canManageMembers={canManageMembers}
               canManageRoles={canManageRoles}
+              canImpersonate={canImpersonate}
               currentUserId={user.id}
               currentRoleId={permissions.roleId}
             />

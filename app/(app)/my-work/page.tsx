@@ -6,6 +6,7 @@ import {
   WorkspacePageLayout,
 } from "@/app/components/page-primitives";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
+import { resolveImpersonationContext } from "@/lib/auth/impersonation";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
 import { listMyWorkItems, type MyWorkItem } from "@/lib/domain/process-repository";
 
@@ -60,9 +61,13 @@ function MyWorkItemRow({
 
 export default async function MyWorkPage() {
   const { workspaceId } = await getActiveWorkspaceId();
+  const impersonation = await resolveImpersonationContext(workspaceId);
   const [allEntityTypes, summary] = await Promise.all([
     listEntityTypes({ workspaceId, includeArchived: true }),
-    listMyWorkItems({ workspaceId }),
+    listMyWorkItems({
+      workspaceId,
+      effectiveUserId: impersonation.isImpersonating ? impersonation.effectiveUserId : undefined,
+    }),
   ]);
   const entityTypeNameById = new Map(
     allEntityTypes.map((entityType) => [entityType.id, entityType.name]),

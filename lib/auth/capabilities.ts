@@ -8,6 +8,7 @@ export const workspaceCapabilities = [
   "records.operate",
   "processes.operate",
   "operations.view",
+  "workspace.impersonate_users",
 ] as const;
 
 export type WorkspaceCapability = (typeof workspaceCapabilities)[number];

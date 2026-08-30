@@ -1514,16 +1514,21 @@ export async function listAssignedWorkItems({
 
 // "My Work" is a convenience filter over data every workspace member can
 // already see (via Process Run detail), not a new visibility boundary — the
-// current user is always resolved server-side via getCurrentUser(), never
-// accepted from the caller.
+// acting user id is always resolved server-side, never accepted from the
+// caller. effectiveUserId lets an impersonation-aware page pass the
+// server-verified effective user (from resolveImpersonationContext) instead
+// of the real actor's own id — still never client-supplied, just a
+// different server-side resolution than getCurrentUser().
 export async function listMyWorkItems({
   workspaceId,
+  effectiveUserId,
 }: {
   workspaceId: string;
+  effectiveUserId?: string;
 }): Promise<MyWorkSummary> {
-  const user = await getCurrentUser();
+  const userId = effectiveUserId ?? (await getCurrentUser())?.id;
 
-  return user
-    ? listAssignedWorkItems({ workspaceId, assigneeUserIds: [user.id] })
+  return userId
+    ? listAssignedWorkItems({ workspaceId, assigneeUserIds: [userId] })
     : { overdue: [], readyNow: [], upcoming: [] };
 }

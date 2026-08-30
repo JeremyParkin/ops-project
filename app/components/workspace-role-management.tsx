@@ -16,6 +16,7 @@ import {
   resendWorkspaceInvitationAction,
   type WorkspaceInvitationActionState,
 } from "@/app/workspace-invitation-actions";
+import { startImpersonationAction, type ImpersonationActionState } from "@/app/impersonation-actions";
 import { workspaceCapabilities, type WorkspaceCapability } from "@/lib/auth/capabilities";
 import type {
   WorkspaceMemberWithRole,
@@ -33,6 +34,11 @@ const initialWorkspaceInvitationActionState: WorkspaceInvitationActionState = {
   message: "",
 };
 
+const initialImpersonationActionState: ImpersonationActionState = {
+  success: false,
+  message: "",
+};
+
 const capabilityLabels: Record<WorkspaceCapability, string> = {
   "workspace.manage_members": "Manage members",
   "workspace.manage_roles": "Manage roles",
@@ -43,6 +49,7 @@ const capabilityLabels: Record<WorkspaceCapability, string> = {
   "records.operate": "Create and update records",
   "processes.operate": "Operate processes and approvals",
   "operations.view": "View operational management information",
+  "workspace.impersonate_users": "Log in as other members",
 };
 
 function ActionMessage({ state }: { state: WorkspaceRoleActionState }) {
@@ -147,7 +154,6 @@ function MemberDeactivationControl({
   return (
     <form
       action={action}
-      className="mt-1"
       onSubmit={(event) => {
         if (!isDeactivated && !window.confirm(`Deactivate ${member.email}? They will lose workspace access immediately.`)) {
           event.preventDefault();
@@ -165,6 +171,37 @@ function MemberDeactivationControl({
         }`}
       >
         {pending ? "Saving..." : isDeactivated ? "Reactivate" : "Deactivate"}
+      </button>
+      <ActionMessage state={state} />
+    </form>
+  );
+}
+
+function ImpersonationControl({
+  member,
+  currentUserId,
+}: {
+  member: WorkspaceMemberWithRole;
+  currentUserId: string;
+}) {
+  const [state, action, pending] = useActionState(
+    startImpersonationAction,
+    initialImpersonationActionState,
+  );
+  const isCurrentUser = member.userId === currentUserId;
+  const isDeactivated = Boolean(member.deactivatedAt);
+
+  if (isCurrentUser || isDeactivated) return null;
+
+  return (
+    <form action={action}>
+      <input type="hidden" name="targetUserId" value={member.userId} />
+      <button
+        type="submit"
+        disabled={pending}
+        className="h-8 border border-graphite px-2 text-xs font-medium text-graphite hover:bg-slab disabled:cursor-not-allowed disabled:border-grit disabled:text-stone"
+      >
+        {pending ? "Starting..." : "Log in as"}
       </button>
       <ActionMessage state={state} />
     </form>
@@ -364,6 +401,7 @@ export function WorkspaceRoleManagement({
   invitations,
   canManageMembers,
   canManageRoles,
+  canImpersonate,
   currentUserId,
   currentRoleId,
 }: {
@@ -372,6 +410,7 @@ export function WorkspaceRoleManagement({
   invitations: WorkspaceInvitation[];
   canManageMembers: boolean;
   canManageRoles: boolean;
+  canImpersonate: boolean;
   currentUserId: string;
   currentRoleId: string;
 }) {
@@ -390,7 +429,10 @@ export function WorkspaceRoleManagement({
             {members.map((member) => (
               <div key={member.userId} className="border border-grit bg-paper p-3">
                 <MemberRoleForm member={member} roles={roles} currentUserId={currentUserId} />
-                <MemberDeactivationControl member={member} currentUserId={currentUserId} />
+                <div className="mt-1 flex flex-wrap items-start gap-2">
+                  <MemberDeactivationControl member={member} currentUserId={currentUserId} />
+                  {canImpersonate ? <ImpersonationControl member={member} currentUserId={currentUserId} /> : null}
+                </div>
               </div>
             ))}
           </div>
