@@ -13,7 +13,21 @@ SUPABASE_SECRET_KEY=...
 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is used by the request-scoped browser
 and server clients. `SUPABASE_SECRET_KEY` should be an `sb_secret_...` key from
 the Supabase dashboard. It is for E2E fixtures/bootstrap administration only;
-normal application runtime must not use it.
+normal application runtime must not use it, with one narrow, approved
+exception: `lib/supabase/admin.ts`'s `createAdminSupabaseClient()`, used
+exclusively by `acceptInvitationCreateAccountAction`
+(`app/workspace-invitation-actions.ts`) to call
+`admin.auth.admin.createUser({ email, password, email_confirm: true })` when a
+token-verified workspace invitation is accepted by a genuinely new person.
+This project has no outbound email provider, so Supabase's own signup
+confirmation email cannot be delivered; `email_confirm: true` establishes a
+usable account without one. The admin client is immediately followed by a
+completely ordinary `signInWithPassword()` call using the password the person
+themselves just chose -- this is account provisioning, not session minting or
+impersonation, and `accept_workspace_invitation_authorized` still
+independently re-validates the invitation token/email/status/expiry before
+granting any workspace access. Do not extend this exception to any other
+runtime code path.
 
 Apply all checked-in migrations in order, then run `seed.sql` to create the
 development workspace, Client metadata, and sample records. The seed does not

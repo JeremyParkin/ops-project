@@ -5,6 +5,7 @@ import { PageHeader, WorkspacePageLayout } from "@/app/components/page-primitive
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import { getWorkspaceTimezone } from "@/lib/domain/recurrence-repository";
 import { listWorkspaceMembersWithRoles, listWorkspaceRoles } from "@/lib/domain/workspace-role-repository";
+import { listWorkspaceInvitations } from "@/lib/domain/workspace-invitation-repository";
 import { listWorkspaceOrganization } from "@/lib/domain/workspace-organization-repository";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,9 @@ export default async function WorkspaceSettingsPage() {
     : [];
   const members = canManageMembers
     ? await listWorkspaceMembersWithRoles({ workspaceId })
+    : [];
+  const invitations = canManageMembers
+    ? await listWorkspaceInvitations({ workspaceId })
     : [];
   const organization = canManageOrganization
     ? await listWorkspaceOrganization({ workspaceId })
@@ -45,6 +49,7 @@ export default async function WorkspaceSettingsPage() {
             <WorkspaceRoleManagement
               roles={roles}
               members={members}
+              invitations={invitations}
               canManageMembers={canManageMembers}
               canManageRoles={canManageRoles}
               currentUserId={user.id}

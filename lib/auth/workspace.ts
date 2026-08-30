@@ -28,6 +28,7 @@ export async function getWorkspacePermissionContext(
     .select("role_id, workspace_roles!inner(name, workspace_role_capabilities(capability))")
     .eq("workspace_id", workspaceId)
     .eq("user_id", user.id)
+    .is("deactivated_at", null)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data || !data.role_id) return null;
@@ -71,6 +72,7 @@ export async function listCurrentUserMemberships(): Promise<WorkspaceMembership[
     .from("workspace_memberships")
     .select("workspace_id, workspaces!workspace_memberships_workspace_id_fkey!inner(name)")
     .eq("user_id", user.id)
+    .is("deactivated_at", null)
     .order("created_at");
 
   if (error) throw new Error(error.message);

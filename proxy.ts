@@ -22,15 +22,21 @@ export async function proxy(request: NextRequest) {
   });
 
   const { data: claims } = await supabase.auth.getClaims();
-  const isPublicRoute = request.nextUrl.pathname === "/sign-in";
+  const pathname = request.nextUrl.pathname;
+  // /accept-invitation must stay reachable both signed out (a brand-new
+  // invitee has no session yet) and signed in (accepting a second
+  // invitation, or the invited email already has an account) -- unlike
+  // /sign-in, an authenticated visitor must not be bounced away from it.
+  const isSignInRoute = pathname === "/sign-in";
+  const isAcceptInvitationRoute = pathname === "/accept-invitation";
 
-  if (!claims && !isPublicRoute) {
+  if (!claims && !isSignInRoute && !isAcceptInvitationRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     return NextResponse.redirect(url);
   }
 
-  if (claims && isPublicRoute) {
+  if (claims && isSignInRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

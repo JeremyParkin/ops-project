@@ -5,7 +5,9 @@ import { getActiveWorkspaceId, requireWorkspaceCapability } from "@/lib/auth/wor
 import { isWorkspaceCapability, type WorkspaceCapability } from "@/lib/auth/capabilities";
 import {
   createWorkspaceRole,
+  deactivateWorkspaceMember,
   deleteWorkspaceRoleWithReassignment,
+  reactivateWorkspaceMember,
   setWorkspaceMemberRole,
   updateWorkspaceRole,
 } from "@/lib/domain/workspace-role-repository";
@@ -109,5 +111,39 @@ export async function setWorkspaceMemberRoleAction(
     return { success: true, message: "Member role updated." };
   } catch (error) {
     return { success: false, message: errorMessage(error, "Unable to update the member role.") };
+  }
+}
+
+export async function deactivateWorkspaceMemberAction(
+  _previousState: WorkspaceRoleActionState,
+  formData: FormData,
+): Promise<WorkspaceRoleActionState> {
+  const userId = getText(formData, "userId");
+  if (!userId) return { success: false, message: "Choose a member." };
+
+  try {
+    const workspaceId = await activeWorkspaceFor("workspace.manage_members");
+    await deactivateWorkspaceMember({ workspaceId, userId });
+    revalidatePath("/settings");
+    return { success: true, message: "Member deactivated." };
+  } catch (error) {
+    return { success: false, message: errorMessage(error, "Unable to deactivate the member.") };
+  }
+}
+
+export async function reactivateWorkspaceMemberAction(
+  _previousState: WorkspaceRoleActionState,
+  formData: FormData,
+): Promise<WorkspaceRoleActionState> {
+  const userId = getText(formData, "userId");
+  if (!userId) return { success: false, message: "Choose a member." };
+
+  try {
+    const workspaceId = await activeWorkspaceFor("workspace.manage_members");
+    await reactivateWorkspaceMember({ workspaceId, userId });
+    revalidatePath("/settings");
+    return { success: true, message: "Member reactivated." };
+  } catch (error) {
+    return { success: false, message: errorMessage(error, "Unable to reactivate the member.") };
   }
 }

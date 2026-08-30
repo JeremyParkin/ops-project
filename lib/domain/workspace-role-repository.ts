@@ -15,6 +15,7 @@ export type WorkspaceMemberWithRole = {
   email: string;
   roleId: string;
   roleName: string;
+  deactivatedAt?: string;
 };
 
 function mapCapabilities(value: unknown): WorkspaceCapability[] {
@@ -39,11 +40,13 @@ export async function listWorkspaceMembersWithRoles({
     email: string;
     role_id: string;
     role_name: string;
+    deactivated_at: string | null;
   }>).map((member) => ({
     userId: member.user_id,
     email: member.email,
     roleId: member.role_id,
     roleName: member.role_name,
+    deactivatedAt: member.deactivated_at ?? undefined,
   }));
 }
 
@@ -156,6 +159,36 @@ export async function setWorkspaceMemberRole({
     p_workspace_id: workspaceId,
     p_user_id: userId,
     p_role_id: roleId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deactivateWorkspaceMember({
+  workspaceId,
+  userId,
+}: {
+  workspaceId: string;
+  userId: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("deactivate_workspace_member_authorized", {
+    p_workspace_id: workspaceId,
+    p_user_id: userId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function reactivateWorkspaceMember({
+  workspaceId,
+  userId,
+}: {
+  workspaceId: string;
+  userId: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("reactivate_workspace_member_authorized", {
+    p_workspace_id: workspaceId,
+    p_user_id: userId,
   });
   if (error) throw new Error(error.message);
 }
