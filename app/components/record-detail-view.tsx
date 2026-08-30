@@ -4,6 +4,8 @@ import { EditableTableCell } from "@/app/components/editable-table-cell";
 import { RecordDetailActions } from "@/app/components/record-detail-actions";
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
 import { ProcessSection, type ProcessSectionEntry } from "@/app/components/process-section";
+import { RecordActivity } from "@/app/components/record-activity";
+import type { RecordActivityEvent } from "@/lib/domain/activity-types";
 import type {
   IncomingRelationGroup,
   RelationLabelsByFieldKey,
@@ -33,6 +35,7 @@ type RecordDetailViewProps = {
   relationLabelsByFieldKey: RelationLabelsByFieldKey;
   incomingRelationGroups: IncomingRelationGroup[];
   processSectionEntries: ProcessSectionEntry[];
+  activityEvents: RecordActivityEvent[];
   editHref?: string;
   updateFieldAction?: UpdateFieldAction;
   archiveRecordAction: Parameters<typeof RecordDetailActions>[0]["archiveRecordAction"];
@@ -138,6 +141,7 @@ export function RecordDetailView({
   relationLabelsByFieldKey,
   incomingRelationGroups,
   processSectionEntries,
+  activityEvents,
   editHref,
   updateFieldAction,
   archiveRecordAction,
@@ -317,6 +321,8 @@ export function RecordDetailView({
       ) : null}
 
       <ProcessSection entries={processSectionEntries} />
+
+      <RecordActivity events={activityEvents} />
     </div>
   );
 }

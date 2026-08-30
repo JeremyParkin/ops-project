@@ -141,11 +141,17 @@ describe("assignment notifications", () => {
     expect(notifications![0].dedup_key).toMatch(/^assignment:/);
     expect(notifications![0].read_at).toBeNull();
 
+    // Scoped to step_assigned specifically -- since Phase 8D.3
+    // (migration 0065), starting a run also unconditionally records its own
+    // process_started event, so an unfiltered query for this process_run_id
+    // now legitimately returns two rows. What this test actually verifies
+    // -- exactly one step_assigned event, not a duplicate -- is unchanged.
     const { data: events, error: eventsError } = await admin
       .from("workspace_events")
       .select("*")
       .eq("workspace_id", DEMO_WORKSPACE_ID)
-      .eq("process_run_id", runId);
+      .eq("process_run_id", runId)
+      .eq("event_type", "step_assigned");
     expect(eventsError).toBeNull();
     expect(events).toHaveLength(1);
     expect(events![0].event_type).toBe("step_assigned");

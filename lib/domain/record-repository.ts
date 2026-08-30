@@ -227,43 +227,81 @@ export function getRelationOptionLabel(
 
 const WORKSPACE_SEARCH_RESULTS_PER_ENTITY = 20;
 
+type WorkspaceSearchMatchRow = {
+  entity_type_id: string;
+  record_id: string;
+  matched_field_id: string | null;
+  matched_field_name: string | null;
+  is_identity_match: boolean;
+  is_prefix_match: boolean;
+};
+
+// Filtering, matching, ranking, and the per-entity-type cap all happen in
+// Postgres (search_workspace_records_authorized, migration 0066) -- this
+// function only resolves the matched ids into full records/labels for
+// display. Previously this fetched every active record in the workspace
+// into Node and matched/ranked/sliced it here; that no longer scales past a
+// few hundred records (see docs/PROJECT_CONTEXT.md's Phase 8D.4 section for
+// the before/after benchmark).
 export async function searchWorkspaceRecords({
   workspaceId,
   query,
+  entityTypeId,
 }: {
   workspaceId: string;
   query: string;
+  // Restricts matching to one entity type (the Search page's type filter).
+  // The per-type cap (WORKSPACE_SEARCH_RESULTS_PER_ENTITY) is unchanged
+  // either way -- a filtered search still shows at most 20, not a larger
+  // single-type page, keeping this v1 simple.
+  entityTypeId?: string;
 }): Promise<WorkspaceRecordSearchGroup[]> {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const normalizedQuery = query.trim();
 
   if (!normalizedQuery) {
     return [];
   }
 
-  const entityTypes = await listEntityTypes({ workspaceId });
+  const supabase = await createServerSupabaseClient();
+  const { data: matchRows, error: matchError } = await supabase.rpc(
+    "search_workspace_records_authorized",
+    {
+      p_workspace_id: workspaceId,
+      p_query: normalizedQuery,
+      p_entity_type_id: entityTypeId ?? null,
+      p_limit_per_type: WORKSPACE_SEARCH_RESULTS_PER_ENTITY,
+    },
+  );
 
-  if (entityTypes.length === 0) {
+  if (matchError) {
+    throw new Error(`Unable to search workspace records: ${matchError.message}`);
+  }
+
+  const matches = (matchRows ?? []) as WorkspaceSearchMatchRow[];
+
+  if (matches.length === 0) {
     return [];
   }
 
-  const supabase = await createServerSupabaseClient();
-  const entityTypeIds = entityTypes.map((entityType) => entityType.id);
-  const [{ data: fieldRows, error: fieldError }, { data: recordRows, error: recordError }] =
+  const matchedEntityTypeIds = [...new Set(matches.map((row) => row.entity_type_id))];
+  const matchedRecordIds = matches.map((row) => row.record_id);
+
+  const [entityTypes, { data: fieldRows, error: fieldError }, { data: recordRows, error: recordError }] =
     await Promise.all([
+      listEntityTypes({ workspaceId }),
       supabase
         .from("field_definitions")
         .select("*")
         .eq("workspace_id", workspaceId)
         .is("archived_at", null)
         .eq("type", "text")
-        .in("entity_type_id", entityTypeIds)
+        .in("entity_type_id", matchedEntityTypeIds)
         .returns<FieldDefinitionRow[]>(),
       supabase
         .from("entity_records")
         .select("*")
         .eq("workspace_id", workspaceId)
-        .is("archived_at", null)
-        .in("entity_type_id", entityTypeIds)
+        .in("id", matchedRecordIds)
         .returns<EntityRecordRow[]>(),
     ]);
 
@@ -272,8 +310,10 @@ export async function searchWorkspaceRecords({
   }
 
   if (recordError) {
-    throw new Error(`Unable to load searchable records: ${recordError.message}`);
+    throw new Error(`Unable to load matched records: ${recordError.message}`);
   }
+
+  const entityTypeById = new Map(entityTypes.map((entityType) => [entityType.id, entityType]));
 
   const fieldsByEntityTypeId = new Map<string, FieldDefinition[]>();
 
@@ -283,88 +323,39 @@ export async function searchWorkspaceRecords({
     fieldsByEntityTypeId.set(field.entityTypeId, fields);
   });
 
-  const recordsByEntityTypeId = new Map<string, EntityRecord[]>();
+  const recordById = new Map(recordRows.map(mapEntityRecord).map((record) => [record.id, record]));
 
-  recordRows.map(mapEntityRecord).forEach((record) => {
-    const records = recordsByEntityTypeId.get(record.entityTypeId) ?? [];
-    records.push(record);
-    recordsByEntityTypeId.set(record.entityTypeId, records);
+  const groupsByEntityTypeId = new Map<string, WorkspaceRecordSearchGroup>();
+
+  matches.forEach((match) => {
+    const entityType = entityTypeById.get(match.entity_type_id);
+    const record = recordById.get(match.record_id);
+
+    // The RPC only ever returns rows for entity types/records it just
+    // matched live -- both are always present. This guards an impossible
+    // race (e.g. a delete landing between the RPC call and this fetch)
+    // rather than expected behavior.
+    if (!entityType || !record) {
+      return;
+    }
+
+    const fields = fieldsByEntityTypeId.get(entityType.id) ?? [];
+    const group = groupsByEntityTypeId.get(entityType.id) ?? { entityType, results: [] };
+
+    group.results.push({
+      record,
+      label: getRecordLabel({ entityType, fields, record }),
+      matchedFieldName: match.is_identity_match ? undefined : (match.matched_field_name ?? undefined),
+    });
+
+    groupsByEntityTypeId.set(entityType.id, group);
   });
 
-  return [...entityTypes]
-    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
-    .flatMap((entityType) => {
-      const fields = (fieldsByEntityTypeId.get(entityType.id) ?? []).sort(
-        (left, right) => left.position - right.position || left.id.localeCompare(right.id),
-      );
-      const identityField = getRecordIdentityField({ entityType, fields });
-
-      if (fields.length === 0) {
-        return [];
-      }
-
-      const results = (recordsByEntityTypeId.get(entityType.id) ?? [])
-        .flatMap((record) => {
-          const matches = fields
-            .flatMap((field) => {
-              const value = record.values[field.key];
-
-              if (typeof value !== "string") {
-                return [];
-              }
-
-              const normalizedValue = value.toLocaleLowerCase();
-
-              if (!normalizedValue.includes(normalizedQuery)) {
-                return [];
-              }
-
-              return [{ field, isPrefixMatch: normalizedValue.startsWith(normalizedQuery) }];
-            })
-            .sort(
-              (left, right) =>
-                Number(left.field.id !== identityField?.id) -
-                  Number(right.field.id !== identityField?.id) ||
-                Number(!left.isPrefixMatch) - Number(!right.isPrefixMatch) ||
-                left.field.position - right.field.position ||
-                left.field.id.localeCompare(right.field.id),
-            );
-
-          const match = matches[0];
-
-          if (!match) {
-            return [];
-          }
-
-          return [
-            {
-              record,
-              label: getRecordLabel({ entityType, fields, record }),
-              matchedFieldName:
-                match.field.id === identityField?.id ? undefined : match.field.name,
-              isIdentityMatch: match.field.id === identityField?.id,
-              isPrefixMatch: match.isPrefixMatch,
-              matchPosition: match.field.position,
-            },
-          ];
-        })
-        .sort(
-          (left, right) =>
-            Number(!left.isIdentityMatch) - Number(!right.isIdentityMatch) ||
-            Number(!left.isPrefixMatch) - Number(!right.isPrefixMatch) ||
-            left.matchPosition - right.matchPosition ||
-            left.label.localeCompare(right.label) ||
-            left.record.id.localeCompare(right.record.id),
-        )
-        .slice(0, WORKSPACE_SEARCH_RESULTS_PER_ENTITY)
-        .map((result) => ({
-          record: result.record,
-          label: result.label,
-          matchedFieldName: result.matchedFieldName,
-        }));
-
-      return results.length > 0 ? [{ entityType, results }] : [];
-    });
+  return [...groupsByEntityTypeId.values()].sort(
+    (left, right) =>
+      left.entityType.name.localeCompare(right.entityType.name) ||
+      left.entityType.id.localeCompare(right.entityType.id),
+  );
 }
 
 export async function listEntityRecords({

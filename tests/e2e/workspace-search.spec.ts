@@ -172,3 +172,36 @@ test("search caps each entity at twenty records after ranking display-field matc
     0,
   );
 });
+
+test("the object-type filter restricts results to one entity type", async ({ page }) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const client = await createEntity(supabase, run, "Search Filter Client", [
+    { slug: "name", name: "Name", type: "text", required: true },
+  ]);
+  const deal = await createEntity(supabase, run, "Search Filter Deal", [
+    { slug: "title", name: "Title", type: "text", required: true },
+  ]);
+  await setDisplayField(client, client.fields.name.id);
+  await setDisplayField(deal, deal.fields.title.id);
+  await createEntityRecord({
+    entity: client,
+    valuesBySlug: { name: `${run.label} Both` },
+  });
+  await createEntityRecord({
+    entity: deal,
+    valuesBySlug: { title: `${run.label} Both` },
+  });
+
+  await page.goto(`/search?q=${encodeURIComponent(`${run.label} Both`)}`);
+  await expect(page.getByRole("heading", { name: client.name, exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: deal.name, exact: true })).toBeVisible();
+
+  await page.goto(
+    `/search?q=${encodeURIComponent(`${run.label} Both`)}&type=${client.id}`,
+  );
+  await expect(page.getByRole("heading", { name: client.name, exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: deal.name, exact: true })).toHaveCount(0);
+
+  await expect(page.locator("#search-type")).toHaveValue(client.id);
+});

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageHeader, WorkspacePageLayout } from "@/app/components/page-primitives";
 import { searchWorkspaceRecords } from "@/lib/domain/record-repository";
+import { listEntityTypes } from "@/lib/domain/metadata-repository";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
 
 export const dynamic = "force-dynamic";
@@ -8,12 +9,17 @@ export const dynamic = "force-dynamic";
 export default async function SearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; type?: string }>;
 }) {
-  const { q = "" } = await searchParams;
+  const { q = "", type = "" } = await searchParams;
   const query = q.trim();
+  const entityTypeId = type.trim() || undefined;
   const { workspaceId } = await getActiveWorkspaceId();
-  const groups = await searchWorkspaceRecords({ workspaceId, query });
+  const [groups, entityTypes] = await Promise.all([
+    searchWorkspaceRecords({ workspaceId, query, entityTypeId }),
+    listEntityTypes({ workspaceId }),
+  ]);
+  const resultCount = groups.reduce((count, group) => count + group.results.length, 0);
 
   return (
     <WorkspacePageLayout>
@@ -22,13 +28,13 @@ export default async function SearchPage({
             title="Search"
             description={
               query
-                ? `${groups.reduce((count, group) => count + group.results.length, 0)} result${groups.reduce((count, group) => count + group.results.length, 0) === 1 ? "" : "s"} for “${query}”`
+                ? `${resultCount} result${resultCount === 1 ? "" : "s"} for “${query}”`
                 : "Find what you're looking for across your workspace."
             }
           />
         <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
           <header className="border-b border-slate-200 pb-5">
-            <form action="/search" method="get" className="mt-4 flex max-w-xl gap-2">
+            <form action="/search" method="get" className="mt-4 flex max-w-xl flex-wrap gap-2">
               <label className="sr-only" htmlFor="search-query">
                 Search
               </label>
@@ -40,6 +46,22 @@ export default async function SearchPage({
                 className="min-w-0 flex-1 border border-slate-300 bg-white px-3 py-2 text-slate-950"
                 placeholder="Search your workspace"
               />
+              <label className="sr-only" htmlFor="search-type">
+                Object type
+              </label>
+              <select
+                id="search-type"
+                name="type"
+                defaultValue={entityTypeId ?? ""}
+                className="border border-slate-300 bg-white px-3 py-2 text-slate-950"
+              >
+                <option value="">All types</option>
+                {entityTypes.map((entityType) => (
+                  <option key={entityType.id} value={entityType.id}>
+                    {entityType.name}
+                  </option>
+                ))}
+              </select>
               <button
                 type="submit"
                 className="border border-brass bg-brass px-3 py-2 font-medium text-graphite hover:bg-brass-deep hover:text-paper"

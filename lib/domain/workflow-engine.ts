@@ -521,8 +521,11 @@ async function executeStartProcessAction({
     throw new Error("Start Process action is missing its process template.");
   }
 
-  // Use the same membership-checked canonical RPC as the manual start path.
-  // It owns template/origin validation, locking, snapshots, and due timing.
+  // Use the same membership-checked canonical implementation as the manual
+  // start path (template/origin validation, locking, snapshots, due
+  // timing) via the workflow-specific interactive door, so this run's
+  // process_started Activity event records no human actor -- see
+  // startProcessRun's viaWorkflow doc comment.
   const processRunId = await startProcessRun({
     workspaceId,
     processTemplateId: action.processTemplateId,
@@ -530,6 +533,7 @@ async function executeStartProcessAction({
     originRecordId: triggerRecord.id,
     supabase: context?.supabase,
     originatingProcessStepRunId: context?.originatingProcessStepRunId,
+    viaWorkflow: true,
   });
 
   return {

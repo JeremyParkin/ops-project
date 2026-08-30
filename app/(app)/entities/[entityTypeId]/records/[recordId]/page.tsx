@@ -17,6 +17,7 @@ import {
   updateRecurrenceRuleAction,
 } from "@/app/process-actions";
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
+import { listRecordActivity } from "@/lib/domain/activity-repository";
 import { getEntityContext } from "@/lib/domain/metadata-repository";
 import {
   getProcessRunWithSteps,
@@ -175,7 +176,7 @@ async function loadRecordDetailPageData(
       recordId,
       fields: entityContext.fields,
     });
-    const [relationLookups, incomingRelationGroups, processSectionEntries] = await Promise.all([
+    const [relationLookups, incomingRelationGroups, processSectionEntries, activityEvents] = await Promise.all([
       getRelationLookups({
         workspaceId,
         fields: entityContext.fields,
@@ -188,6 +189,16 @@ async function loadRecordDetailPageData(
         targetRecordId: recordId,
       }),
       loadProcessSectionEntries({ workspaceId, entityTypeId, recordId, canManageAutomation }),
+      // Historical record context, not a configuration/operate surface --
+      // unlike processSectionEntries, this is not gated or zeroed for an
+      // archived record: viewing durable past events implies no write
+      // capability and invites no new action. Caught independently: this
+      // whole function's outer try/catch turns ANY failure into a 404, and
+      // Activity is additive context, not core record data -- a failure
+      // here (including the entirely expected one while migration 0065 is
+      // written but not yet applied) must never take down the record page
+      // itself, only leave its own section looking empty.
+      listRecordActivity({ workspaceId, entityTypeId, recordId }).catch(() => []),
     ]);
 
     return {
@@ -198,6 +209,7 @@ async function loadRecordDetailPageData(
       relationLookups,
       incomingRelationGroups,
       processSectionEntries,
+      activityEvents,
     };
   } catch {
     return null;
@@ -228,6 +240,7 @@ export default async function RecordDetailPage({
     relationLookups,
     incomingRelationGroups,
     processSectionEntries,
+    activityEvents,
   } = pageData;
   const actionContext = {
     ...context,
@@ -261,6 +274,7 @@ export default async function RecordDetailPage({
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
           incomingRelationGroups={incomingRelationGroups}
           processSectionEntries={record.archivedAt ? [] : processSectionEntries}
+          activityEvents={activityEvents}
           editHref={editHref}
           updateFieldAction={updateFieldAction}
           archiveRecordAction={archiveRecord.bind(null, actionContext)}

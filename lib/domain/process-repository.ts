@@ -772,6 +772,7 @@ export async function startProcessRun({
   originRecordId,
   supabase: injectedSupabase,
   originatingProcessStepRunId,
+  viaWorkflow = false,
 }: {
   workspaceId: string;
   processTemplateId: string;
@@ -779,15 +780,28 @@ export async function startProcessRun({
   originRecordId: string;
   supabase?: SupabaseServerClient;
   originatingProcessStepRunId?: string;
+  // Selects which interactive door into the canonical start implementation
+  // this call uses -- both require the same processes.operate capability,
+  // they differ only in Activity actor attribution. false (default, the
+  // manual "Start Process" button's path) records the acting human as the
+  // process_started event's actor. true (workflow-engine.ts only) records
+  // no actor: a workflow-triggered start is deterministic automation, not
+  // a direct human action, even though it runs under the triggering
+  // editor's own session -- attributing it to them would be exactly the
+  // "last editor" misattribution Activity is meant to avoid.
+  viaWorkflow?: boolean;
 }) {
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
-  const { data, error } = await supabase.rpc("start_process_run_authorized", {
-    p_workspace_id: workspaceId,
-    p_process_template_id: processTemplateId,
-    p_origin_entity_type_id: originEntityTypeId,
-    p_origin_record_id: originRecordId,
-    p_originating_process_step_run_id: originatingProcessStepRunId ?? null,
-  });
+  const { data, error } = await supabase.rpc(
+    viaWorkflow ? "start_process_run_via_workflow_authorized" : "start_process_run_authorized",
+    {
+      p_workspace_id: workspaceId,
+      p_process_template_id: processTemplateId,
+      p_origin_entity_type_id: originEntityTypeId,
+      p_origin_record_id: originRecordId,
+      p_originating_process_step_run_id: originatingProcessStepRunId ?? null,
+    },
+  );
 
   if (error) {
     throw new Error(`Unable to start process: ${error.message}`);
