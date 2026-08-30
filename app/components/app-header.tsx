@@ -21,6 +21,7 @@ type AppHeaderProps = {
   canManageSchema: boolean;
   quickJumpEntityTypes: QuickJumpEntityType[];
   hasMoreEntityTypes: boolean;
+  unreadNotificationCount: number;
   switchActiveWorkspaceAction: (formData: FormData) => void | Promise<void>;
   signOutAction: () => void | Promise<void>;
 };
@@ -65,10 +66,12 @@ export function AppHeader({
   canManageSchema,
   quickJumpEntityTypes,
   hasMoreEntityTypes,
+  unreadNotificationCount,
   switchActiveWorkspaceAction,
   signOutAction,
 }: AppHeaderProps) {
   const pathname = usePathname();
+  const isNotifications = pathname.startsWith("/notifications");
   // Configure holds Automations/Processes/Data model/Workspace settings, each
   // independently gated on its own capability. "Data model" reuses the same
   // /entities (All Objects) surface Business links to -- Configure is simply
@@ -162,6 +165,9 @@ export function AppHeader({
             <MenuLink href="/">Home</MenuLink>
             <MenuLink href="/my-work">My Work</MenuLink>
             {canViewManagerPortfolio ? <MenuLink href="/team-work">Team Work</MenuLink> : null}
+            <MenuLink href="/notifications">
+              Notifications{unreadNotificationCount > 0 ? ` (${unreadNotificationCount})` : ""}
+            </MenuLink>
             <MenuDivider />
             <MenuLabel>Business objects</MenuLabel>
             {quickJumpEntityTypes.map((entityType) => (
@@ -214,7 +220,29 @@ export function AppHeader({
           </button>
         </form>
 
-        <div className="ml-auto shrink-0">
+        <Link
+          href="/notifications"
+          aria-label={
+            unreadNotificationCount > 0
+              ? `Notifications, ${unreadNotificationCount} unread`
+              : "Notifications"
+          }
+          className={`ml-auto shrink-0 px-3 py-2 text-sm font-medium ${
+            isNotifications ? "bg-brass text-graphite" : "text-grit-light hover:bg-slab hover:text-chalk"
+          }`}
+        >
+          Notifications
+          {unreadNotificationCount > 0 ? (
+            <span
+              aria-hidden="true"
+              className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brass px-1 text-xs font-semibold text-graphite"
+            >
+              {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+            </span>
+          ) : null}
+        </Link>
+
+        <div className="shrink-0">
           <NavMenu
             key={`account-${pathname}`}
             label={workspaceName || "Account"}
