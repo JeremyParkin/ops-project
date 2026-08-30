@@ -203,14 +203,21 @@ describe("process recurrence RPCs", () => {
 
     const { data: occurrences, error: occurrenceError } = await supabase
       .from("process_recurrence_occurrences")
-      .select("occurrence_date")
+      .select("occurrence_date, created_at")
       .eq("workspace_id", DEMO_WORKSPACE_ID)
       .eq("recurrence_rule_id", ruleId);
     expect(occurrenceError).toBeNull();
     // Exactly one row, not ~30 -- the daily rule was due every day for 30
     // days, but only today's occurrence is ever computed or claimed.
     expect(occurrences).toHaveLength(1);
-    expect(occurrences![0].occurrence_date).toBe(new Date().toISOString().slice(0, 10));
+    // Assert against a value the server itself stamped (created_at, via
+    // `default now()` in the same insert that computed occurrence_date),
+    // not an independently-computed "today" from this test runner's local
+    // clock -- the local host and the remote Supabase project's clock are
+    // not guaranteed to agree, especially near a UTC day boundary. The
+    // workspace timezone defaults to UTC (untouched by this fixture), so
+    // created_at's UTC date is directly comparable to occurrence_date.
+    expect(occurrences![0].occurrence_date).toBe(String(occurrences![0].created_at).slice(0, 10));
   });
 
   it("an inactive rule is never picked up by the scheduler", async () => {

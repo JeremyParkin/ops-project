@@ -13,6 +13,7 @@ import {
 import {
   addRecordSection,
   chooseRecordField,
+  expectAfterMutation,
   fillRecordField,
   gotoEntity,
   rowForText,
@@ -223,7 +224,7 @@ test("updates the current related record from a triggering source field", async 
     clientLabel: `${run.label} Acme`,
   });
 
-  await expect(page.getByText(/1 workflow succeeded/)).toBeVisible();
+  await expectAfterMutation(page.getByText(/1 workflow succeeded/));
   await gotoEntity(page, fixture.client);
   await expect(rowForText(page, `${run.label} Acme`)).toContainText("Complete");
   await page.goto("/workflows");

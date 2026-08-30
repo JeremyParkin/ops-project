@@ -8,6 +8,7 @@ import {
   createEntityRecord,
   createSupabaseTestClient,
   createTestRun,
+  deleteE2eUsers,
   DEMO_WORKSPACE_ID,
   getE2eWorkspaceAdministratorRoleId,
   type TestEntity,
@@ -109,16 +110,36 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  for (const run of runs) {
-    await cleanupE2eRun(run);
-  }
+  // This spec accumulates one independent fixture "run" per scenario (13+,
+  // each with its own disjoint, uniquely-labeled entities) -- cleaning them
+  // up one at a time, each itself a chain of several sequential deletes, is
+  // the dominant cost under full-suite contention and has been the direct
+  // cause of this hook's 30s timeout. Different runs never share data, so
+  // there is no correctness reason to serialize them; run them concurrently
+  // and aggregate failures the same way cleanupE2eRun already does
+  // internally, rather than losing visibility into later runs when an
+  // earlier one throws.
+  const failures: string[] = [];
+  await Promise.all(
+    runs.map((run) =>
+      cleanupE2eRun(run).catch((error) => {
+        failures.push(error instanceof Error ? error.message : String(error));
+      }),
+    ),
+  );
 
   if (secondMemberUserIds.length > 0) {
-    const admin = createSupabaseTestClient();
-
-    for (const userId of secondMemberUserIds) {
-      await admin.auth.admin.deleteUser(userId);
+    try {
+      await deleteE2eUsers(secondMemberUserIds, createSupabaseTestClient());
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `process-runs afterAll cleanup: ${failures.length} step(s) failed after attempting all of them:\n${failures.join("\n")}`,
+    );
   }
 });
 

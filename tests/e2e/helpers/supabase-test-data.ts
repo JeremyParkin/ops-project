@@ -80,9 +80,17 @@ export function createTestRun(): TestRun {
 // Supabase traffic) -- never for product requests or assertions. Retries
 // only network-level transport failures and 5xx responses; 4xx, auth/
 // permission errors, and Postgres logical/constraint errors are never
-// retried and surface immediately. Small, bounded attempt count; every
-// retry is logged so flakiness stays visible even when the operation
-// ultimately succeeds.
+// retried and surface immediately -- a real authorization bug should fail
+// loudly, not be silently masked by a retry. `JWT issued at future` is a
+// deliberate, narrow exception to that rule: it is not a permission or
+// credential problem, it is GoTrue rejecting a token whose `iat` looks
+// later than the server's own clock, caused entirely by transient skew
+// between this host's clock and the remote Supabase project's -- the exact
+// same environmental class as the transport failures below, just surfaced
+// through an auth-shaped error message. Confirmed transient twice in one
+// session (different files, both times clean on an immediate rerun with no
+// code change). Small, bounded attempt count; every retry is logged so
+// flakiness stays visible even when the operation ultimately succeeds.
 const MAX_INFRA_ATTEMPTS = 3;
 const INFRA_RETRY_BACKOFF_MS = [250, 750];
 const RETRYABLE_MESSAGE_PATTERNS = [
@@ -94,6 +102,7 @@ const RETRYABLE_MESSAGE_PATTERNS = [
   /UND_ERR_SOCKET/,
   /socket hang up/i,
   /network error/i,
+  /JWT issued at future/i,
 ];
 
 type InfraError = { message?: string; status?: number } | null | undefined;
@@ -464,6 +473,42 @@ async function cleanupEntitiesById(supabase: SupabaseClient, entityTypeIds: stri
             .eq("workspace_id", DEMO_WORKSPACE_ID)
             .in("origin_entity_type_id", entityTypeIds),
         "clean up E2E recurrence rules",
+      ),
+    failures,
+  );
+  // notifications and workspace_events (0064) deliberately carry no foreign
+  // keys back to entity_types/process_runs/process_step_runs -- an audit-log
+  // table must never block deletion of the business data it describes. That
+  // means nothing here cascades them away: without an explicit step they
+  // would silently accumulate in the shared dev project across every E2E
+  // run. Scoped by entity_type_id, which every notification/event this
+  // suite generates carries (assignment/due-soon/overdue all derive it from
+  // the triggering ProcessRun's origin record). No ordering constraint
+  // relative to the other steps below -- included here only to sit next to
+  // the other process-adjacent cleanup.
+  await attemptCleanupStep(
+    () =>
+      throwOnError(
+        () =>
+          supabase
+            .from("notifications")
+            .delete()
+            .eq("workspace_id", DEMO_WORKSPACE_ID)
+            .in("entity_type_id", entityTypeIds),
+        "clean up E2E notifications",
+      ),
+    failures,
+  );
+  await attemptCleanupStep(
+    () =>
+      throwOnError(
+        () =>
+          supabase
+            .from("workspace_events")
+            .delete()
+            .eq("workspace_id", DEMO_WORKSPACE_ID)
+            .in("entity_type_id", entityTypeIds),
+        "clean up E2E workspace events",
       ),
     failures,
   );
