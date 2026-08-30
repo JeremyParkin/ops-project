@@ -449,6 +449,24 @@ async function cleanupEntitiesById(supabase: SupabaseClient, entityTypeIds: stri
       ),
     failures,
   );
+  // process_recurrence_rules (0063) carries ON DELETE RESTRICT foreign keys
+  // back to both process_templates and entity_records, so it must be
+  // cleared before either -- and before process_runs, since a rule's
+  // occurrences (cascade-deleted with the rule) hold the only reference
+  // that would otherwise dangle when a run they started is removed below.
+  await attemptCleanupStep(
+    () =>
+      throwOnError(
+        () =>
+          supabase
+            .from("process_recurrence_rules")
+            .delete()
+            .eq("workspace_id", DEMO_WORKSPACE_ID)
+            .in("origin_entity_type_id", entityTypeIds),
+        "clean up E2E recurrence rules",
+      ),
+    failures,
+  );
   await attemptCleanupStep(
     () =>
       throwOnError(

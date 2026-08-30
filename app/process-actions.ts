@@ -17,6 +17,13 @@ import {
   validateProcessTemplateFormData,
 } from "@/lib/domain/process-validation";
 import type { ProcessConditionWaitRule, ProcessWaitRule } from "@/lib/domain/process-types";
+import {
+  createRecurrenceRule,
+  setRecurrenceRuleActive,
+  updateRecurrenceRule,
+} from "@/lib/domain/recurrence-repository";
+import { validateRecurrenceRuleInput } from "@/lib/domain/recurrence-validation";
+import type { ProcessRecurrenceRuleInput } from "@/lib/domain/recurrence-types";
 
 export type ProcessActionState = {
   success: boolean;
@@ -36,6 +43,20 @@ type ProcessTemplateLifecycleContext = {
 type StartProcessRunContext = {
   workspaceId: string;
   processTemplateId: string;
+  originEntityTypeId: string;
+  originRecordId: string;
+};
+
+type RecurrenceRuleContext = {
+  workspaceId: string;
+  processTemplateId: string;
+  originEntityTypeId: string;
+  originRecordId: string;
+};
+
+type RecurrenceRuleLifecycleContext = {
+  workspaceId: string;
+  recurrenceRuleId: string;
   originEntityTypeId: string;
   originRecordId: string;
 };
@@ -361,4 +382,133 @@ export async function decideProcessApprovalAction(
   revalidatePath(`/process-runs/${context.processRunId}`);
 
   return { success: true, message: "Approval decision recorded." };
+}
+
+function parseRecurrenceRuleFormData(formData: FormData): ProcessRecurrenceRuleInput | null {
+  const frequency = formData.get("frequency");
+  const intervalCountRaw = formData.get("intervalCount");
+  const dayOfWeekRaw = formData.get("dayOfWeek");
+  const dayOfMonthRaw = formData.get("dayOfMonth");
+  const startDate = formData.get("startDate");
+  const endDateRaw = formData.get("endDate");
+  const timeOfDay = formData.get("timeOfDay");
+
+  if (
+    typeof frequency !== "string" ||
+    (frequency !== "daily" && frequency !== "weekly" && frequency !== "monthly") ||
+    typeof intervalCountRaw !== "string" ||
+    typeof startDate !== "string" ||
+    typeof timeOfDay !== "string"
+  ) {
+    return null;
+  }
+
+  const intervalCount = Number(intervalCountRaw);
+  const dayOfWeek =
+    typeof dayOfWeekRaw === "string" && dayOfWeekRaw !== "" ? Number(dayOfWeekRaw) : undefined;
+  const dayOfMonth =
+    typeof dayOfMonthRaw === "string" && dayOfMonthRaw !== "" ? Number(dayOfMonthRaw) : undefined;
+  const endDate = typeof endDateRaw === "string" && endDateRaw !== "" ? endDateRaw : undefined;
+
+  return { frequency, intervalCount, dayOfWeek, dayOfMonth, startDate, endDate, timeOfDay };
+}
+
+export async function createRecurrenceRuleAction(
+  context: RecurrenceRuleContext,
+  _previousState: ProcessActionState,
+  formData: FormData,
+): Promise<ProcessActionState> {
+  const input = parseRecurrenceRuleFormData(formData);
+
+  if (!input) {
+    return { success: false, message: "Invalid recurrence schedule." };
+  }
+
+  const validationErrors = validateRecurrenceRuleInput(input);
+
+  if (validationErrors.length > 0) {
+    return { success: false, message: validationErrors[0] };
+  }
+
+  try {
+    await createRecurrenceRule({
+      workspaceId: context.workspaceId,
+      processTemplateId: context.processTemplateId,
+      originEntityTypeId: context.originEntityTypeId,
+      originRecordId: context.originRecordId,
+      input,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: extractRpcErrorMessage(error, "Unable to set up this recurring schedule."),
+    };
+  }
+
+  revalidatePath(`/entities/${context.originEntityTypeId}/records/${context.originRecordId}`);
+
+  return { success: true, message: "Recurring schedule created." };
+}
+
+export async function updateRecurrenceRuleAction(
+  context: RecurrenceRuleLifecycleContext,
+  _previousState: ProcessActionState,
+  formData: FormData,
+): Promise<ProcessActionState> {
+  const input = parseRecurrenceRuleFormData(formData);
+
+  if (!input) {
+    return { success: false, message: "Invalid recurrence schedule." };
+  }
+
+  const validationErrors = validateRecurrenceRuleInput(input);
+
+  if (validationErrors.length > 0) {
+    return { success: false, message: validationErrors[0] };
+  }
+
+  try {
+    await updateRecurrenceRule({
+      workspaceId: context.workspaceId,
+      recurrenceRuleId: context.recurrenceRuleId,
+      input,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: extractRpcErrorMessage(error, "Unable to update this recurring schedule."),
+    };
+  }
+
+  revalidatePath(`/entities/${context.originEntityTypeId}/records/${context.originRecordId}`);
+
+  return { success: true, message: "Recurring schedule updated." };
+}
+
+export async function setRecurrenceRuleActiveAction(
+  context: RecurrenceRuleLifecycleContext,
+  _previousState: ProcessActionState,
+  formData: FormData,
+): Promise<ProcessActionState> {
+  const active = formData.get("active") === "true";
+
+  try {
+    await setRecurrenceRuleActive({
+      workspaceId: context.workspaceId,
+      recurrenceRuleId: context.recurrenceRuleId,
+      active,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: extractRpcErrorMessage(error, "Unable to update this recurring schedule."),
+    };
+  }
+
+  revalidatePath(`/entities/${context.originEntityTypeId}/records/${context.originRecordId}`);
+
+  return {
+    success: true,
+    message: active ? "Recurring schedule enabled." : "Recurring schedule disabled.",
+  };
 }

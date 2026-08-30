@@ -10,8 +10,13 @@ import { ObjectContextNav } from "@/app/components/object-context-nav";
 import { WorkspacePageLayout } from "@/app/components/page-primitives";
 import type { ProcessSectionEntry } from "@/app/components/process-section";
 import { RecordDetailView } from "@/app/components/record-detail-view";
-import { startProcessRunAction } from "@/app/process-actions";
-import { getActiveWorkspaceId } from "@/lib/auth/workspace";
+import {
+  createRecurrenceRuleAction,
+  setRecurrenceRuleActiveAction,
+  startProcessRunAction,
+  updateRecurrenceRuleAction,
+} from "@/app/process-actions";
+import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import { getEntityContext } from "@/lib/domain/metadata-repository";
 import {
   getProcessRunWithSteps,
@@ -23,6 +28,7 @@ import {
   getRelationLookups,
   listIncomingRelationsForRecord,
 } from "@/lib/domain/record-repository";
+import { getWorkspaceTimezone, listRecurrenceRulesForOrigin } from "@/lib/domain/recurrence-repository";
 import { listEntityViews } from "@/lib/domain/view-repository";
 
 export const dynamic = "force-dynamic";
@@ -31,18 +37,30 @@ async function loadProcessSectionEntries({
   workspaceId,
   entityTypeId,
   recordId,
+  canManageAutomation,
 }: {
   workspaceId: string;
   entityTypeId: string;
   recordId: string;
+  canManageAutomation: boolean;
 }): Promise<ProcessSectionEntry[]> {
-  const [applicableTemplates, runsForRecord] = await Promise.all([
+  const [applicableTemplates, runsForRecord, recurrenceRules, workspaceTimezone] = await Promise.all([
     listApplicableProcessTemplatesForEntityType({ workspaceId, entityTypeId }),
     listProcessRunsForOrigin({
       workspaceId,
       originEntityTypeId: entityTypeId,
       originRecordId: recordId,
     }),
+    // Recurrence is configuration -- only worth loading for a caller who can
+    // actually see/use it. Ordinary workers never fetch or render it.
+    canManageAutomation
+      ? listRecurrenceRulesForOrigin({
+          workspaceId,
+          originEntityTypeId: entityTypeId,
+          originRecordId: recordId,
+        })
+      : Promise.resolve([]),
+    canManageAutomation ? getWorkspaceTimezone({ workspaceId }) : Promise.resolve(""),
   ]);
 
   if (applicableTemplates.length === 0) {
@@ -58,6 +76,9 @@ async function loadProcessSectionEntries({
       latestRunByTemplateId.set(run.processTemplateId, run);
     }
   });
+  const recurrenceRuleByTemplateId = new Map(
+    recurrenceRules.map((rule) => [rule.processTemplateId, rule]),
+  );
 
   return Promise.all(
     applicableTemplates.map(async (template) => {
@@ -68,11 +89,37 @@ async function loadProcessSectionEntries({
         originEntityTypeId: entityTypeId,
         originRecordId: recordId,
       });
+      const rule = recurrenceRuleByTemplateId.get(template.id);
+      const recurrence = canManageAutomation
+        ? {
+            rule,
+            workspaceTimezone,
+            createAction: createRecurrenceRuleAction.bind(null, {
+              workspaceId,
+              processTemplateId: template.id,
+              originEntityTypeId: entityTypeId,
+              originRecordId: recordId,
+            }),
+            updateAction: updateRecurrenceRuleAction.bind(null, {
+              workspaceId,
+              recurrenceRuleId: rule?.id ?? "",
+              originEntityTypeId: entityTypeId,
+              originRecordId: recordId,
+            }),
+            setActiveAction: setRecurrenceRuleActiveAction.bind(null, {
+              workspaceId,
+              recurrenceRuleId: rule?.id ?? "",
+              originEntityTypeId: entityTypeId,
+              originRecordId: recordId,
+            }),
+          }
+        : undefined;
 
       if (!latestRun) {
         return {
           template,
           startProcessRunAction: startProcessRunActionForTemplate,
+          recurrence,
         };
       }
 
@@ -100,6 +147,7 @@ async function loadProcessSectionEntries({
           currentStepDueAt: currentStep?.dueAt,
         },
         startProcessRunAction: startProcessRunActionForTemplate,
+        recurrence,
       };
     }),
   );
@@ -116,10 +164,12 @@ async function loadRecordDetailPageData(
   };
 
   try {
-    const [views, entityContext] = await Promise.all([
+    const [views, entityContext, permissions] = await Promise.all([
       listEntityViews({ workspaceId, entityTypeId }),
       getEntityContext(context),
+      getWorkspacePermissionContext(workspaceId),
     ]);
+    const canManageAutomation = permissions?.capabilities.has("automation.manage") ?? false;
     const record = await getEntityRecord({
       ...context,
       recordId,
@@ -137,7 +187,7 @@ async function loadRecordDetailPageData(
         targetEntityTypeId: entityTypeId,
         targetRecordId: recordId,
       }),
-      loadProcessSectionEntries({ workspaceId, entityTypeId, recordId }),
+      loadProcessSectionEntries({ workspaceId, entityTypeId, recordId, canManageAutomation }),
     ]);
 
     return {

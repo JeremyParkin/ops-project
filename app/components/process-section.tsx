@@ -1,9 +1,16 @@
 import Link from "next/link";
 import { SectionHeader } from "@/app/components/page-primitives";
 import { ProcessDueAt } from "@/app/components/process-due-at";
+import { ProcessRecurrencePanel } from "@/app/components/process-recurrence-panel";
 import { StartProcessButton } from "@/app/components/start-process-button";
 import type { ProcessActionState } from "@/app/process-actions";
 import type { ProcessRun, ProcessTemplate } from "@/lib/domain/process-types";
+import type { ProcessRecurrenceRule } from "@/lib/domain/recurrence-types";
+
+type RecurrenceAction = (
+  state: ProcessActionState,
+  formData: FormData,
+) => Promise<ProcessActionState>;
 
 export type ProcessSectionEntry = {
   template: ProcessTemplate;
@@ -20,6 +27,13 @@ export type ProcessSectionEntry = {
     state: ProcessActionState,
     formData: FormData,
   ) => Promise<ProcessActionState>;
+  recurrence?: {
+    rule?: ProcessRecurrenceRule;
+    workspaceTimezone: string;
+    createAction: RecurrenceAction;
+    updateAction: RecurrenceAction;
+    setActiveAction: RecurrenceAction;
+  };
 };
 
 type ProcessSectionProps = {
@@ -106,6 +120,15 @@ export function ProcessSection({ entries }: ProcessSectionProps) {
                   />
                 </div>
               )}
+              {entry.recurrence ? (
+                <ProcessRecurrencePanel
+                  rule={entry.recurrence.rule}
+                  workspaceTimezone={entry.recurrence.workspaceTimezone}
+                  createAction={entry.recurrence.createAction}
+                  updateAction={entry.recurrence.updateAction}
+                  setActiveAction={entry.recurrence.setActiveAction}
+                />
+              ) : null}
             </div>
           );
         })}
