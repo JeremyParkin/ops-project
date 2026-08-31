@@ -578,6 +578,15 @@ export function EntityViewsPanel({
           >
             Import CSV
           </Link>
+          {/* A plain anchor, not next/link: this is a real file download
+              (the route returns a CSV attachment, not a page), not an SPA
+              navigation. */}
+          <a
+            href={`/entities/${entityType.id}/export`}
+            className="inline-flex h-10 items-center justify-center border border-grit px-4 text-sm font-medium text-stone hover:bg-slab/5"
+          >
+            Export CSV
+          </a>
         </div>
       </div>
 
