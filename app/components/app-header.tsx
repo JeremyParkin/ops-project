@@ -20,6 +20,7 @@ type AppHeaderProps = {
   canManageAutomation: boolean;
   canManageSchema: boolean;
   canManageSettings: boolean;
+  canManageIntegrations: boolean;
   quickJumpEntityTypes: QuickJumpEntityType[];
   hasMoreEntityTypes: boolean;
   unreadNotificationCount: number;
@@ -66,6 +67,7 @@ export function AppHeader({
   canManageAutomation,
   canManageSchema,
   canManageSettings,
+  canManageIntegrations,
   quickJumpEntityTypes,
   hasMoreEntityTypes,
   unreadNotificationCount,
@@ -81,7 +83,8 @@ export function AppHeader({
   // not a separate management system. Because canConfigure exactly unions
   // the same capabilities that gate the individual items below, no
   // combination ever produces an empty dropdown.
-  const canConfigure = canManageWorkspace || canManageAutomation || canManageSchema || canManageSettings;
+  const canConfigure =
+    canManageWorkspace || canManageAutomation || canManageSchema || canManageSettings || canManageIntegrations;
   const isHome = pathname === "/";
   const isWork = pathname.startsWith("/my-work") || pathname.startsWith("/team-work");
   const isBusiness = pathname.startsWith("/entities");
@@ -157,6 +160,9 @@ export function AppHeader({
               ) : null}
               {canManageSettings ? (
                 <MenuLink href="/settings/health">Workspace Health</MenuLink>
+              ) : null}
+              {canManageIntegrations ? (
+                <MenuLink href="/settings/webhooks">Webhooks</MenuLink>
               ) : null}
             </NavMenu>
           ) : null}

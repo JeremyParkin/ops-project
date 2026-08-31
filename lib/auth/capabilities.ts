@@ -9,6 +9,7 @@ export const workspaceCapabilities = [
   "processes.operate",
   "operations.view",
   "workspace.impersonate_users",
+  "workspace.manage_integrations",
 ] as const;
 
 export type WorkspaceCapability = (typeof workspaceCapabilities)[number];

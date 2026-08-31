@@ -1,25 +1,12 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { hasValidSchedulerSecret } from "@/lib/scheduler-auth";
 import {
   executeActiveProcessActionSteps,
   listActiveProcessActionStepRuns,
 } from "@/lib/domain/process-repository";
 
 export const dynamic = "force-dynamic";
-
-function hasValidSchedulerSecret(request: Request) {
-  const secret = process.env.PROCESS_WAIT_SCHEDULER_SECRET;
-  const authorization = request.headers.get("authorization");
-  const received = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
-
-  if (!secret || !received) return false;
-
-  const expectedBuffer = Buffer.from(secret);
-  const receivedBuffer = Buffer.from(received);
-
-  return expectedBuffer.length === receivedBuffer.length && timingSafeEqual(expectedBuffer, receivedBuffer);
-}
 
 // One invocation of this route does four things, strictly in this order,
 // each independently bounded/isolated so a problem in one never blocks the
@@ -47,7 +34,7 @@ function hasValidSchedulerSecret(request: Request) {
 // committed anywhere in this repo (no cron config exists yet) -- recurrence
 // and reminder timeliness are bounded by whatever cadence gets configured.
 export async function POST(request: Request) {
-  if (!hasValidSchedulerSecret(request)) {
+  if (!hasValidSchedulerSecret(request, "PROCESS_WAIT_SCHEDULER_SECRET")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
