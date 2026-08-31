@@ -304,7 +304,7 @@ function InviteMemberForm({ roles }: { roles: WorkspaceRole[] }) {
   return (
     <form action={action} className="mt-5 border border-grit bg-slab/40 p-4">
       <h3 className="font-semibold text-graphite">Invite a member</h3>
-      <p className="mt-1 text-sm text-stone">There is no email delivery yet -- share the generated link with them yourself.</p>
+      <p className="mt-1 text-sm text-stone">Kinema shows a manual link after every invitation; configured deployments also queue email.</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
         <label className="text-sm text-graphite">
           Email

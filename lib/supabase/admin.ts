@@ -1,13 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
-// SUPABASE_SECRET_KEY is otherwise reserved for E2E fixtures/bootstrap
-// administration only (see supabase/README.md) -- normal application
-// runtime must not use it. This is the one narrow, approved exception:
-// provisioning the auth.users row for a token-verified workspace invitation
-// accepted by a genuinely new person (accept_workspace_invitation_authorized
-// itself still separately re-validates the token/email/expiry before any
-// workspace access is granted). Never use this client to mint or swap a
-// session for an existing user, or for anything beyond account creation.
+// SUPABASE_SECRET_KEY is reserved for narrow server-trusted paths:
+// E2E/bootstrap administration, internal scheduler routes that execute
+// service_role-only RPCs, and provisioning the auth.users row for a token-
+// verified workspace invitation accepted by a genuinely new person. Never
+// use this client to mint or swap a session for an existing user.
 export function createAdminSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;

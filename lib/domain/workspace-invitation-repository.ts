@@ -56,22 +56,26 @@ export async function listWorkspaceInvitations({
 }
 
 // Returns the new invitation's bearer token -- the caller (a
-// workspace.manage_members admin) uses it to build the shareable link.
-// There is no email delivery in v1; the admin sends the link themselves.
+// workspace.manage_members admin) uses it to build the shareable fallback
+// link. When deployment email config is present, the same authorized RPC
+// atomically queues the invitation email without persisting the token/URL/body.
 export async function createWorkspaceInvitation({
   workspaceId,
   email,
   roleId,
+  enqueueEmail = false,
 }: {
   workspaceId: string;
   email: string;
   roleId: string;
+  enqueueEmail?: boolean;
 }): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc("create_workspace_invitation_authorized", {
     p_workspace_id: workspaceId,
     p_email: email,
     p_role_id: roleId,
+    p_enqueue_email: enqueueEmail,
   });
   if (error) throw new Error(error.message);
   return data as string;
@@ -80,14 +84,17 @@ export async function createWorkspaceInvitation({
 export async function resendWorkspaceInvitation({
   workspaceId,
   invitationId,
+  enqueueEmail = false,
 }: {
   workspaceId: string;
   invitationId: string;
+  enqueueEmail?: boolean;
 }): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc("resend_workspace_invitation_authorized", {
     p_workspace_id: workspaceId,
     p_invitation_id: invitationId,
+    p_enqueue_email: enqueueEmail,
   });
   if (error) throw new Error(error.message);
   return data as string;

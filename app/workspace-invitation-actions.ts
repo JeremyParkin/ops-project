@@ -13,6 +13,7 @@ import {
   getInvitationByToken,
   resendWorkspaceInvitation,
 } from "@/lib/domain/workspace-invitation-repository";
+import { isEmailProviderConfigured } from "@/lib/domain/email-dispatch";
 
 export type WorkspaceInvitationActionState = {
   success: boolean;
@@ -52,9 +53,16 @@ export async function createWorkspaceInvitationAction(
   try {
     const { workspaceId } = await getActiveWorkspaceId();
     await requireWorkspaceCapability(workspaceId, "workspace.manage_members");
-    const token = await createWorkspaceInvitation({ workspaceId, email, roleId });
+    const enqueueEmail = isEmailProviderConfigured();
+    const token = await createWorkspaceInvitation({ workspaceId, email, roleId, enqueueEmail });
     revalidatePath("/settings");
-    return { success: true, message: "Invitation created. Share this link with them.", link: await invitationLinkFor(token) };
+    return {
+      success: true,
+      message: enqueueEmail
+        ? "Invitation created and email queued. You can also share this link manually."
+        : "Invitation created. Share this link with them.",
+      link: await invitationLinkFor(token),
+    };
   } catch (error) {
     return { success: false, message: errorMessage(error, "Unable to create the invitation.") };
   }
@@ -70,9 +78,16 @@ export async function resendWorkspaceInvitationAction(
   try {
     const { workspaceId } = await getActiveWorkspaceId();
     await requireWorkspaceCapability(workspaceId, "workspace.manage_members");
-    const token = await resendWorkspaceInvitation({ workspaceId, invitationId });
+    const enqueueEmail = isEmailProviderConfigured();
+    const token = await resendWorkspaceInvitation({ workspaceId, invitationId, enqueueEmail });
     revalidatePath("/settings");
-    return { success: true, message: "Invitation refreshed. Share this new link.", link: await invitationLinkFor(token) };
+    return {
+      success: true,
+      message: enqueueEmail
+        ? "Invitation refreshed and email queued. You can also share this new link manually."
+        : "Invitation refreshed. Share this new link.",
+      link: await invitationLinkFor(token),
+    };
   } catch (error) {
     return { success: false, message: errorMessage(error, "Unable to resend the invitation.") };
   }
