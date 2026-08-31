@@ -162,7 +162,7 @@ export function AppHeader({
                 <MenuLink href="/settings/health">Workspace Health</MenuLink>
               ) : null}
               {canManageIntegrations ? (
-                <MenuLink href="/settings/webhooks">Webhooks</MenuLink>
+                <MenuLink href="/settings/integrations">Integrations</MenuLink>
               ) : null}
             </NavMenu>
           ) : null}

@@ -45,6 +45,14 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// api/v1 (bearer API keys, 8F.3) and api/internal (bearer scheduler
+// secrets, 8F.2/8F.3) both authenticate themselves entirely independently
+// of a session cookie -- neither has one to check, by design, since their
+// callers are external scripts/schedulers, not a signed-in browser. Without
+// this exclusion, every request to either family was redirected to
+// /sign-in by this proxy before its own route handler ever ran, found by
+// making a real, unauthenticated HTTP call to /api/v1/objects rather than
+// only testing these routes via direct in-process function calls.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|branding|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|branding|favicon.ico|api/v1|api/internal).*)"],
 };

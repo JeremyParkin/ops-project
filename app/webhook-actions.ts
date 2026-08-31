@@ -57,7 +57,7 @@ export async function createWebhookSubscriptionAction(
     await assertPublicHttpsWebhookUrl(url);
     const signingSecret = generateWebhookSigningSecret();
     await createWebhookSubscription({ workspaceId, name, url, eventTypes, signingSecret });
-    revalidatePath("/settings/webhooks");
+    revalidatePath("/settings/integrations");
     return { success: true, message: "Webhook created. Copy the signing secret now -- it will not be shown again.", secret: signingSecret };
   } catch (error) {
     return { success: false, message: errorMessage(error, "Unable to create the webhook.") };
@@ -81,7 +81,7 @@ export async function updateWebhookSubscriptionAction(
     const workspaceId = await activeIntegrationsWorkspace();
     await assertPublicHttpsWebhookUrl(url);
     await updateWebhookSubscription({ workspaceId, subscriptionId, name, url, eventTypes, active });
-    revalidatePath("/settings/webhooks");
+    revalidatePath("/settings/integrations");
     return { success: true, message: "Webhook updated." };
   } catch (error) {
     return { success: false, message: errorMessage(error, "Unable to update the webhook.") };
@@ -99,7 +99,7 @@ export async function regenerateWebhookSubscriptionSecretAction(
     const workspaceId = await activeIntegrationsWorkspace();
     const signingSecret = generateWebhookSigningSecret();
     await regenerateWebhookSubscriptionSecret({ workspaceId, subscriptionId, signingSecret });
-    revalidatePath("/settings/webhooks");
+    revalidatePath("/settings/integrations");
     return {
       success: true,
       message:
