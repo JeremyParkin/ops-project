@@ -249,7 +249,7 @@ export function ProcessRunGraphView({
               </p>
             ) : null}
 
-            {selectedStep.nodeType === "condition_wait" ? (
+            {selectedStep.nodeType === "condition_wait" || selectedStep.nodeType === "external_event_wait" ? (
               <p className="text-sm text-stone">{stepSummaryLine(selectedStep, obligationsByJoinId)}</p>
             ) : null}
 

@@ -10,6 +10,8 @@ export type ApiKey = {
   revokedAt: string | null;
 };
 
+export type ApiKeyPurpose = "records_read" | "process_waits_complete";
+
 type ApiKeyListRow = {
   id: string;
   name: string;
@@ -49,11 +51,13 @@ export async function createApiKey({
   name,
   keyHash,
   keyPreview,
+  purpose = "records_read",
 }: {
   workspaceId: string;
   name: string;
   keyHash: string;
   keyPreview: string;
+  purpose?: ApiKeyPurpose;
 }): Promise<ApiKey> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc("create_api_key_authorized", {
@@ -61,6 +65,7 @@ export async function createApiKey({
     p_name: name,
     p_key_hash: keyHash,
     p_key_preview: keyPreview,
+    p_scope: purpose === "process_waits_complete" ? "process_waits:complete" : "records:read",
   });
   if (error) throw new Error(error.message);
 

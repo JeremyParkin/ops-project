@@ -6,6 +6,7 @@ export type ProcessNodeType =
   | "approval"
   | "wait"
   | "condition_wait"
+  | "external_event_wait"
   | "action"
   | "parallel_split"
   | "parallel_join";
@@ -193,6 +194,7 @@ export type ProcessStepRun = {
   startedAt?: IsoUtcTimestamp;
   dueAt?: IsoUtcTimestamp;
   resumeAt?: IsoUtcTimestamp;
+  externalWaitId?: string;
   conditionWaitResult?: {
     status: "waiting" | "blocked";
     evaluatedAt: IsoUtcTimestamp;
@@ -243,6 +245,7 @@ export type ProcessStepRunRoutingResult = {
     | "default_fallback"
     | "approval_outcome"
     | "condition_satisfied"
+    | "external_event_received"
     | "action_succeeded"
     | "parallel_split"
     | "parallel_join";

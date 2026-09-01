@@ -47,6 +47,7 @@ const NODE_TYPE_ACCENT: Record<LocalStep["nodeType"], string> = {
   approval: "border-brass-deep",
   wait: "border-status-slate",
   condition_wait: "border-status-slate",
+  external_event_wait: "border-status-slate",
   action: "border-status-slate",
   parallel_split: "border-brass-deep border-dashed",
   parallel_join: "border-brass-deep border-dashed",
@@ -57,6 +58,7 @@ const INSERTABLE_TYPE_LABELS: Record<InsertableNodeType, string> = {
   approval: "Approval",
   wait: "Wait",
   condition_wait: "Condition wait",
+  external_event_wait: "External event wait",
   action: "Action",
 };
 
@@ -71,6 +73,10 @@ function nodeSummary(step: LocalStep, members: WorkspaceMemberIdentity[]): strin
 
   if (step.nodeType === "action") {
     return "Runs automatically";
+  }
+
+  if (step.nodeType === "external_event_wait") {
+    return "Waiting for external event";
   }
 
   if (step.nodeType === "parallel_split") {

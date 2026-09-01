@@ -8,6 +8,7 @@ export const NODE_TYPE_LABELS: Record<ProcessNodeType, string> = {
   approval: "Approval",
   wait: "Wait",
   condition_wait: "Wait for condition",
+  external_event_wait: "Wait for external event",
   action: "Action",
   parallel_split: "Parallel paths",
   parallel_join: "Join parallel paths",
@@ -20,6 +21,10 @@ function ordinalWord(value: number) {
   const suffix = value % 100 >= 11 && value % 100 <= 13 ? "th" : suffixes[value % 10] ?? "th";
 
   return `${value}${suffix}`;
+}
+
+export function summarizeExternalEventWait(): string {
+  return "Waiting for external event";
 }
 
 export function summarizeWaitRule(step: LocalStep): string {

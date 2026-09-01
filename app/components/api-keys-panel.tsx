@@ -51,7 +51,14 @@ function CreateApiKeyForm() {
         Name
         <input name="name" required className="h-9 border border-grit bg-background px-2" placeholder="e.g. Reporting integration" />
       </label>
-      <p className="mt-2 text-xs text-stone">Read-only. Every key can list and read active business objects and records in this workspace.</p>
+      <label className="mt-3 grid gap-1 text-sm text-graphite sm:max-w-sm">
+        Purpose
+        <select name="purpose" defaultValue="records_read" className="h-9 border border-grit bg-background px-2">
+          <option value="records_read">Read business data</option>
+          <option value="process_waits_complete">Complete external process waits</option>
+        </select>
+      </label>
+      <p className="mt-2 text-xs text-stone">Keys are workspace-scoped and limited to the selected purpose.</p>
       <button
         type="submit"
         disabled={pending}

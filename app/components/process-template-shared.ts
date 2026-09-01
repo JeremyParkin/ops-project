@@ -149,7 +149,13 @@ export function serializeCondition(
 // come from the dedicated "+ Add parallel paths" control, since a region has
 // structural invariants (matched group id, non-nesting) a single splice
 // can't safely express.
-export type InsertableNodeType = "human_task" | "approval" | "wait" | "condition_wait" | "action";
+export type InsertableNodeType =
+  | "human_task"
+  | "approval"
+  | "wait"
+  | "condition_wait"
+  | "external_event_wait"
+  | "action";
 
 export function actionConfigDefaults(): { actionConfig: WorkflowAction } {
   return { actionConfig: { actionType: "update_record", fieldMappings: [] } };
@@ -172,9 +178,11 @@ export function createDefaultStep(
           ? "Wait"
           : nodeType === "condition_wait"
             ? "Wait for condition"
-            : nodeType === "action"
-              ? "Action"
-              : "",
+            : nodeType === "external_event_wait"
+              ? "Wait for external event"
+              : nodeType === "action"
+                ? "Action"
+                : "",
     assigneeUserId: "",
     dueAmount: "",
     dueUnit: "days",

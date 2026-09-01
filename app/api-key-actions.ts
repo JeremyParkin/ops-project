@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getActiveWorkspaceId, requireWorkspaceCapability } from "@/lib/auth/workspace";
 import { apiKeyPreview, generateApiKey, hashApiKey } from "@/lib/domain/api-key-signing";
 import { createApiKey, revokeApiKey } from "@/lib/domain/api-key-repository";
+import type { ApiKeyPurpose } from "@/lib/domain/api-key-repository";
 
 export type ApiKeyActionState = { success: boolean; message: string; secret?: string };
 
@@ -31,12 +32,16 @@ export async function createApiKeyAction(
   formData: FormData,
 ): Promise<ApiKeyActionState> {
   const name = getText(formData, "name");
+  const purpose = getText(formData, "purpose") as ApiKeyPurpose;
   if (!name) return { success: false, message: "Enter a name for this key." };
+  if (purpose !== "records_read" && purpose !== "process_waits_complete") {
+    return { success: false, message: "Choose what this key is for." };
+  }
 
   try {
     const workspaceId = await activeIntegrationsWorkspace();
     const rawKey = generateApiKey();
-    await createApiKey({ workspaceId, name, keyHash: hashApiKey(rawKey), keyPreview: apiKeyPreview(rawKey) });
+    await createApiKey({ workspaceId, name, keyHash: hashApiKey(rawKey), keyPreview: apiKeyPreview(rawKey), purpose });
     revalidatePath("/settings/integrations");
     return { success: true, message: "API key created. Copy it now -- it will not be shown again.", secret: rawKey };
   } catch (error) {

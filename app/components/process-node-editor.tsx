@@ -324,6 +324,18 @@ export function ConditionWaitConfigFields({
   );
 }
 
+export function ExternalEventWaitConfigFields({ routeError }: { routeError?: string }) {
+  return (
+    <fieldset className="mt-3 border-t border-grit pt-3">
+      <legend className="text-xs font-medium uppercase tracking-wide text-stone">External event wait</legend>
+      <p className="mt-2 text-sm text-stone">
+        Pauses the Process until an authenticated external system accepts this wait through /api/v1.
+      </p>
+      <FieldError message={routeError} />
+    </fieldset>
+  );
+}
+
 export function AssigneeDueFields({
   step,
   index,
@@ -609,6 +621,7 @@ export function ProcessNodeEditor({
   const isApproval = step.nodeType === "approval";
   const isWait = step.nodeType === "wait";
   const isConditionWait = step.nodeType === "condition_wait";
+  const isExternalEventWait = step.nodeType === "external_event_wait";
   const isAction = step.nodeType === "action";
 
   return (
@@ -624,6 +637,8 @@ export function ProcessNodeEditor({
           contextByEntityTypeId={contextByEntityTypeId}
           routeError={routeError}
         />
+      ) : isExternalEventWait ? (
+        <ExternalEventWaitConfigFields routeError={routeError} />
       ) : isAction ? (
         <WorkflowActionConfigFields
           idPrefix={`action-${step.key}`}

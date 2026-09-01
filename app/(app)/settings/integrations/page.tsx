@@ -77,7 +77,7 @@ export default async function IntegrationsPage() {
       <section className="mx-auto w-full max-w-6xl border-t border-grit pt-8">
         <h2 className="text-xl font-semibold text-graphite">API Keys</h2>
         <p className="mt-1 text-sm text-stone">
-          Read-only, workspace-scoped keys for programmatic access to /api/v1.
+          Workspace-scoped keys for the fixed /api/v1 integration surfaces.
         </p>
         <div className="mt-4">
           <ApiKeysPanel apiKeys={apiKeys} />

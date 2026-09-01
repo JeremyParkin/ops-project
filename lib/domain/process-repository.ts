@@ -95,6 +95,7 @@ type ProcessStepRunRow = {
   started_at: string | null;
   due_at: string | null;
   resume_at: string | null;
+  external_wait_id: string | null;
   condition_wait_result: ProcessStepRun["conditionWaitResult"] | null;
   completed_at: string | null;
   assignee_user_id: string | null;
@@ -464,6 +465,7 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     startedAt: row.started_at ?? undefined,
     dueAt: row.due_at ?? undefined,
     resumeAt: row.resume_at ?? undefined,
+    externalWaitId: row.external_wait_id ?? undefined,
     conditionWaitResult: row.condition_wait_result ?? undefined,
     completedAt: row.completed_at ?? undefined,
     assigneeUserId: row.assignee_user_id ?? undefined,
@@ -837,6 +839,84 @@ export async function completeProcessStepRun({
   }
 
   await executeActiveProcessActionSteps({ workspaceId, processRunId, supabase });
+}
+
+type ReceiveExternalProcessWaitEventRow = {
+  status: "accepted";
+  workspace_id: string;
+  process_run_id: string;
+  step_run_id: string;
+};
+
+export class ExternalProcessWaitEventError extends Error {
+  constructor(
+    public code:
+      | "invalid_idempotency_key"
+      | "insufficient_scope"
+      | "external_wait_not_found"
+      | "external_wait_conflict",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export async function receiveExternalProcessWaitEvent({
+  keyHash,
+  externalWaitId,
+  idempotencyKeyHash,
+  supabase: injectedSupabase,
+}: {
+  keyHash: string;
+  externalWaitId: string;
+  idempotencyKeyHash: string;
+  supabase?: SupabaseServerClient;
+}): Promise<{ workspaceId: string; processRunId: string; stepRunId: string }> {
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+  const { data, error } = await supabase.rpc("receive_external_process_wait_event_for_api_key", {
+    p_key_hash: keyHash,
+    p_external_wait_id: externalWaitId,
+    p_idempotency_key_hash: idempotencyKeyHash,
+  });
+
+  if (error) {
+    if (error.message.includes("invalid_idempotency_key")) {
+      throw new ExternalProcessWaitEventError("invalid_idempotency_key", "Idempotency-Key is required.");
+    }
+    if (error.message.includes("insufficient_scope")) {
+      throw new ExternalProcessWaitEventError(
+        "insufficient_scope",
+        "This API key cannot complete external process waits.",
+      );
+    }
+    if (error.message.includes("external_wait_not_found")) {
+      throw new ExternalProcessWaitEventError("external_wait_not_found", "External wait not found.");
+    }
+    if (error.message.includes("external_wait_conflict")) {
+      throw new ExternalProcessWaitEventError(
+        "external_wait_conflict",
+        "External wait has already been completed.",
+      );
+    }
+    throw new Error(`Unable to receive external process wait event: ${error.message}`);
+  }
+
+  const row = (data as ReceiveExternalProcessWaitEventRow[] | null)?.[0];
+  if (!row || row.status !== "accepted") {
+    throw new Error("Unable to receive external process wait event: unexpected RPC response.");
+  }
+
+  await executeActiveProcessActionSteps({
+    workspaceId: row.workspace_id,
+    processRunId: row.process_run_id,
+    supabase,
+  });
+
+  return {
+    workspaceId: row.workspace_id,
+    processRunId: row.process_run_id,
+    stepRunId: row.step_run_id,
+  };
 }
 
 export async function decideProcessApproval({

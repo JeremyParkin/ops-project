@@ -29,7 +29,9 @@ Future governance, audit, workspace-health, impersonation, and production-suppor
 
 ### 8F - Connectivity
 
-**Status:** Remaining Phase 8 work.
+**Status:** Completed (8F.1 CSV Export, 8F.2 Outbound Webhooks, 8F.3 Read-only API Foundations, 8F.4 Outbound Email/Provider Infrastructure, 8F.5 External Event/Webhook Waits). Implemented details and history live in `PROJECT_CONTEXT.md`. Phase 8 is now complete; Phase 9 is the active roadmap focus.
+
+Deferred connectivity work (API writes, OAuth, third-party app registration, integration marketplace, GraphQL, broad rate-limiting infrastructure, a generic webhook/email provider abstraction) was explicitly out of scope for 8F.1-8F.5 and remains unplanned rather than promised for a specific future phase.
 
 **Goal:** Establish the practical edges Kinema needs to exchange data and operational events with the outside world, without pretending to be an integration marketplace.
 
@@ -49,6 +51,8 @@ Boundaries:
 - Keep email/provider infrastructure separable from the collaborative workflows that may later use it.
 
 ## Phase 9 - Table & View Experience
+
+**Status:** Active roadmap focus, now that Phase 8 is complete.
 
 **Goal:** Make Kinema's core business-object table experience genuinely delightful for everyday work: Airtable-class in quality, but grounded in Kinema's stronger operational model.
 
@@ -157,6 +161,9 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 - Separate/local Supabase test environment and CI-ready test isolation.
 - Deployment hardening, environment management, monitoring, backups, and operational runbooks.
 - Retention and cleanup policies for notifications, events, imports, and other operational logs.
+- Workspace seat provisioning/entitlements: a workspace provisioned for a fixed seat count, with admins able to see seats used vs. available; invitations and reactivation should respect the seat limit at the authoritative backend boundary, not just in the UI. Keep seat entitlement separate from roles/capabilities — seats govern whether a user can occupy the workspace, roles govern what they can do once there. Deactivation frees a seat; no destructive deletion introduced merely to manage seats.
+- Forgotten-password recovery: a secure "Forgot password?" flow from sign-in, built on Supabase Auth's own supported password-reset primitives rather than a bespoke token system, with safe redirect/session handling and standard short-lived reset semantics.
+- MFA/2FA: user-facing multi-factor authentication via Supabase Auth's supported MFA capabilities. Optional per-user MFA is the likely first step; workspace-enforced MFA policy can follow later if enterprise needs justify it. No custom TOTP/recovery-secret infrastructure unless the auth provider can't support the required behavior.
 
 ### AI-Assisted Configuration
 

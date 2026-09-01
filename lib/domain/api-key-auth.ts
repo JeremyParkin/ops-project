@@ -8,7 +8,9 @@ export type ApiErrorCode =
   | "insufficient_scope"
   | "invalid_limit"
   | "invalid_cursor"
+  | "invalid_idempotency_key"
   | "not_found"
+  | "conflict"
   | "internal_error";
 
 export class ApiKeyAuthError extends Error {

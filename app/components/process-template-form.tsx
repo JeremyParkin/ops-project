@@ -313,6 +313,21 @@ export function ProcessTemplateForm({
     });
   }
 
+  function addExternalEventWait() {
+    const waitKey = createKey("external-event-wait");
+
+    setSteps((current) => {
+      const previous = current.at(-1);
+      const next: LocalStep = createDefaultStep("external_event_wait", waitKey, activeFields);
+      const withRoute = previous && previous.routes.length === 0
+        ? current.map((step) => step.key === previous.key
+          ? { ...step, routes: [{ id: createKey("route"), targetStepKey: waitKey, isDefault: true, isParallel: false, conditions: [] }] }
+          : step)
+        : current;
+      return [...withRoute, next];
+    });
+  }
+
   function addAction() {
     const actionKey = createKey("action");
 
@@ -881,6 +896,13 @@ export function ProcessTemplateForm({
             </button>
             <button
               type="button"
+              onClick={addExternalEventWait}
+              className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
+            >
+              + Add external event wait
+            </button>
+            <button
+              type="button"
               onClick={addAction}
               className="border border-grit px-3 py-2 text-sm font-medium text-stone hover:border-brass-deep hover:text-brass-deep"
             >
@@ -903,6 +925,7 @@ export function ProcessTemplateForm({
                 const isApproval = step.nodeType === "approval";
                 const isWait = step.nodeType === "wait";
                 const isConditionWait = step.nodeType === "condition_wait";
+                const isExternalEventWait = step.nodeType === "external_event_wait";
                 const isAction = step.nodeType === "action";
 
                 if (step.nodeType === "parallel_split" || step.nodeType === "parallel_join") {
@@ -921,7 +944,17 @@ export function ProcessTemplateForm({
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
                         <label htmlFor={`step-name-${step.key}`} className="block text-xs font-medium uppercase tracking-wide text-stone">
-                          {isApproval ? "Approval" : isWait ? "Wait" : isConditionWait ? "Condition wait" : isAction ? "Action" : `Step ${index + 1}`}
+                          {isApproval
+                            ? "Approval"
+                            : isWait
+                              ? "Wait"
+                              : isConditionWait
+                                ? "Condition wait"
+                                : isExternalEventWait
+                                  ? "External event wait"
+                                  : isAction
+                                    ? "Action"
+                                    : `Step ${index + 1}`}
                         </label>
                         <input
                           id={`step-name-${step.key}`}

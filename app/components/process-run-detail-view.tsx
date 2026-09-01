@@ -25,6 +25,8 @@ type ProcessRunDetailViewProps = {
   originLabel: string;
   originHref: string;
   currentUserId: string;
+  canManageIntegrations: boolean;
+  publicAppUrl: string;
   completeProcessStepRunAction: (
     state: ProcessActionState,
     formData: FormData,
@@ -44,6 +46,8 @@ export function ProcessRunDetailView({
   originLabel,
   originHref,
   currentUserId,
+  canManageIntegrations,
+  publicAppUrl,
   completeProcessStepRunAction,
   decideProcessApprovalAction,
   retryProcessActionStepAction,
@@ -53,6 +57,7 @@ export function ProcessRunDetailView({
   const skippedCount = run.steps.filter((step) => step.status === "skipped").length;
   const stepById = new Map(run.steps.map((step) => [step.id, step]));
   const obligationsByJoinId = joinObligationsByJoinId(run.joinObligations);
+  const callbackBase = publicAppUrl.replace(/\/$/, "");
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -159,6 +164,19 @@ export function ProcessRunDetailView({
                   ) : null}
                   {step.nodeType === "condition_wait" && step.conditionWaitResult?.targetRecordId ? (
                     <p className="mt-1 text-xs text-stone">Watching current record values.</p>
+                  ) : null}
+                  {step.nodeType === "external_event_wait" ? (
+                    <div className="mt-1 text-xs text-stone">
+                      <p>Waiting for external event.</p>
+                      {canManageIntegrations && step.externalWaitId ? (
+                        <div className="mt-2 border border-grit bg-chalk p-2">
+                          <p className="font-medium text-graphite">Callback URL</p>
+                          <code className="mt-1 block break-all text-[11px] text-graphite">
+                            {`${callbackBase}/api/v1/process-waits/external/${step.externalWaitId}/events`}
+                          </code>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
                   {routingResultLabel(step, stepById) ? (
                     <p className="mt-2 text-xs text-stone">{routingResultLabel(step, stepById)}</p>

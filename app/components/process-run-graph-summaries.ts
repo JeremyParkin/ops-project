@@ -74,6 +74,10 @@ export function stepSummaryLine(
       : "Waiting for its conditions to be satisfied.";
   }
 
+  if (step.nodeType === "external_event_wait") {
+    return "Waiting for external event.";
+  }
+
   if (step.nodeType === "action") {
     if (step.actionResult?.status === "failed") {
       return step.actionResult.errorMessage ?? "Action failed. Retry when ready.";
@@ -120,17 +124,19 @@ export function routingResultLabel(
       ? `Decision: ${step.approvalOutcomeLabel ?? result.approvalOutcomeLabel ?? "Recorded"}`
       : result.outcome === "condition_satisfied"
         ? "Condition satisfied"
-        : result.outcome === "action_succeeded"
-          ? "Action completed"
-          : result.outcome === "parallel_split"
-            ? "Parallel branches activated"
-            : result.outcome === "parallel_join"
-              ? "Parallel paths joined"
-              : result.outcome === "default_fallback"
-                ? "Otherwise route"
-                : result.outcome === "matched_condition"
-                  ? "Conditional route matched"
-                  : "Continued to next step";
+        : result.outcome === "external_event_received"
+          ? "External event accepted"
+          : result.outcome === "action_succeeded"
+            ? "Action completed"
+            : result.outcome === "parallel_split"
+              ? "Parallel branches activated"
+              : result.outcome === "parallel_join"
+                ? "Parallel paths joined"
+                : result.outcome === "default_fallback"
+                  ? "Otherwise route"
+                  : result.outcome === "matched_condition"
+                    ? "Conditional route matched"
+                    : "Continued to next step";
 
   const targetStepRunId = result.targetStepRunId;
   const targetName =

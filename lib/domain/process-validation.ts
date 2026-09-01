@@ -278,6 +278,7 @@ function parseStepsFromJson(value: string): ProcessTemplateStepFormValue[] | nul
           record.nodeType === "approval" ||
           record.nodeType === "wait" ||
           record.nodeType === "condition_wait" ||
+          record.nodeType === "external_event_wait" ||
           record.nodeType === "action" ||
           record.nodeType === "parallel_split" ||
           record.nodeType === "parallel_join"
@@ -389,6 +390,7 @@ export function validateProcessTemplateFormData(
           (step.nodeType ?? "human_task") === "approval" ||
           (step.nodeType ?? "human_task") === "wait" ||
           (step.nodeType ?? "human_task") === "condition_wait" ||
+          (step.nodeType ?? "human_task") === "external_event_wait" ||
           (step.nodeType ?? "human_task") === "action") &&
         !step.name,
     )
@@ -411,6 +413,7 @@ export function validateProcessTemplateFormData(
       nodeType !== "approval" &&
       nodeType !== "wait" &&
       nodeType !== "condition_wait" &&
+      nodeType !== "external_event_wait" &&
       nodeType !== "action" &&
       nodeType !== "parallel_split" &&
       nodeType !== "parallel_join"
@@ -528,6 +531,12 @@ export function validateProcessTemplateFormData(
         errors[`stepRoutes.${index}`] = "Choose the related record this action updates.";
       } else if (actionType === "start_process" && !step.actionConfig?.processTemplateId) {
         errors[`stepRoutes.${index}`] = "Choose which process this action starts.";
+      }
+    }
+
+    if (nodeType === "external_event_wait") {
+      if (step.assigneeUserId || step.dueAmount) {
+        errors[`stepRoutes.${index}`] = "External event waits cannot have an assignee or due rule.";
       }
     }
 
