@@ -31,6 +31,13 @@ type EntityRecordsTableProps = {
     title: string;
     description: string;
   };
+  // Click-to-sort column headers: only sortable, currently-visible fields
+  // appear as keys. `sortHrefByFieldId` is the href a header click should
+  // navigate to next (cycling none -> asc -> desc -> none);
+  // `sortDirectionByFieldId` holds the field's *current* direction, for the
+  // arrow indicator, and is only set for fields presently part of the sort.
+  sortHrefByFieldId?: Record<string, string>;
+  sortDirectionByFieldId?: Record<string, "asc" | "desc">;
 };
 
 function formatFieldValue(
@@ -96,6 +103,8 @@ export function EntityRecordsTable({
   recordEditPathBase,
   recordActionContext,
   emptyState,
+  sortHrefByFieldId = {},
+  sortDirectionByFieldId = {},
 }: EntityRecordsTableProps) {
   const identityField = getRecordIdentityField({
     entityType,
@@ -135,17 +144,45 @@ export function EntityRecordsTable({
       <div className="overflow-hidden border border-grit bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-            <thead className="bg-chalk text-xs uppercase tracking-wide text-stone">
+            <thead className="sticky top-0 z-10 bg-chalk text-xs uppercase tracking-wide text-stone">
               <tr>
-                {fields.map((field) => (
-                  <th
-                    key={field.id}
-                    scope="col"
-                    className="border-b border-grit px-4 py-3 font-medium"
-                  >
-                    {field.name}
-                  </th>
-                ))}
+                {fields.map((field) => {
+                  const sortHref = sortHrefByFieldId[field.id];
+                  const sortDirection = sortDirectionByFieldId[field.id];
+
+                  return (
+                    <th
+                      key={field.id}
+                      scope="col"
+                      className="border-b border-grit px-4 py-3 font-medium"
+                    >
+                      {sortHref ? (
+                        <Link
+                          href={sortHref}
+                          className="inline-flex items-center gap-1 hover:text-graphite"
+                        >
+                          {field.name}
+                          <span aria-hidden="true">
+                            {sortDirection === "asc"
+                              ? "▲"
+                              : sortDirection === "desc"
+                                ? "▼"
+                                : ""}
+                          </span>
+                          {sortDirection ? (
+                            <span className="sr-only">
+                              , sorted {sortDirection === "asc" ? "ascending" : "descending"}
+                            </span>
+                          ) : (
+                            <span className="sr-only">, click to sort</span>
+                          )}
+                        </Link>
+                      ) : (
+                        field.name
+                      )}
+                    </th>
+                  );
+                })}
                 {recordEditPathBase ? (
                   <th
                     scope="col"

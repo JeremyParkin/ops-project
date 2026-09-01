@@ -5,11 +5,22 @@ import { useActionState, useMemo, useState } from "react";
 import type { DeleteViewActionState } from "@/app/actions";
 import type { RelationOptionsByFieldKey } from "@/lib/domain/record-repository";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
+import {
+  FILTER_OPERATORS_BY_FIELD_TYPE,
+  FILTER_OPERATOR_LABELS,
+} from "@/lib/domain/view-operators";
+import { getDefaultColumnFieldDefinitionIds } from "@/lib/domain/view-engine";
 import type { EntityView, ViewFilter, ViewSort } from "@/lib/domain/view-types";
 import {
   createInitialViewFormState,
   type ViewFormState,
 } from "@/lib/domain/view-validation";
+
+export type ViewStateOverride = {
+  filters: ViewFilter[];
+  sorts: ViewSort[];
+  columnFieldDefinitionIds: string[];
+};
 
 type EntityViewsPanelProps = {
   entityType: EntityType;
@@ -34,48 +45,13 @@ type EntityViewsPanelProps = {
     formData: FormData,
   ) => Promise<DeleteViewActionState>;
   openManageByDefault?: boolean;
+  pendingOverride?: ViewStateOverride;
 };
 
 type FormMode = "create" | "edit";
 
-const operatorsByFieldType: Record<FieldDefinition["type"], string[]> = {
-  text: [
-    "equals",
-    "not_equals",
-    "contains",
-    "not_contains",
-    "is_set",
-    "is_not_set",
-  ],
-  number: [
-    "equals",
-    "not_equals",
-    "greater_than",
-    "greater_than_or_equal",
-    "less_than",
-    "less_than_or_equal",
-    "is_set",
-    "is_not_set",
-  ],
-  date: ["equals", "before", "after", "is_set", "is_not_set"],
-  boolean: ["equals", "is_set", "is_not_set"],
-  relation: ["equals", "not_equals", "is_set", "is_not_set"],
-};
-
-const operatorLabels: Record<string, string> = {
-  equals: "equals",
-  not_equals: "does not equal",
-  contains: "contains",
-  not_contains: "does not contain",
-  greater_than: "greater than",
-  greater_than_or_equal: "greater than or equal",
-  less_than: "less than",
-  less_than_or_equal: "less than or equal",
-  before: "before",
-  after: "after",
-  is_set: "is set",
-  is_not_set: "is not set",
-};
+const operatorsByFieldType = FILTER_OPERATORS_BY_FIELD_TYPE;
+const operatorLabels: Record<string, string> = FILTER_OPERATOR_LABELS;
 
 function FieldError({ message }: { message?: string }) {
   if (!message) {
@@ -89,12 +65,6 @@ function FieldError({ message }: { message?: string }) {
   );
 }
 
-function getDefaultColumns(fields: FieldDefinition[]) {
-  return [...fields]
-    .sort((left, right) => left.position - right.position)
-    .map((field) => field.id);
-}
-
 function fieldLabel(field: FieldDefinition) {
   return `${field.name} (${field.type})`;
 }
@@ -106,6 +76,7 @@ function ViewForm({
   allFields,
   relationOptionsByFieldKey,
   action,
+  pendingOverride,
 }: {
   mode: FormMode;
   view?: EntityView;
@@ -116,16 +87,23 @@ function ViewForm({
     state: ViewFormState,
     formData: FormData,
   ) => Promise<ViewFormState>;
+  pendingOverride?: ViewStateOverride;
 }) {
   const initialValues = useMemo(
     () => ({
       name: view?.name ?? "",
-      filters: view?.filters ?? [],
-      sorts: view?.sorts ?? [],
+      filters: pendingOverride?.filters ?? view?.filters ?? [],
+      sorts: pendingOverride?.sorts ?? view?.sorts ?? [],
       columnFieldDefinitionIds:
-        view?.columnFieldDefinitionIds ?? getDefaultColumns(activeFields),
+        pendingOverride?.columnFieldDefinitionIds ??
+        view?.columnFieldDefinitionIds ??
+        getDefaultColumnFieldDefinitionIds(activeFields),
       isDefault: view?.isDefault ?? false,
     }),
+    // pendingOverride is intentionally excluded: this seeds the form once on
+    // mount (the parent forces a remount via `key` when unsaved quick-bar
+    // state should be re-seeded), matching how `view` already behaves here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeFields, view],
   );
   const [state, formAction, pending] = useActionState(
@@ -550,6 +528,7 @@ export function EntityViewsPanel({
   updateViewAction,
   deleteViewAction,
   openManageByDefault = false,
+  pendingOverride,
 }: EntityViewsPanelProps) {
   const defaultView = views.find((view) => view.isDefault);
   const selectedViewName = selectedView?.name ?? "All Records";
@@ -630,13 +609,14 @@ export function EntityViewsPanel({
           {selectedView && updateViewAction ? (
             <>
               <ViewForm
-                key={selectedView.id}
+                key={`${selectedView.id}-${pendingOverride ? "pending" : "saved"}`}
                 mode="edit"
                 view={selectedView}
                 activeFields={activeFields}
                 allFields={allFields}
                 relationOptionsByFieldKey={relationOptionsByFieldKey}
                 action={updateViewAction}
+                pendingOverride={pendingOverride}
               />
               {deleteViewAction ? (
                 <div className="border-t border-slate-200 pt-4">
@@ -646,12 +626,13 @@ export function EntityViewsPanel({
             </>
           ) : (
             <ViewForm
-              key="create-view"
+              key={pendingOverride ? "create-view-pending" : "create-view"}
               mode="create"
               activeFields={activeFields}
               allFields={allFields}
               relationOptionsByFieldKey={relationOptionsByFieldKey}
               action={createViewAction}
+              pendingOverride={pendingOverride}
             />
           )}
         </div>

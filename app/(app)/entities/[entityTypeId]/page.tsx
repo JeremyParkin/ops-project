@@ -13,6 +13,7 @@ import {
 } from "@/app/actions";
 import { EntityRecordsTable } from "@/app/components/entity-records-table";
 import { EntitySettingsForm } from "@/app/components/entity-settings-form";
+import { EntityViewQuickBar } from "@/app/components/entity-view-quickbar";
 import { EntityViewsPanel } from "@/app/components/entity-views-panel";
 import { FieldCreateForm } from "@/app/components/field-create-form";
 import { FieldManagementList } from "@/app/components/field-management-list";
@@ -28,11 +29,28 @@ import {
   listEntityTypes,
 } from "@/lib/domain/metadata-repository";
 import {
+  entityRecordExists,
   getRelationLookups,
   getEntityRecord,
   listEntityRecords,
 } from "@/lib/domain/record-repository";
-import { evaluateEntityView } from "@/lib/domain/view-engine";
+import {
+  evaluateViewState,
+  getDefaultColumnFieldDefinitionIds,
+} from "@/lib/domain/view-engine";
+import { SORTABLE_FIELD_TYPES } from "@/lib/domain/view-operators";
+import {
+  cycleSortForField,
+  hasPendingViewParams,
+  isSameViewState,
+  rawSearchParamsToUrlSearchParams,
+  searchParamsToFormData,
+  serializeViewState,
+  withViewStateParams,
+  type RawSearchParams,
+} from "@/lib/domain/view-query-state";
+import { validateViewFormData } from "@/lib/domain/view-validation";
+import type { ViewFilter, ViewSort } from "@/lib/domain/view-types";
 import {
   countViewReferencesByFieldId,
   listEntityViews,
@@ -211,18 +229,22 @@ export default async function EntityPage({
   params: Promise<{
     entityTypeId: string;
   }>;
-  searchParams: Promise<{
-    showArchived?: string;
-    showArchivedFields?: string;
-    view?: string;
-    newView?: string;
-    prefillRelationFieldId?: string;
-    originEntityTypeId?: string;
-    originRecordId?: string;
-    manage?: string;
-  }>;
+  searchParams: Promise<
+    {
+      showArchived?: string;
+      showArchivedFields?: string;
+      view?: string;
+      newView?: string;
+      prefillRelationFieldId?: string;
+      originEntityTypeId?: string;
+      originRecordId?: string;
+      manage?: string;
+      saveView?: string;
+    } & RawSearchParams
+  >;
 }) {
   const { entityTypeId } = await params;
+  const rawSearchParams = await searchParams;
   const {
     showArchived: showArchivedParam,
     showArchivedFields: showArchivedFieldsParam,
@@ -232,7 +254,8 @@ export default async function EntityPage({
     originEntityTypeId,
     originRecordId,
     manage: manageParam,
-  } = await searchParams;
+    saveView: saveViewParam,
+  } = rawSearchParams;
   const showArchivedRecords = showArchivedParam === "true";
   const showArchivedFields = showArchivedFieldsParam === "true";
   const { workspaceId } = await getActiveWorkspaceId();
@@ -270,12 +293,96 @@ export default async function EntityPage({
       : viewParam
         ? views.find((view) => view.id === viewParam)
         : views.find((view) => view.isDefault);
-  const evaluatedView = evaluateEntityView({
-    selectedView,
+
+  // Unsaved quick-bar filter/sort/column edits are encoded as URL params
+  // (see lib/domain/view-query-state.ts) using the same field names the
+  // Manage Views form submits, so they can be read with the exact same
+  // validateViewFormData used for saved-view submissions -- no separate
+  // "pending state" model. When present, they fully override the selected
+  // view's own filters/sorts/columns for this render; nothing is written to
+  // the database until the user explicitly saves or updates a view.
+  const fallbackFilters = selectedView?.filters ?? [];
+  const fallbackSorts = selectedView?.sorts ?? [];
+  const fallbackColumnIds =
+    selectedView?.columnFieldDefinitionIds ?? getDefaultColumnFieldDefinitionIds(fields);
+
+  let effectiveFilters: ViewFilter[];
+  let effectiveSorts: ViewSort[];
+  let effectiveColumnIds: string[];
+
+  if (hasPendingViewParams(rawSearchParams)) {
+    const pendingFormData = searchParamsToFormData(rawSearchParams);
+    const pendingValidation = await validateViewFormData({
+      activeFields: fields,
+      allFields,
+      formData: pendingFormData,
+      validateRelationValue: async (field, recordId) => {
+        if (!field.relatedEntityTypeId) {
+          return false;
+        }
+
+        return entityRecordExists({
+          workspaceId,
+          entityTypeId: field.relatedEntityTypeId,
+          recordId,
+          includeArchived: true,
+        });
+      },
+    });
+    effectiveFilters = pendingValidation.values.filters;
+    effectiveSorts = pendingValidation.values.sorts;
+    effectiveColumnIds = pendingValidation.values.columnFieldDefinitionIds;
+  } else {
+    effectiveFilters = fallbackFilters;
+    effectiveSorts = fallbackSorts;
+    effectiveColumnIds = fallbackColumnIds;
+  }
+
+  // The quick bar always re-serializes a *full* {filters, sorts, columns}
+  // snapshot on every edit (see serializeViewState), so URL pending-param
+  // presence alone would still read as "unsaved changes" even after e.g.
+  // cycling a sort back to none with columns untouched. Compare against the
+  // fallback state instead, so the banner only shows when something is
+  // actually different.
+  const hasPendingViewEdits = !isSameViewState(
+    { filters: effectiveFilters, sorts: effectiveSorts, columnFieldDefinitionIds: effectiveColumnIds },
+    { filters: fallbackFilters, sorts: fallbackSorts, columnFieldDefinitionIds: fallbackColumnIds },
+  );
+
+  const evaluatedViewState = evaluateViewState({
+    filters: effectiveFilters,
+    sorts: effectiveSorts,
+    columnFieldDefinitionIds: effectiveColumnIds,
     activeFields: fields,
     allFields,
     records,
   });
+  const evaluatedView = { ...evaluatedViewState, selectedView };
+
+  const currentSearchParams = rawSearchParamsToUrlSearchParams(rawSearchParams);
+  const sortHrefByFieldId: Record<string, string> = {};
+  const sortDirectionByFieldId: Record<string, "asc" | "desc"> = {};
+  evaluatedView.visibleFields
+    .filter((field) => SORTABLE_FIELD_TYPES.has(field.type))
+    .forEach((field) => {
+      const nextSorts = cycleSortForField({
+        currentSorts: effectiveSorts,
+        fieldId: field.id,
+      });
+      const nextParams = withViewStateParams(
+        currentSearchParams,
+        serializeViewState({
+          filters: effectiveFilters,
+          sorts: nextSorts,
+          columnFieldDefinitionIds: effectiveColumnIds,
+        }),
+      );
+      sortHrefByFieldId[field.id] = `/entities/${entityTypeId}?${nextParams.toString()}`;
+    });
+  effectiveSorts.forEach((sort) => {
+    sortDirectionByFieldId[sort.fieldDefinitionId] = sort.direction;
+  });
+
   const isArchivedEntity = Boolean(entityType.archivedAt);
   // Schema-management content (settings/field forms) is only ever shown to a
   // canManageSchema caller. Archived entities used to force isManaging on
@@ -437,7 +544,29 @@ export default async function EntityPage({
             createViewAction={createEntityView}
             updateViewAction={updateEntityView}
             deleteViewAction={deleteEntityView}
-            openManageByDefault={newViewParam === "true"}
+            openManageByDefault={
+              newViewParam === "true" || (saveViewParam === "true" && hasPendingViewEdits)
+            }
+            pendingOverride={
+              hasPendingViewEdits
+                ? {
+                    filters: effectiveFilters,
+                    sorts: effectiveSorts,
+                    columnFieldDefinitionIds: effectiveColumnIds,
+                  }
+                : undefined
+            }
+          />
+        ) : null}
+        {!isArchivedEntity && !isManaging ? (
+          <EntityViewQuickBar
+            activeFields={fields}
+            relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            effectiveFilters={effectiveFilters}
+            effectiveSorts={effectiveSorts}
+            effectiveColumnIds={effectiveColumnIds}
+            hasPendingEdits={hasPendingViewEdits}
+            selectedViewName={selectedView?.name}
           />
         ) : null}
         {!isArchivedEntity && !isManaging ? (
@@ -462,6 +591,8 @@ export default async function EntityPage({
           }
           recordActionContext={isArchivedEntity ? undefined : context}
           emptyState={isArchivedEntity || isManaging ? undefined : emptyState}
+          sortHrefByFieldId={sortHrefByFieldId}
+          sortDirectionByFieldId={sortDirectionByFieldId}
         />
         <div className="mx-auto w-full max-w-6xl bg-white">
           <Link

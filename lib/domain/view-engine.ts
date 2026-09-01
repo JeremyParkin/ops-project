@@ -1,4 +1,8 @@
 import type { EntityRecord, FieldDefinition, FieldValue } from "./types";
+import {
+  FILTER_OPERATORS_BY_FIELD_TYPE,
+  SORTABLE_FIELD_TYPES,
+} from "./view-operators";
 import type {
   EntityView,
   EvaluatedView,
@@ -8,39 +12,8 @@ import type {
 } from "./view-types";
 import type { RelationLabelsByFieldKey } from "./record-repository";
 
-const filterOperatorsByFieldType: Record<
-  FieldDefinition["type"],
-  ViewFilterOperator[]
-> = {
-  text: [
-    "equals",
-    "not_equals",
-    "contains",
-    "not_contains",
-    "is_set",
-    "is_not_set",
-  ],
-  number: [
-    "equals",
-    "not_equals",
-    "greater_than",
-    "greater_than_or_equal",
-    "less_than",
-    "less_than_or_equal",
-    "is_set",
-    "is_not_set",
-  ],
-  date: ["equals", "before", "after", "is_set", "is_not_set"],
-  boolean: ["equals", "is_set", "is_not_set"],
-  relation: ["equals", "not_equals", "is_set", "is_not_set"],
-};
-
-const sortFieldTypes = new Set<FieldDefinition["type"]>([
-  "text",
-  "number",
-  "date",
-  "boolean",
-]);
+const filterOperatorsByFieldType = FILTER_OPERATORS_BY_FIELD_TYPE;
+const sortFieldTypes = SORTABLE_FIELD_TYPES;
 
 export function viewFilterNeedsValue(operator: ViewFilterOperator) {
   return operator !== "is_set" && operator !== "is_not_set";
@@ -193,38 +166,49 @@ export function getViewReferencedFieldIds(view: EntityView) {
   ]);
 }
 
-export function evaluateEntityView({
-  selectedView,
+export function getDefaultColumnFieldDefinitionIds(fields: FieldDefinition[]) {
+  return [...fields]
+    .sort((left, right) => left.position - right.position)
+    .map((field) => field.id);
+}
+
+export type ViewStateEvaluationResult = {
+  records: EntityRecord[];
+  visibleFields: FieldDefinition[];
+  warnings: string[];
+  invalidFilter: boolean;
+};
+
+// The pure evaluation core shared by evaluateEntityView (a saved view, or
+// the implicit All Records view) and any caller that needs to evaluate an
+// arbitrary, not-necessarily-saved filters/sorts/columns combination -- for
+// example unsaved quick-bar state layered on top of a view (see
+// view-query-state.ts). Reusing this instead of a parallel implementation
+// keeps stale-reference handling (fail-closed filters, degrade-with-warning
+// sorts/columns) identical for saved and unsaved state.
+export function evaluateViewState({
+  filters,
+  sorts,
+  columnFieldDefinitionIds,
   activeFields,
   allFields,
   records,
 }: {
-  selectedView?: EntityView;
+  filters: ViewFilter[];
+  sorts: ViewSort[];
+  columnFieldDefinitionIds: FieldDefinition["id"][];
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
   records: EntityRecord[];
-  relationLabelsByFieldKey?: RelationLabelsByFieldKey;
-}): EvaluatedView {
+}): ViewStateEvaluationResult {
   const activeFieldById = new Map(activeFields.map((field) => [field.id, field]));
   const allFieldById = new Map(allFields.map((field) => [field.id, field]));
-
-  if (!selectedView) {
-    return {
-      kind: "all",
-      records,
-      visibleFields: [...activeFields].sort(
-        (left, right) => left.position - right.position,
-      ),
-      warnings: [],
-      invalidFilter: false,
-    };
-  }
 
   const warnings: string[] = [];
   let invalidFilter = false;
   const validFilters: Array<{ filter: ViewFilter; field: FieldDefinition }> = [];
   const validSorts: Array<{ sort: ViewSort; field: FieldDefinition }> = [];
-  const visibleFields = selectedView.columnFieldDefinitionIds.flatMap((fieldId) => {
+  const visibleFields = columnFieldDefinitionIds.flatMap((fieldId) => {
     const field = activeFieldById.get(fieldId);
 
     if (!field) {
@@ -235,7 +219,7 @@ export function evaluateEntityView({
     return [field];
   });
 
-  selectedView.filters.forEach((filter) => {
+  filters.forEach((filter) => {
     const field = activeFieldById.get(filter.fieldDefinitionId);
 
     if (!field) {
@@ -260,7 +244,7 @@ export function evaluateEntityView({
     validFilters.push({ filter, field });
   });
 
-  selectedView.sorts.forEach((sort) => {
+  sorts.forEach((sort) => {
     const field = activeFieldById.get(sort.fieldDefinitionId);
 
     if (!field) {
@@ -304,11 +288,49 @@ export function evaluateEntityView({
   });
 
   return {
-    kind: "saved",
-    selectedView,
     records: sortedRecords,
     visibleFields,
     warnings,
     invalidFilter,
+  };
+}
+
+export function evaluateEntityView({
+  selectedView,
+  activeFields,
+  allFields,
+  records,
+}: {
+  selectedView?: EntityView;
+  activeFields: FieldDefinition[];
+  allFields: FieldDefinition[];
+  records: EntityRecord[];
+  relationLabelsByFieldKey?: RelationLabelsByFieldKey;
+}): EvaluatedView {
+  if (!selectedView) {
+    return {
+      kind: "all",
+      records,
+      visibleFields: [...activeFields].sort(
+        (left, right) => left.position - right.position,
+      ),
+      warnings: [],
+      invalidFilter: false,
+    };
+  }
+
+  const result = evaluateViewState({
+    filters: selectedView.filters,
+    sorts: selectedView.sorts,
+    columnFieldDefinitionIds: selectedView.columnFieldDefinitionIds,
+    activeFields,
+    allFields,
+    records,
+  });
+
+  return {
+    kind: "saved",
+    selectedView,
+    ...result,
   };
 }

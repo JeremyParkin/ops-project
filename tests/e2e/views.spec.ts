@@ -175,7 +175,7 @@ test("creates a saved text-filtered view through the UI", async ({ page }) => {
   await gotoEntity(page, work);
   await page.getByText("Manage views", { exact: true }).click();
   await page.getByLabel("View Name").fill(`${run.label} Needs QA`);
-  await page.getByRole("button", { name: "Add Filter" }).click();
+  await page.getByRole("button", { name: "Add Filter", exact: true }).click();
   await selectReactOption(page.locator('select[name="filterField:0"]'), {
     label: "Status (text)",
   });
@@ -276,9 +276,12 @@ test("sorting, column visibility, and column order persist", async ({ page }) =>
 
   await page.goto(`/entities/${work.id}?view=${viewId}`);
   const headers = page.getByRole("table").getByRole("columnheader");
-  await expect(headers.nth(0)).toHaveText("Priority");
-  await expect(headers.nth(1)).toHaveText("Title");
-  await expect(headers.nth(2)).toHaveText("Status");
+  // Sortable headers (all but the relation column) render as click-to-sort
+  // links, which also carry a visually-hidden sort-state description -- so
+  // this asserts the visible column order via containment, not exact text.
+  await expect(headers.nth(0)).toContainText("Priority");
+  await expect(headers.nth(1)).toContainText("Title");
+  await expect(headers.nth(2)).toContainText("Status");
   await expect(headers.filter({ hasText: "Due" })).toHaveCount(0);
 
   const rows = page.getByRole("table").getByRole("row");
@@ -287,7 +290,7 @@ test("sorting, column visibility, and column order persist", async ({ page }) =>
   await expect(rows.nth(3)).toContainText(`${run.label} Launch`);
 
   await page.reload();
-  await expect(headers.nth(0)).toHaveText("Priority");
+  await expect(headers.nth(0)).toContainText("Priority");
 });
 
 test("default view can be used and cleared back to All Records", async ({
@@ -378,6 +381,130 @@ test("archived filter references fail closed with repair warning", async ({
   ).toBeVisible();
   await expect(rowForText(page, `${run.label} QA Prep`)).toHaveCount(0);
   await expect(page.getByRole("link", { name: `All ${work.name}` })).toBeVisible();
+});
+
+test("quick filter bar narrows records live and can be saved as a new view", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { work } = await createViewsScenario(run);
+
+  await gotoEntity(page, work);
+  await expect(rowForText(page, `${run.label} Launch`)).toBeVisible();
+
+  await page.getByRole("button", { name: "+ Add filter" }).click();
+  await selectReactOption(page.getByLabel("Quick filter field"), {
+    label: "Status (text)",
+  });
+  await selectReactOption(page.getByLabel("Quick filter operator"), {
+    value: "contains",
+  });
+  await page.getByLabel("Quick filter value").fill("qa");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  await expect(rowForText(page, `${run.label} QA Prep`)).toBeVisible();
+  await expect(rowForText(page, `${run.label} QA Fix`)).toBeVisible();
+  await expect(rowForText(page, `${run.label} Launch`)).toHaveCount(0);
+  await expect(page.getByText('Status contains "qa"')).toBeVisible();
+  await expect(page.getByText("Unsaved changes to All Records")).toBeVisible();
+
+  await page.getByRole("button", { name: "Save as View" }).click();
+  await page.getByLabel("View Name").fill(`${run.label} Quick Saved`);
+  await page.getByRole("button", { name: "Create View" }).click();
+  await expect(page.getByText("View created.")).toBeVisible();
+
+  await page.getByRole("link", { name: `${run.label} Quick Saved` }).click();
+  await expect(rowForText(page, `${run.label} QA Prep`)).toBeVisible();
+  await expect(rowForText(page, `${run.label} Launch`)).toHaveCount(0);
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+  await page.reload();
+  await expect(rowForText(page, `${run.label} QA Prep`)).toBeVisible();
+  await expect(page.getByText('Status contains "qa"')).toBeVisible();
+});
+
+test("clicking a column header cycles sort ascending, descending, then back to unsorted", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { work } = await createViewsScenario(run);
+
+  await gotoEntity(page, work);
+  const rows = page.getByRole("table").getByRole("row");
+
+  await page.getByRole("link", { name: "Priority" }).click();
+  await expect(rows.nth(1)).toContainText(`${run.label} Launch`);
+  await expect(rows.nth(2)).toContainText(`${run.label} QA Fix`);
+  await expect(rows.nth(3)).toContainText(`${run.label} QA Prep`);
+  await expect(page.getByText("Sort: Priority")).toBeVisible();
+
+  await page.getByRole("link", { name: "Priority" }).click();
+  await expect(rows.nth(1)).toContainText(`${run.label} QA Prep`);
+  await expect(rows.nth(2)).toContainText(`${run.label} QA Fix`);
+  await expect(rows.nth(3)).toContainText(`${run.label} Launch`);
+
+  await page.getByRole("link", { name: "Priority" }).click();
+  await expect(page.getByText("Sort: Priority")).toHaveCount(0);
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+});
+
+test("quick columns control shows/hides a column without a saved view", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { work } = await createViewsScenario(run);
+
+  await gotoEntity(page, work);
+  const headers = page.getByRole("table").getByRole("columnheader");
+  await expect(headers.filter({ hasText: "Due" })).toHaveCount(1);
+
+  const quickBar = page.getByTestId("entity-view-quickbar");
+  await quickBar.getByRole("button", { name: "Columns", exact: true }).click();
+  await quickBar.getByLabel("Due (date)").uncheck();
+  await quickBar.getByRole("button", { name: "Apply columns" }).click();
+
+  await expect(headers.filter({ hasText: "Due" })).toHaveCount(0);
+  await expect(page.getByText("Unsaved changes to All Records")).toBeVisible();
+});
+
+test("quick bar can update the currently selected saved view", async ({ page }) => {
+  const run = createScenarioRun();
+  const { work } = await createViewsScenario(run);
+  const viewId = await createView({
+    entity: work,
+    name: `${run.label} Quick Update Target`,
+    filters: [
+      {
+        fieldDefinitionId: work.fields.status.id,
+        operator: "equals",
+        value: "Needs QA",
+      },
+    ],
+  });
+
+  await page.goto(`/entities/${work.id}?view=${viewId}`);
+  await expect(rowForText(page, `${run.label} QA Prep`)).toBeVisible();
+  await expect(rowForText(page, `${run.label} QA Fix`)).toBeVisible();
+
+  await page.getByRole("button", { name: "+ Add sort" }).click();
+  await selectReactOption(page.getByLabel("Quick sort field"), {
+    label: "Priority (number)",
+  });
+  await selectReactOption(page.getByLabel("Quick sort direction"), {
+    value: "desc",
+  });
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText(`Unsaved changes to ${run.label} Quick Update Target`)).toBeVisible();
+
+  await page.getByRole("button", { name: "Update View" }).click();
+  await page.getByRole("button", { name: "Save View" }).click();
+  await expect(page.getByText("View updated.")).toBeVisible();
+
+  await page.goto(`/entities/${work.id}?view=${viewId}`);
+  const rows = page.getByRole("table").getByRole("row");
+  await expect(rows.nth(1)).toContainText(`${run.label} QA Prep`);
+  await expect(rows.nth(2)).toContainText(`${run.label} QA Fix`);
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("field hard delete is blocked by saved view dependency and deleting a view preserves records", async () => {

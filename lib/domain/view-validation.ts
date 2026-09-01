@@ -1,5 +1,9 @@
 import type { FieldDefinition, FieldValue } from "./types";
 import { viewFilterNeedsValue } from "./view-engine";
+import {
+  FILTER_OPERATORS_BY_FIELD_TYPE,
+  SORTABLE_FIELD_TYPES,
+} from "./view-operators";
 import type {
   ViewFilter,
   ViewFilterOperator,
@@ -43,36 +47,10 @@ function getLastFormString(formData: FormData, key: string) {
   return typeof value === "string" ? value : "";
 }
 
-const operatorsByFieldType: Record<FieldDefinition["type"], ViewFilterOperator[]> = {
-  text: [
-    "equals",
-    "not_equals",
-    "contains",
-    "not_contains",
-    "is_set",
-    "is_not_set",
-  ],
-  number: [
-    "equals",
-    "not_equals",
-    "greater_than",
-    "greater_than_or_equal",
-    "less_than",
-    "less_than_or_equal",
-    "is_set",
-    "is_not_set",
-  ],
-  date: ["equals", "before", "after", "is_set", "is_not_set"],
-  boolean: ["equals", "is_set", "is_not_set"],
-  relation: ["equals", "not_equals", "is_set", "is_not_set"],
-};
+const operatorsByFieldType: Record<FieldDefinition["type"], ViewFilterOperator[]> =
+  FILTER_OPERATORS_BY_FIELD_TYPE;
 
-const sortableTypes = new Set<FieldDefinition["type"]>([
-  "text",
-  "number",
-  "date",
-  "boolean",
-]);
+const sortableTypes = SORTABLE_FIELD_TYPES;
 
 function isValidDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
