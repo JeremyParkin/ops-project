@@ -77,8 +77,7 @@ This is a major product phase, not cosmetic polish. Business objects are the cen
 
 ### Field & Relation Model Improvements
 
-- **Choice / Select field type:** single-select v1 with builder-defined options stored as stable IDs, not raw labels. This should support consistent filtering, automation conditions, display, and later color/status treatment. Multi-select, option colors, and archivable options should be deliberate follow-ons, not accidental scope creep.
-- **Color-coded select/status values:** likely after or alongside single-select, with care for accessibility and non-color cues.
+- **Choice / Select field type — done (Phase 9.2):** single-select, builder-defined options stored as stable IDs with a fixed color palette, add/rename/reorder/recolor/archive/restore lifecycle, Choice-aware filtering (`is`/`is not`/`is empty`/`is not empty`) and configured-position sorting, colored pill display, CSV round-trip, and read-only API resolution. Implementation and verification detail in `PROJECT_CONTEXT.md`. Deliberately deferred, not yet started: multi-select, workflow/process condition and action support, `is any of`/`is none of` filters, and any status-workflow semantics beyond plain option display.
 - **Multi-value / many-to-many relations:** support real many-to-many needs through a designed storage/model approach, whether array-valued relation storage, explicit join entities, or another architecture. This should not be patched around with presentation-only reverse lists.
 - Better relation creation/editing flows, including cases where users need to create, link, unlink, and inspect related records without losing context.
 

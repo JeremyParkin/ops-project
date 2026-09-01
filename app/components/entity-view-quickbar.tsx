@@ -5,10 +5,12 @@ import { useState } from "react";
 import type {
   RelationOptionsByFieldKey,
 } from "@/lib/domain/record-repository";
+import { activeChoiceOptions, resolveChoiceOption } from "@/lib/domain/choice-display";
+import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import type { FieldDefinition } from "@/lib/domain/types";
 import {
   FILTER_OPERATORS_BY_FIELD_TYPE,
-  FILTER_OPERATOR_LABELS,
+  filterOperatorLabel,
   SORTABLE_FIELD_TYPES,
 } from "@/lib/domain/view-operators";
 import { viewFilterNeedsValue } from "@/lib/domain/view-engine";
@@ -22,6 +24,7 @@ import type { ViewFilter, ViewSort } from "@/lib/domain/view-types";
 type EntityViewQuickBarProps = {
   activeFields: FieldDefinition[];
   relationOptionsByFieldKey: RelationOptionsByFieldKey;
+  choiceOptionsByFieldKey: ChoiceOptionsByFieldKey;
   effectiveFilters: ViewFilter[];
   effectiveSorts: ViewSort[];
   effectiveColumnIds: string[];
@@ -33,7 +36,11 @@ function fieldLabel(field: FieldDefinition) {
   return `${field.name} (${field.type})`;
 }
 
-function formatFilterValue(filter: ViewFilter, field?: FieldDefinition) {
+function formatFilterValue(
+  filter: ViewFilter,
+  field: FieldDefinition | undefined,
+  choiceOptionsByFieldKey: ChoiceOptionsByFieldKey,
+) {
   if (!viewFilterNeedsValue(filter.operator)) {
     return "";
   }
@@ -42,12 +49,18 @@ function formatFilterValue(filter: ViewFilter, field?: FieldDefinition) {
     return filter.value === true ? "Yes" : "No";
   }
 
+  if (field?.type === "choice") {
+    const option = resolveChoiceOption(choiceOptionsByFieldKey[field.key] ?? [], filter.value ?? null);
+    return option?.label ?? String(filter.value ?? "");
+  }
+
   return String(filter.value ?? "");
 }
 
 export function EntityViewQuickBar({
   activeFields,
   relationOptionsByFieldKey,
+  choiceOptionsByFieldKey,
   effectiveFilters,
   effectiveSorts,
   effectiveColumnIds,
@@ -202,7 +215,7 @@ export function EntityViewQuickBar({
       <div className="flex flex-wrap items-center gap-2">
         {effectiveFilters.map((filter, index) => {
           const field = activeFieldById.get(filter.fieldDefinitionId);
-          const value = formatFilterValue(filter, field);
+          const value = formatFilterValue(filter, field, choiceOptionsByFieldKey);
 
           return (
             <span
@@ -210,7 +223,7 @@ export function EntityViewQuickBar({
               className="inline-flex items-center gap-1 border border-grit bg-white px-2 py-1 text-xs text-graphite"
             >
               {field?.name ?? "Unknown field"}{" "}
-              {FILTER_OPERATOR_LABELS[filter.operator]}
+              {filterOperatorLabel(field?.type ?? "text", filter.operator)}
               {value ? ` "${value}"` : ""}
               <button
                 type="button"
@@ -321,7 +334,7 @@ export function EntityViewQuickBar({
           >
             {filterOperators.map((operator) => (
               <option key={operator} value={operator}>
-                {FILTER_OPERATOR_LABELS[operator]}
+                {filterOperatorLabel(filterField?.type ?? "text", operator)}
               </option>
             ))}
           </select>
@@ -347,6 +360,20 @@ export function EntityViewQuickBar({
                 <option value="">Choose an option</option>
                 {(relationOptionsByFieldKey[filterField.key] ?? []).map((option) => (
                   <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : filterField?.type === "choice" ? (
+              <select
+                aria-label="Quick filter value"
+                value={filterValue}
+                onChange={(event) => setFilterValue(event.currentTarget.value)}
+                className="h-9 border border-grit bg-white px-2 text-sm text-graphite"
+              >
+                <option value="">Choose an option</option>
+                {activeChoiceOptions(choiceOptionsByFieldKey[filterField.key] ?? []).map((option) => (
+                  <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
                 ))}

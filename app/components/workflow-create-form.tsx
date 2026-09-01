@@ -77,6 +77,7 @@ const fieldTypeLabel = {
   date: "Date",
   boolean: "Boolean",
   relation: "Relation",
+  choice: "Choice",
 };
 
 const conditionOperatorLabel: Record<WorkflowConditionOperator, string> = {

@@ -18,6 +18,8 @@ import {
 } from "@/app/process-actions";
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import { listRecordActivity } from "@/lib/domain/activity-repository";
+import { listChoiceOptionsByFieldIds } from "@/lib/domain/choice-option-repository";
+import { toChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import { getEntityContext } from "@/lib/domain/metadata-repository";
 import {
   getProcessRunWithSteps,
@@ -176,12 +178,18 @@ async function loadRecordDetailPageData(
       recordId,
       fields: entityContext.fields,
     });
-    const [relationLookups, incomingRelationGroups, processSectionEntries, activityEvents] = await Promise.all([
+    const [relationLookups, choiceOptionsByFieldId, incomingRelationGroups, processSectionEntries, activityEvents] = await Promise.all([
       getRelationLookups({
         workspaceId,
         fields: entityContext.fields,
         currentRecord: record,
         restrictToCurrentRecordValues: true,
+      }),
+      listChoiceOptionsByFieldIds({
+        workspaceId,
+        fieldDefinitionIds: entityContext.fields
+          .filter((field) => field.type === "choice")
+          .map((field) => field.id),
       }),
       listIncomingRelationsForRecord({
         workspaceId,
@@ -207,6 +215,7 @@ async function loadRecordDetailPageData(
       entityContext,
       record,
       relationLookups,
+      choiceOptionsByFieldId,
       incomingRelationGroups,
       processSectionEntries,
       activityEvents,
@@ -238,10 +247,12 @@ export default async function RecordDetailPage({
     entityContext: { entityType, fields },
     record,
     relationLookups,
+    choiceOptionsByFieldId,
     incomingRelationGroups,
     processSectionEntries,
     activityEvents,
   } = pageData;
+  const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(fields, choiceOptionsByFieldId);
   const actionContext = {
     ...context,
     recordId: record.id,
@@ -272,6 +283,7 @@ export default async function RecordDetailPage({
           fields={fields}
           record={record}
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
+          choiceOptionsByFieldKey={choiceOptionsByFieldKey}
           incomingRelationGroups={incomingRelationGroups}
           processSectionEntries={record.archivedAt ? [] : processSectionEntries}
           activityEvents={activityEvents}

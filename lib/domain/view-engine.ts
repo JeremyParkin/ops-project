@@ -1,4 +1,9 @@
-import type { EntityRecord, FieldDefinition, FieldValue } from "./types";
+import type {
+  ChoiceOptionsByFieldId,
+  EntityRecord,
+  FieldDefinition,
+  FieldValue,
+} from "./types";
 import {
   FILTER_OPERATORS_BY_FIELD_TYPE,
   SORTABLE_FIELD_TYPES,
@@ -62,6 +67,54 @@ function compareScalarValues(
     sensitivity: "base",
     numeric: true,
   });
+}
+
+// Choice sorts by configured option position, not by comparing the raw
+// option-id strings (which would be meaningless -- ids don't sort into any
+// order a builder chose). Records referencing an archived option sort
+// after every active-option record, ordered among themselves by that
+// option's own position -- the same "unset sorts last" idea, one tier
+// further out. positionByOptionId is built once per field (see
+// buildChoicePositionIndex) rather than re-scanning options per comparison.
+function compareChoiceOptionPositions(
+  left: FieldValue | undefined,
+  right: FieldValue | undefined,
+  positionByOptionId: Map<string, number>,
+) {
+  const leftPosition = typeof left === "string" ? positionByOptionId.get(left) : undefined;
+  const rightPosition = typeof right === "string" ? positionByOptionId.get(right) : undefined;
+
+  if (leftPosition === undefined && rightPosition === undefined) {
+    return 0;
+  }
+
+  if (leftPosition === undefined) {
+    return 1;
+  }
+
+  if (rightPosition === undefined) {
+    return -1;
+  }
+
+  return leftPosition - rightPosition;
+}
+
+function buildChoicePositionIndex(
+  choiceOptionsByFieldId: ChoiceOptionsByFieldId,
+  fieldId: string,
+): Map<string, number> {
+  const options = choiceOptionsByFieldId[fieldId] ?? [];
+  const maxActivePosition = options.reduce(
+    (max, option) => (option.archivedAt ? max : Math.max(max, option.position)),
+    0,
+  );
+
+  return new Map(
+    options.map((option) => [
+      option.id,
+      option.archivedAt ? maxActivePosition + 1 + option.position : option.position,
+    ]),
+  );
 }
 
 function filterMatchesValue({
@@ -151,6 +204,18 @@ function filterMatchesValue({
         : filter.operator === "not_equals"
           ? value !== filter.value
           : false;
+    case "choice":
+      // Same stable-id equality as relation -- filter.value is always an
+      // option id (never a label), matching how choice values are stored.
+      if (typeof value !== "string" || typeof filter.value !== "string") {
+        return false;
+      }
+
+      return filter.operator === "equals"
+        ? value === filter.value
+        : filter.operator === "not_equals"
+          ? value !== filter.value
+          : false;
   }
 }
 
@@ -193,6 +258,7 @@ export function evaluateViewState({
   activeFields,
   allFields,
   records,
+  choiceOptionsByFieldId = {},
 }: {
   filters: ViewFilter[];
   sorts: ViewSort[];
@@ -200,6 +266,7 @@ export function evaluateViewState({
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
   records: EntityRecord[];
+  choiceOptionsByFieldId?: ChoiceOptionsByFieldId;
 }): ViewStateEvaluationResult {
   const activeFieldById = new Map(activeFields.map((field) => [field.id, field]));
   const allFieldById = new Map(allFields.map((field) => [field.id, field]));
@@ -272,12 +339,22 @@ export function evaluateViewState({
         ),
       );
 
+  const choicePositionIndexByFieldId = new Map(
+    validSorts
+      .filter(({ field }) => field.type === "choice")
+      .map(({ field }) => [field.id, buildChoicePositionIndex(choiceOptionsByFieldId, field.id)]),
+  );
+
   const sortedRecords = [...filteredRecords].sort((left, right) => {
     for (const { sort, field } of validSorts) {
-      const result = compareScalarValues(
-        left.values[field.key],
-        right.values[field.key],
-      );
+      const result =
+        field.type === "choice"
+          ? compareChoiceOptionPositions(
+              left.values[field.key],
+              right.values[field.key],
+              choicePositionIndexByFieldId.get(field.id) ?? new Map(),
+            )
+          : compareScalarValues(left.values[field.key], right.values[field.key]);
 
       if (result !== 0) {
         return sort.direction === "asc" ? result : -result;
@@ -300,12 +377,14 @@ export function evaluateEntityView({
   activeFields,
   allFields,
   records,
+  choiceOptionsByFieldId = {},
 }: {
   selectedView?: EntityView;
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
   records: EntityRecord[];
   relationLabelsByFieldKey?: RelationLabelsByFieldKey;
+  choiceOptionsByFieldId?: ChoiceOptionsByFieldId;
 }): EvaluatedView {
   if (!selectedView) {
     return {
@@ -326,6 +405,7 @@ export function evaluateEntityView({
     activeFields,
     allFields,
     records,
+    choiceOptionsByFieldId,
   });
 
   return {

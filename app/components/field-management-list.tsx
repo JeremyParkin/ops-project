@@ -1,12 +1,18 @@
 import {
+  addChoiceOptionAction,
+  archiveChoiceOptionAction,
   archiveField,
   deleteField,
+  moveChoiceOptionAction,
   moveFieldDefinition,
+  restoreChoiceOptionAction,
   restoreField,
+  updateChoiceOptionAction,
   updateFieldDefinition,
 } from "@/app/actions";
+import { ChoiceOptionManagement } from "@/app/components/choice-option-management";
 import { FieldEditForm } from "@/app/components/field-edit-form";
-import type { FieldDefinition } from "@/lib/domain/types";
+import type { ChoiceOptionsByFieldId, FieldDefinition } from "@/lib/domain/types";
 
 type FieldManagementListProps = {
   workspaceId: string;
@@ -15,6 +21,7 @@ type FieldManagementListProps = {
   entityNameById: Record<string, string>;
   workflowReferenceCountByFieldId: Record<string, number>;
   viewReferenceCountByFieldId?: Record<string, number>;
+  choiceOptionsByFieldId?: ChoiceOptionsByFieldId;
 };
 
 export function FieldManagementList({
@@ -24,6 +31,7 @@ export function FieldManagementList({
   entityNameById,
   workflowReferenceCountByFieldId,
   viewReferenceCountByFieldId = {},
+  choiceOptionsByFieldId = {},
 }: FieldManagementListProps) {
   const orderedFields = [...fields].sort((left, right) => {
     return left.position - right.position;
@@ -70,6 +78,60 @@ export function FieldManagementList({
             direction: "down",
           });
 
+          const choiceOptionManagement =
+            field.type === "choice" ? (
+              <ChoiceOptionManagement
+                addOptionAction={addChoiceOptionAction.bind(null, {
+                  workspaceId,
+                  entityTypeId,
+                  fieldDefinitionId: field.id,
+                })}
+                rows={(choiceOptionsByFieldId[field.id] ?? []).map((option) => ({
+                  option,
+                  updateAction: updateChoiceOptionAction.bind(null, {
+                    workspaceId,
+                    entityTypeId,
+                    fieldDefinitionId: field.id,
+                    optionId: option.id,
+                  }),
+                  archiveAction: option.archivedAt
+                    ? undefined
+                    : archiveChoiceOptionAction.bind(null, {
+                        workspaceId,
+                        entityTypeId,
+                        fieldDefinitionId: field.id,
+                        optionId: option.id,
+                      }),
+                  restoreAction: option.archivedAt
+                    ? restoreChoiceOptionAction.bind(null, {
+                        workspaceId,
+                        entityTypeId,
+                        fieldDefinitionId: field.id,
+                        optionId: option.id,
+                      })
+                    : undefined,
+                  moveUpAction: option.archivedAt
+                    ? undefined
+                    : moveChoiceOptionAction.bind(null, {
+                        workspaceId,
+                        entityTypeId,
+                        fieldDefinitionId: field.id,
+                        optionId: option.id,
+                        direction: "up",
+                      }),
+                  moveDownAction: option.archivedAt
+                    ? undefined
+                    : moveChoiceOptionAction.bind(null, {
+                        workspaceId,
+                        entityTypeId,
+                        fieldDefinitionId: field.id,
+                        optionId: option.id,
+                        direction: "down",
+                      }),
+                }))}
+              />
+            ) : undefined;
+
           return (
             <div key={field.id} className="py-4 first:pt-0 last:pb-0">
               <FieldEditForm
@@ -79,6 +141,7 @@ export function FieldManagementList({
                     ? entityNameById[field.relatedEntityTypeId]
                     : undefined
                 }
+                choiceOptionManagement={choiceOptionManagement}
                 updateFieldDefinitionAction={updateFieldAction}
                 archiveFieldAction={archiveFieldAction}
                 restoreFieldAction={restoreFieldAction}

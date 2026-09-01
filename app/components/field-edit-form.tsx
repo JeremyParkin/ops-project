@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useActionState } from "react";
 import type { FieldLifecycleActionState } from "@/app/actions";
 import type { FieldEditFormState } from "@/lib/domain/field-edit-validation";
@@ -9,6 +10,11 @@ import type { FieldDefinition } from "@/lib/domain/types";
 type FieldEditFormProps = {
   field: FieldDefinition;
   relatedEntityName?: string;
+  // Choice fields only: pre-built option management UI, supplied by the
+  // parent (which already knows about the field's options and can bind the
+  // per-option lifecycle actions) -- kept out of this component so it stays
+  // a plain field-metadata editor for every other field type.
+  choiceOptionManagement?: ReactNode;
   updateFieldDefinitionAction: (
     state: FieldEditFormState,
     formData: FormData,
@@ -45,6 +51,7 @@ const fieldTypeLabel = {
   date: "Date",
   boolean: "Boolean",
   relation: "Relation",
+  choice: "Choice",
 };
 
 function FieldError({ message }: { message?: string }) {
@@ -62,6 +69,7 @@ function FieldError({ message }: { message?: string }) {
 export function FieldEditForm({
   field,
   relatedEntityName,
+  choiceOptionManagement,
   updateFieldDefinitionAction,
   archiveFieldAction,
   restoreFieldAction,
@@ -285,6 +293,7 @@ export function FieldEditForm({
           </p>
         ) : null}
       </div>
+      {field.type === "choice" ? choiceOptionManagement : null}
       <form
         action={archiveAction}
         onSubmit={(event) => {

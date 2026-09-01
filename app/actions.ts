@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
-import type { EntityRecord, FieldDefinition } from "@/lib/domain/types";
+import type { EntityRecord, EntityType, FieldDefinition } from "@/lib/domain/types";
 import {
   type EntityDefinitionFormState,
   validateEntityDefinitionFormData,
@@ -21,6 +21,20 @@ import {
   type FieldEditFormState,
   validateFieldEditFormData,
 } from "@/lib/domain/field-edit-validation";
+import {
+  type ChoiceOptionFormState,
+  createInitialChoiceOptionFormState,
+  validateChoiceOptionFormData,
+} from "@/lib/domain/choice-option-validation";
+import {
+  addChoiceOption,
+  archiveChoiceOption,
+  choiceOptionExists,
+  listChoiceOptions,
+  restoreChoiceOption,
+  swapChoiceOptionPositions,
+  updateChoiceOption,
+} from "@/lib/domain/choice-option-repository";
 import {
   initialRecordFormState,
   type RecordFormState,
@@ -181,6 +195,17 @@ async function validateRecordSubmission(
         recordId: value,
       });
     },
+    // App-layer UX check only -- confirms the option belongs to this exact
+    // field (archived options included, since an untouched existing
+    // selection must keep validating). The authoritative "new assignments
+    // must be active" boundary is enforced at the RPC layer (migration
+    // 0080's create/update record functions), not here.
+    async (field, value) =>
+      choiceOptionExists({
+        workspaceId: context.workspaceId,
+        fieldDefinitionId: field.id,
+        optionId: value,
+      }),
   );
 
   return {
@@ -749,6 +774,12 @@ export async function updateRecordField(
         recordId: value,
       });
     },
+    async (choiceField, value) =>
+      choiceOptionExists({
+        workspaceId: context.workspaceId,
+        fieldDefinitionId: choiceField.id,
+        optionId: value,
+      }),
   );
 
   if (!validation.success) {
@@ -1295,6 +1326,288 @@ export async function moveFieldDefinition(
   };
 }
 
+type ChoiceOptionContext = UpdateFieldDefinitionContext;
+type MoveChoiceOptionContext = ChoiceOptionContext & {
+  optionId: string;
+  direction: "up" | "down";
+};
+type UpdateChoiceOptionContext = ChoiceOptionContext & {
+  optionId: string;
+};
+
+type EditableChoiceFieldResult =
+  | { error: string }
+  | { entityType: EntityType; field: FieldDefinition };
+
+async function requireEditableChoiceField(
+  context: ChoiceOptionContext,
+): Promise<EditableChoiceFieldResult> {
+  const { entityType, fields } = await getEntityContext({
+    ...context,
+    includeArchivedFields: true,
+  });
+  const field = fields.find(
+    (candidate) => candidate.id === context.fieldDefinitionId,
+  );
+
+  if (entityType.archivedAt) {
+    return { error: "Archived entities are read-only. Restore this entity before editing fields." };
+  }
+
+  if (!field || field.type !== "choice" || field.archivedAt) {
+    return { error: "This field no longer accepts options." };
+  }
+
+  return { entityType, field };
+}
+
+export async function addChoiceOptionAction(
+  context: ChoiceOptionContext,
+  _previousState: ChoiceOptionFormState,
+  formData: FormData,
+): Promise<ChoiceOptionFormState> {
+  const validation = validateChoiceOptionFormData(formData);
+
+  if (!validation.success) {
+    return {
+      success: false,
+      message: "Please fix the highlighted fields.",
+      errors: validation.errors,
+      values: validation.values,
+    };
+  }
+
+  const editable = await requireEditableChoiceField(context);
+
+  if ("error" in editable) {
+    return {
+      success: false,
+      message: editable.error,
+      errors: { _form: editable.error },
+      values: { label: validation.values.label, color: validation.values.color ?? "" },
+    };
+  }
+
+  try {
+    await addChoiceOption({
+      workspaceId: context.workspaceId,
+      fieldDefinitionId: context.fieldDefinitionId,
+      label: validation.values.label,
+      color: validation.values.color,
+    });
+  } catch (error) {
+    const message = error instanceof Error && error.message.includes("duplicate key")
+      ? "An option with this label already exists on this field."
+      : "Unable to add the option. Please try again.";
+
+    return {
+      success: false,
+      message,
+      errors: { optionLabel: message },
+      values: { label: validation.values.label, color: validation.values.color ?? "" },
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    ...createInitialChoiceOptionFormState(),
+    success: true,
+    message: "Option added.",
+  };
+}
+
+export async function updateChoiceOptionAction(
+  context: UpdateChoiceOptionContext,
+  _previousState: ChoiceOptionFormState,
+  formData: FormData,
+): Promise<ChoiceOptionFormState> {
+  const validation = validateChoiceOptionFormData(formData);
+
+  if (!validation.success) {
+    return {
+      success: false,
+      message: "Please fix the highlighted fields.",
+      errors: validation.errors,
+      values: validation.values,
+    };
+  }
+
+  const editable = await requireEditableChoiceField(context);
+
+  if ("error" in editable) {
+    return {
+      success: false,
+      message: editable.error,
+      errors: { _form: editable.error },
+      values: { label: validation.values.label, color: validation.values.color ?? "" },
+    };
+  }
+
+  try {
+    await updateChoiceOption({
+      workspaceId: context.workspaceId,
+      fieldDefinitionId: context.fieldDefinitionId,
+      optionId: context.optionId,
+      label: validation.values.label,
+      color: validation.values.color,
+    });
+  } catch (error) {
+    const message = error instanceof Error && error.message.includes("duplicate key")
+      ? "An option with this label already exists on this field."
+      : "Unable to update the option. Please try again.";
+
+    return {
+      success: false,
+      message,
+      errors: { optionLabel: message },
+      values: { label: validation.values.label, color: validation.values.color ?? "" },
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Option updated.",
+    errors: {},
+    values: { label: validation.values.label, color: validation.values.color ?? "" },
+  };
+}
+
+export async function archiveChoiceOptionAction(
+  context: UpdateChoiceOptionContext,
+  previousState: FieldLifecycleActionState,
+  formData: FormData,
+): Promise<FieldLifecycleActionState> {
+  void previousState;
+  void formData;
+
+  const editable = await requireEditableChoiceField(context);
+
+  if ("error" in editable) {
+    return { success: false, message: editable.error };
+  }
+
+  try {
+    await archiveChoiceOption({
+      workspaceId: context.workspaceId,
+      fieldDefinitionId: context.fieldDefinitionId,
+      optionId: context.optionId,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to archive the option. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Option archived.",
+  };
+}
+
+export async function restoreChoiceOptionAction(
+  context: UpdateChoiceOptionContext,
+  previousState: FieldLifecycleActionState,
+  formData: FormData,
+): Promise<FieldLifecycleActionState> {
+  void previousState;
+  void formData;
+
+  const editable = await requireEditableChoiceField(context);
+
+  if ("error" in editable) {
+    return { success: false, message: editable.error };
+  }
+
+  try {
+    await restoreChoiceOption({
+      workspaceId: context.workspaceId,
+      fieldDefinitionId: context.fieldDefinitionId,
+      optionId: context.optionId,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to restore the option. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Option restored.",
+  };
+}
+
+export async function moveChoiceOptionAction(
+  context: MoveChoiceOptionContext,
+  previousState: FieldLifecycleActionState,
+  formData: FormData,
+): Promise<FieldLifecycleActionState> {
+  void previousState;
+  void formData;
+
+  const editable = await requireEditableChoiceField(context);
+
+  if ("error" in editable) {
+    return { success: false, message: editable.error };
+  }
+
+  try {
+    const options = await listChoiceOptions({
+      workspaceId: context.workspaceId,
+      fieldDefinitionId: context.fieldDefinitionId,
+    });
+    const orderedOptions = [...options].sort((left, right) => left.position - right.position);
+    const currentIndex = orderedOptions.findIndex((option) => option.id === context.optionId);
+
+    if (currentIndex === -1) {
+      return {
+        success: false,
+        message: "Unable to reorder the option. Please try again.",
+      };
+    }
+
+    const neighborIndex = context.direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    const neighbor = orderedOptions[neighborIndex];
+
+    if (!neighbor) {
+      return {
+        success: false,
+        message:
+          context.direction === "up"
+            ? "This option is already first."
+            : "This option is already last.",
+      };
+    }
+
+    await swapChoiceOptionPositions({
+      workspaceId: context.workspaceId,
+      fieldDefinitionId: context.fieldDefinitionId,
+      firstOptionId: orderedOptions[currentIndex].id,
+      secondOptionId: neighbor.id,
+    });
+  } catch {
+    return {
+      success: false,
+      message: "Unable to reorder the option. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Option order updated.",
+  };
+}
+
 function formatFieldTypeLabel(type: string) {
   return type === "relation"
     ? "Relation"
@@ -1395,6 +1708,12 @@ async function validateViewSubmission(context: EntityViewContext, formData: Form
         includeArchived: true,
       });
     },
+    validateChoiceValue: async (field, optionId) =>
+      choiceOptionExists({
+        workspaceId: context.workspaceId,
+        fieldDefinitionId: field.id,
+        optionId,
+      }),
   });
 
   return {

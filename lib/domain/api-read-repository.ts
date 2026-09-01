@@ -4,6 +4,13 @@ import { ApiKeyAuthError, mapApiDataError } from "./api-key-auth";
 
 export type ApiObjectSummary = { id: string; name: string; slug: string; createdAt: string };
 
+export type ApiChoiceOption = {
+  id: string;
+  label: string;
+  color: string | null;
+  archived: boolean;
+};
+
 export type ApiFieldDefinition = {
   id: string;
   key: string;
@@ -11,6 +18,10 @@ export type ApiFieldDefinition = {
   type: string;
   required: boolean;
   relatedEntityTypeId: string | null;
+  // Present (possibly empty) only for choice fields; archived options are
+  // included and flagged, since a consumer resolving a record's stored
+  // option id needs those too.
+  options?: ApiChoiceOption[];
 };
 
 export type ApiObjectDetail = ApiObjectSummary & { updatedAt: string; fields: ApiFieldDefinition[] };
@@ -28,7 +39,17 @@ export type ApiPage<T> = { data: T[]; nextCursor: string | null };
 type ObjectRow = { id: string; name: string; slug: string; created_at: string };
 type ObjectDetailRow = ObjectRow & {
   updated_at: string;
-  fields: { id: string; key: string; name: string; type: string; required: boolean; relatedEntityTypeId: string | null }[] | null;
+  fields:
+    | {
+        id: string;
+        key: string;
+        name: string;
+        type: string;
+        required: boolean;
+        relatedEntityTypeId: string | null;
+        options: ApiChoiceOption[] | null;
+      }[]
+    | null;
 };
 // record_values, not values -- the RPCs' RETURNS TABLE output column is
 // named record_values (an unquoted `values` there is rejected by
@@ -120,6 +141,7 @@ export async function getApiObject({
       type: field.type,
       required: field.required,
       relatedEntityTypeId: field.relatedEntityTypeId ?? null,
+      ...(field.type === "choice" ? { options: field.options ?? [] } : {}),
     })),
   };
 }

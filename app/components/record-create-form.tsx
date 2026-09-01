@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
 import type { RelationOptionsByFieldKey } from "@/lib/domain/record-repository";
+import { activeChoiceOptions } from "@/lib/domain/choice-display";
+import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import {
   initialRecordFormState,
   type RecordFormState,
@@ -13,6 +15,7 @@ type RecordCreateFormProps = {
   entityType: EntityType;
   fields: FieldDefinition[];
   relationOptionsByFieldKey?: RelationOptionsByFieldKey;
+  choiceOptionsByFieldKey?: ChoiceOptionsByFieldKey;
   entityNameById?: Record<string, string>;
   initialValues?: Record<string, string>;
   cancelHref?: string;
@@ -57,6 +60,7 @@ function RecordCreateFormContents({
   entityType,
   fields,
   relationOptionsByFieldKey = {},
+  choiceOptionsByFieldKey = {},
   entityNameById = {},
   initialValues = {},
   cancelHref,
@@ -191,6 +195,47 @@ function RecordCreateFormContents({
                   ) : null}
                 </label>
                 <FieldError message={state.errors[field.key]} />
+              </div>
+            );
+          }
+
+          if (field.type === "choice") {
+            const options = activeChoiceOptions(choiceOptionsByFieldKey[field.key] ?? []);
+
+            return (
+              <div key={field.id}>
+                <label
+                  htmlFor={fieldId}
+                  className="block text-sm font-medium text-slate-800"
+                >
+                  {field.name}
+                  {field.required ? (
+                    <span className="ml-1 text-red-700" aria-hidden="true">
+                      *
+                    </span>
+                  ) : null}
+                </label>
+                <select
+                  id={fieldId}
+                  name={field.key}
+                  required={field.required}
+                  defaultValue={fieldValue}
+                  aria-invalid={state.errors[field.key] ? "true" : "false"}
+                  aria-describedby={
+                    state.errors[field.key] ? `${fieldId}-error` : undefined
+                  }
+                  className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                >
+                  <option value="">Choose an option</option>
+                  {options.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <div id={`${fieldId}-error`}>
+                  <FieldError message={state.errors[field.key]} />
+                </div>
               </div>
             );
           }

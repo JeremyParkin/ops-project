@@ -82,6 +82,7 @@ function parseFilterValue({
   switch (field.type) {
     case "text":
     case "relation":
+    case "choice":
       return { value: rawValue.trim() };
     case "number": {
       const value = Number(rawValue);
@@ -124,6 +125,7 @@ export async function validateViewFormData({
   allFields,
   formData,
   validateRelationValue,
+  validateChoiceValue,
 }: {
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
@@ -131,6 +133,10 @@ export async function validateViewFormData({
   validateRelationValue: (
     field: FieldDefinition,
     recordId: string,
+  ) => Promise<boolean>;
+  validateChoiceValue: (
+    field: FieldDefinition,
+    optionId: string,
   ) => Promise<boolean>;
 }): Promise<ViewFormState> {
   const activeFieldById = new Map(activeFields.map((field) => [field.id, field]));
@@ -182,6 +188,15 @@ export async function validateViewFormData({
       !(await validateRelationValue(field, parsedValue.value))
     ) {
       errors[`filterValue:${index}`] = `${field.name} must reference an existing record.`;
+      continue;
+    }
+
+    if (
+      field.type === "choice" &&
+      typeof parsedValue.value === "string" &&
+      !(await validateChoiceValue(field, parsedValue.value))
+    ) {
+      errors[`filterValue:${index}`] = `${field.name} must reference a valid option.`;
       continue;
     }
 

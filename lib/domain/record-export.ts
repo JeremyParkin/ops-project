@@ -1,4 +1,5 @@
 import { stringify } from "csv-stringify/sync";
+import { listChoiceOptionsByFieldIds } from "./choice-option-repository";
 import { getEntityContext } from "./metadata-repository";
 import { getRecordLabel, listEntityRecords } from "./record-repository";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
@@ -39,6 +40,11 @@ function formatCellValue(field: FieldDefinition, rawValue: EntityRecord["values"
     case "number":
     case "date":
     case "relation":
+    case "choice":
+      // Choice cells are pre-resolved to their option's current label by
+      // resolveChoiceOptionLabels below, the same way relation cells are
+      // pre-resolved by resolveRelationTargetLabels -- by the time this
+      // runs, rawValue is already a label, not an option id.
       return String(rawValue);
   }
 }
@@ -115,6 +121,49 @@ async function resolveRelationTargetLabels({
   });
 }
 
+// Same shape as resolveRelationTargetLabels: mutates a copy of each
+// record's choice cells from a raw option id into that option's current
+// label. Archived options still resolve to a real label (a record may
+// legitimately reference one) -- never a UI-only "(Archived)" decoration,
+// for the same round-trip reason relation export never decorates either.
+async function resolveChoiceOptionLabels({
+  workspaceId,
+  fields,
+  records,
+  supabase,
+}: {
+  workspaceId: string;
+  fields: FieldDefinition[];
+  records: EntityRecord[];
+  supabase?: SupabaseServerClient;
+}): Promise<EntityRecord[]> {
+  const choiceFields = fields.filter((field) => field.type === "choice");
+  if (choiceFields.length === 0) return records;
+
+  const optionsByFieldId = await listChoiceOptionsByFieldIds({
+    workspaceId,
+    fieldDefinitionIds: choiceFields.map((field) => field.id),
+    supabase,
+  });
+  const labelByOptionId = new Map<string, string>();
+  for (const options of Object.values(optionsByFieldId)) {
+    for (const option of options) {
+      labelByOptionId.set(option.id, option.label);
+    }
+  }
+
+  return records.map((record) => {
+    const values = { ...record.values };
+    for (const field of choiceFields) {
+      const optionId = values[field.key];
+      if (typeof optionId === "string") {
+        values[field.key] = labelByOptionId.get(optionId) ?? "";
+      }
+    }
+    return { ...record, values };
+  });
+}
+
 export type EntityExport = {
   csv: string;
   filename: string;
@@ -132,7 +181,13 @@ export async function exportEntityRecordsToCsv({
 }): Promise<EntityExport> {
   const { entityType, fields } = await getEntityContext({ workspaceId, entityTypeId, supabase });
   const records = await listEntityRecords({ workspaceId, entityTypeId, fields, supabase });
-  const recordsWithLabels = await resolveRelationTargetLabels({ workspaceId, fields, records, supabase });
+  const recordsWithRelationLabels = await resolveRelationTargetLabels({ workspaceId, fields, records, supabase });
+  const recordsWithLabels = await resolveChoiceOptionLabels({
+    workspaceId,
+    fields,
+    records: recordsWithRelationLabels,
+    supabase,
+  });
   const table = buildExportTable({ fields, records: recordsWithLabels });
   const csv = stringifyExportTable(table);
   const date = new Date().toISOString().slice(0, 10);

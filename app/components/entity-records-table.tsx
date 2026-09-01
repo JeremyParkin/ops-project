@@ -5,8 +5,11 @@ import {
   restoreRecord,
   updateRecordField,
 } from "@/app/actions";
+import { ChoicePill } from "@/app/components/choice-pill";
 import { EditableTableCell } from "@/app/components/editable-table-cell";
 import { RecordRowActions } from "@/app/components/record-row-actions";
+import { resolveChoiceOption } from "@/lib/domain/choice-display";
+import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import type {
   EntityRecord,
   EntityType,
@@ -22,6 +25,7 @@ type EntityRecordsTableProps = {
   identityFields?: FieldDefinition[];
   records: EntityRecord[];
   relationLabelsByFieldKey?: RelationLabelsByFieldKey;
+  choiceOptionsByFieldKey?: ChoiceOptionsByFieldKey;
   recordEditPathBase?: string;
   recordActionContext?: {
     workspaceId: string;
@@ -44,6 +48,7 @@ function formatFieldValue(
   field: FieldDefinition,
   value: FieldValue | undefined,
   relationLabelsByFieldKey: RelationLabelsByFieldKey,
+  choiceOptionsByFieldKey: ChoiceOptionsByFieldKey,
 ) {
   if (value === null || value === undefined || value === "") {
     return "—";
@@ -62,25 +67,41 @@ function formatFieldValue(
       return typeof value === "string"
         ? relationLabelsByFieldKey[field.key]?.[value] ?? `${value.slice(0, 8)}...`
         : "—";
+    case "choice": {
+      const option = resolveChoiceOption(choiceOptionsByFieldKey[field.key] ?? [], value);
+      return option?.label ?? "Unknown option";
+    }
   }
 }
 
+// Relation and choice are excluded: relation stays read-only inline (see
+// entity-view/record docs), and choice needs a dropdown of options, not a
+// plain text/number/date/boolean input -- EditableTableCell branches on
+// field.type itself for the actual control.
 const INLINE_EDITABLE_FIELD_TYPES = new Set<FieldDefinition["type"]>([
   "text",
   "number",
   "date",
   "boolean",
+  "choice",
 ]);
 
 function formatTableCell(
   field: FieldDefinition,
   value: FieldValue | undefined,
   relationLabelsByFieldKey: RelationLabelsByFieldKey,
+  choiceOptionsByFieldKey: ChoiceOptionsByFieldKey,
 ) {
+  if (field.type === "choice") {
+    const option = resolveChoiceOption(choiceOptionsByFieldKey[field.key] ?? [], value);
+    return option ? <ChoicePill option={option} /> : "—";
+  }
+
   const formattedValue = formatFieldValue(
     field,
     value,
     relationLabelsByFieldKey,
+    choiceOptionsByFieldKey,
   );
 
   if (field.type !== "relation" || formattedValue === "—") {
@@ -100,6 +121,7 @@ export function EntityRecordsTable({
   identityFields = fields,
   records,
   relationLabelsByFieldKey = {},
+  choiceOptionsByFieldKey = {},
   recordEditPathBase,
   recordActionContext,
   emptyState,
@@ -218,6 +240,7 @@ export function EntityRecordsTable({
                       field,
                       record.values[field.key],
                       relationLabelsByFieldKey,
+                      choiceOptionsByFieldKey,
                     );
                     const inlineEditProps =
                       updateFieldAction &&
@@ -245,7 +268,9 @@ export function EntityRecordsTable({
                               field,
                               record.values[field.key],
                               relationLabelsByFieldKey,
+                              choiceOptionsByFieldKey,
                             )}
+                            choiceOptions={choiceOptionsByFieldKey[field.key] ?? []}
                             recordEditHref={inlineEditProps.recordEditHref}
                             updateFieldAction={inlineEditProps.updateFieldAction}
                           />

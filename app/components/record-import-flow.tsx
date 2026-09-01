@@ -40,6 +40,7 @@ const fieldTypeLabel: Record<ImportableField["type"], string> = {
   date: "Date",
   boolean: "Boolean",
   relation: "Relation",
+  choice: "Choice",
 };
 
 function sampleValuesForColumn(rows: string[][], columnIndex: number): string {

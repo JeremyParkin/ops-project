@@ -6,6 +6,7 @@ const fieldTypes = new Set<FieldType>([
   "date",
   "boolean",
   "relation",
+  "choice",
 ]);
 
 export type FieldDefinitionFormState = {

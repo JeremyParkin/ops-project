@@ -34,6 +34,8 @@ import {
   getEntityRecord,
   listEntityRecords,
 } from "@/lib/domain/record-repository";
+import { choiceOptionExists, listChoiceOptionsByFieldIds } from "@/lib/domain/choice-option-repository";
+import { toChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import {
   evaluateViewState,
   getDefaultColumnFieldDefinitionIds,
@@ -186,7 +188,7 @@ async function loadEntityPageData({
       listWorkflows({ workspaceId }),
       listEntityViews(context),
     ]);
-    const [records, relationLookups] = await Promise.all([
+    const [records, relationLookups, choiceOptionsByFieldId] = await Promise.all([
       listEntityRecords({
         ...context,
         fields: entityContext.fields,
@@ -195,6 +197,12 @@ async function loadEntityPageData({
       getRelationLookups({
         workspaceId,
         fields: entityContext.fields,
+      }),
+      listChoiceOptionsByFieldIds({
+        workspaceId,
+        fieldDefinitionIds: allFieldContext.fields
+          .filter((field) => field.type === "choice")
+          .map((field) => field.id),
       }),
     ]);
 
@@ -205,6 +213,7 @@ async function loadEntityPageData({
       entityContext,
       fieldManagementContext,
       allFields: allFieldContext.fields,
+      choiceOptionsByFieldId,
       workflowReferenceCountByFieldId: countWorkflowReferencesByFieldId({
         workflows,
         fieldDefinitionIds: fieldManagementContext.fields.map((field) => field.id),
@@ -281,12 +290,14 @@ export default async function EntityPage({
     entityContext: { entityType, fields },
     fieldManagementContext,
     allFields,
+    choiceOptionsByFieldId,
     workflowReferenceCountByFieldId,
     viewReferenceCountByFieldId,
     views,
     records,
     relationLookups,
   } = pageData;
+  const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(allFields, choiceOptionsByFieldId);
   const selectedView =
     viewParam === "all"
       ? undefined
@@ -328,6 +339,12 @@ export default async function EntityPage({
           includeArchived: true,
         });
       },
+      validateChoiceValue: async (field, optionId) =>
+        choiceOptionExists({
+          workspaceId,
+          fieldDefinitionId: field.id,
+          optionId,
+        }),
     });
     effectiveFilters = pendingValidation.values.filters;
     effectiveSorts = pendingValidation.values.sorts;
@@ -356,6 +373,7 @@ export default async function EntityPage({
     activeFields: fields,
     allFields,
     records,
+    choiceOptionsByFieldId,
   });
   const evaluatedView = { ...evaluatedViewState, selectedView };
 
@@ -513,6 +531,7 @@ export default async function EntityPage({
               entityNameById={entityNameById}
               workflowReferenceCountByFieldId={workflowReferenceCountByFieldId}
               viewReferenceCountByFieldId={viewReferenceCountByFieldId}
+              choiceOptionsByFieldId={choiceOptionsByFieldId}
             />
             <div className="mx-auto -mt-6 w-full max-w-6xl bg-white">
               <Link
@@ -539,6 +558,7 @@ export default async function EntityPage({
             activeFields={fields}
             allFields={allFields}
             relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            choiceOptionsByFieldKey={choiceOptionsByFieldKey}
             warnings={evaluatedView.warnings}
             invalidFilter={evaluatedView.invalidFilter}
             createViewAction={createEntityView}
@@ -562,6 +582,7 @@ export default async function EntityPage({
           <EntityViewQuickBar
             activeFields={fields}
             relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            choiceOptionsByFieldKey={choiceOptionsByFieldKey}
             effectiveFilters={effectiveFilters}
             effectiveSorts={effectiveSorts}
             effectiveColumnIds={effectiveColumnIds}
@@ -574,6 +595,7 @@ export default async function EntityPage({
             entityType={entityType}
             fields={fields}
             relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            choiceOptionsByFieldKey={choiceOptionsByFieldKey}
             entityNameById={entityNameById}
             initialValues={relatedCreateMode?.initialValues}
             cancelHref={relatedCreateMode?.cancelHref}
@@ -586,6 +608,7 @@ export default async function EntityPage({
           identityFields={fields}
           records={evaluatedView.records}
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
+          choiceOptionsByFieldKey={choiceOptionsByFieldKey}
           recordEditPathBase={
             isArchivedEntity ? undefined : `/entities/${entityType.id}/records`
           }

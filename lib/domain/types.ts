@@ -8,7 +8,13 @@ export type Workspace = {
   updatedAt: IsoUtcTimestamp;
 };
 
-export type FieldType = "text" | "number" | "date" | "boolean" | "relation";
+export type FieldType =
+  | "text"
+  | "number"
+  | "date"
+  | "boolean"
+  | "relation"
+  | "choice";
 
 export type EntityType = {
   id: string;
@@ -40,6 +46,20 @@ export type FieldDefinition = {
 };
 
 export type FieldValue = string | number | boolean | null;
+
+export type ChoiceOption = {
+  id: string;
+  workspaceId: string;
+  fieldDefinitionId: FieldDefinition["id"];
+  label: string;
+  color?: string;
+  position: number;
+  archivedAt?: IsoUtcTimestamp;
+  createdAt: IsoUtcTimestamp;
+  updatedAt: IsoUtcTimestamp;
+};
+
+export type ChoiceOptionsByFieldId = Record<FieldDefinition["id"], ChoiceOption[]>;
 
 export type EntityRecord = {
   id: string;

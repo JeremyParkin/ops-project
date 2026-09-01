@@ -10,9 +10,11 @@ import {
   useState,
   type FocusEvent,
   type KeyboardEvent,
+  type RefObject,
 } from "react";
 import type { RecordFieldFormState } from "@/app/actions";
-import type { FieldDefinition, FieldValue } from "@/lib/domain/types";
+import { ChoicePill } from "@/app/components/choice-pill";
+import type { ChoiceOption, FieldDefinition, FieldValue } from "@/lib/domain/types";
 
 type UpdateFieldAction = (
   state: RecordFieldFormState,
@@ -25,6 +27,11 @@ type EditableTableCellProps = {
   displayValue: string;
   recordEditHref: string;
   updateFieldAction: UpdateFieldAction;
+  // Choice only: active options for the dropdown, plus the record's own
+  // current option even if archived (see EditableCellForm) so an
+  // already-selected archived value doesn't just disappear from the
+  // control -- ignored by every other field type.
+  choiceOptions?: ChoiceOption[];
 };
 
 const initialFieldState: RecordFieldFormState = {
@@ -47,6 +54,7 @@ export function EditableTableCell({
   displayValue,
   recordEditHref,
   updateFieldAction,
+  choiceOptions = [],
 }: EditableTableCellProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editSessionId, setEditSessionId] = useState(0);
@@ -71,6 +79,11 @@ export function EditableTableCell({
   }
 
   if (!isEditing) {
+    const currentChoiceOption =
+      field.type === "choice" && typeof value === "string"
+        ? choiceOptions.find((option) => option.id === value)
+        : undefined;
+
     return (
       <button
         ref={triggerRef}
@@ -79,7 +92,7 @@ export function EditableTableCell({
         className="block w-full min-w-[6rem] rounded-sm px-1 py-0.5 text-left hover:bg-slate-50 focus-visible:bg-slate-50"
         aria-label={`Edit ${field.name}`}
       >
-        {displayValue}
+        {currentChoiceOption ? <ChoicePill option={currentChoiceOption} /> : displayValue}
       </button>
     );
   }
@@ -91,6 +104,7 @@ export function EditableTableCell({
       value={value}
       recordEditHref={recordEditHref}
       updateFieldAction={updateFieldAction}
+      choiceOptions={choiceOptions}
       onClose={closeEditor}
     />
   );
@@ -101,6 +115,7 @@ type EditableCellFormProps = {
   value: FieldValue | undefined;
   recordEditHref: string;
   updateFieldAction: UpdateFieldAction;
+  choiceOptions: ChoiceOption[];
   onClose: (options: { returnFocus: boolean }) => void;
 };
 
@@ -109,6 +124,7 @@ function EditableCellForm({
   value,
   recordEditHref,
   updateFieldAction,
+  choiceOptions,
   onClose,
 }: EditableCellFormProps) {
   const [state, formAction, pending] = useActionState(
@@ -117,15 +133,26 @@ function EditableCellForm({
   );
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
   const domId = useId();
   const errorId = `${domId}-error`;
+  // Active options for new selection, plus the record's own current option
+  // even if archived -- so an already-selected archived value stays
+  // visible/selected in the dropdown rather than silently disappearing.
+  const currentOption =
+    field.type === "choice" && typeof value === "string"
+      ? choiceOptions.find((option) => option.id === value)
+      : undefined;
+  const selectableChoiceOptions =
+    currentOption?.archivedAt
+      ? [currentOption, ...choiceOptions.filter((option) => !option.archivedAt)]
+      : choiceOptions.filter((option) => !option.archivedAt);
 
   useEffect(() => {
     inputRef.current?.focus();
 
-    if (field.type !== "boolean") {
-      inputRef.current?.select();
+    if (field.type !== "boolean" && field.type !== "choice" && inputRef.current) {
+      (inputRef.current as HTMLInputElement).select();
     }
     // Runs once, when this edit session mounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,7 +168,7 @@ function EditableCellForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, router]);
 
-  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
       onClose({ returnFocus: true });
@@ -154,7 +181,7 @@ function EditableCellForm({
     }
   }
 
-  function handleBlur(event: FocusEvent<HTMLInputElement>) {
+  function handleBlur(event: FocusEvent<HTMLInputElement | HTMLSelectElement>) {
     const nextTarget = event.relatedTarget as Node | null;
 
     if (nextTarget && formRef.current?.contains(nextTarget)) {
@@ -174,7 +201,7 @@ function EditableCellForm({
           <>
             <input type="hidden" name="value" value="false" />
             <input
-              ref={inputRef}
+              ref={inputRef as RefObject<HTMLInputElement>}
               id={domId}
               name="value"
               type="checkbox"
@@ -187,9 +214,29 @@ function EditableCellForm({
               className="h-4 w-4 border-slate-300 text-slate-950"
             />
           </>
+        ) : field.type === "choice" ? (
+          <select
+            ref={inputRef as RefObject<HTMLSelectElement>}
+            id={domId}
+            name="value"
+            defaultValue={toDefaultInputValue(field, value) as string}
+            onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
+            aria-invalid={fieldError ? "true" : "false"}
+            aria-describedby={fieldError ? errorId : undefined}
+            className="h-8 w-full min-w-[6rem] border border-slate-300 bg-white px-2 text-sm text-slate-950 outline-none focus:border-slate-950"
+          >
+            <option value="">Choose an option</option>
+            {selectableChoiceOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+                {option.archivedAt ? " (Archived)" : ""}
+              </option>
+            ))}
+          </select>
         ) : (
           <input
-            ref={inputRef}
+            ref={inputRef as RefObject<HTMLInputElement>}
             id={domId}
             name="value"
             type={field.type === "number" ? "text" : field.type}

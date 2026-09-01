@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import type { DeleteViewActionState } from "@/app/actions";
 import type { RelationOptionsByFieldKey } from "@/lib/domain/record-repository";
+import { activeChoiceOptions } from "@/lib/domain/choice-display";
+import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
 import {
   FILTER_OPERATORS_BY_FIELD_TYPE,
-  FILTER_OPERATOR_LABELS,
+  filterOperatorLabel,
 } from "@/lib/domain/view-operators";
 import { getDefaultColumnFieldDefinitionIds } from "@/lib/domain/view-engine";
 import type { EntityView, ViewFilter, ViewSort } from "@/lib/domain/view-types";
@@ -30,6 +32,7 @@ type EntityViewsPanelProps = {
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
   relationOptionsByFieldKey: RelationOptionsByFieldKey;
+  choiceOptionsByFieldKey: ChoiceOptionsByFieldKey;
   warnings: string[];
   invalidFilter: boolean;
   createViewAction: (
@@ -51,7 +54,6 @@ type EntityViewsPanelProps = {
 type FormMode = "create" | "edit";
 
 const operatorsByFieldType = FILTER_OPERATORS_BY_FIELD_TYPE;
-const operatorLabels: Record<string, string> = FILTER_OPERATOR_LABELS;
 
 function FieldError({ message }: { message?: string }) {
   if (!message) {
@@ -75,6 +77,7 @@ function ViewForm({
   activeFields,
   allFields,
   relationOptionsByFieldKey,
+  choiceOptionsByFieldKey,
   action,
   pendingOverride,
 }: {
@@ -83,6 +86,7 @@ function ViewForm({
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
   relationOptionsByFieldKey: RelationOptionsByFieldKey;
+  choiceOptionsByFieldKey: ChoiceOptionsByFieldKey;
   action: (
     state: ViewFormState,
     formData: FormData,
@@ -252,7 +256,7 @@ function ViewForm({
               >
                 {operators.map((operator) => (
                   <option key={operator} value={operator}>
-                    {operatorLabels[operator]}
+                    {filterOperatorLabel(field?.type ?? "text", operator as ViewFilter["operator"])}
                   </option>
                 ))}
               </select>
@@ -275,6 +279,19 @@ function ViewForm({
                   <option value="">Choose an option</option>
                   {(relationOptionsByFieldKey[field.key] ?? []).map((option) => (
                     <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : field?.type === "choice" ? (
+                <select
+                  name={`filterValue:${index}`}
+                  defaultValue={String(filter.value ?? "")}
+                  className="h-10 border border-slate-300 bg-white px-3 text-sm text-slate-950"
+                >
+                  <option value="">Choose an option</option>
+                  {activeChoiceOptions(choiceOptionsByFieldKey[field.key] ?? []).map((option) => (
+                    <option key={option.id} value={option.id}>
                       {option.label}
                     </option>
                   ))}
@@ -522,6 +539,7 @@ export function EntityViewsPanel({
   activeFields,
   allFields,
   relationOptionsByFieldKey,
+  choiceOptionsByFieldKey,
   warnings,
   invalidFilter,
   createViewAction,
@@ -615,6 +633,7 @@ export function EntityViewsPanel({
                 activeFields={activeFields}
                 allFields={allFields}
                 relationOptionsByFieldKey={relationOptionsByFieldKey}
+                choiceOptionsByFieldKey={choiceOptionsByFieldKey}
                 action={updateViewAction}
                 pendingOverride={pendingOverride}
               />
@@ -631,6 +650,7 @@ export function EntityViewsPanel({
               activeFields={activeFields}
               allFields={allFields}
               relationOptionsByFieldKey={relationOptionsByFieldKey}
+                choiceOptionsByFieldKey={choiceOptionsByFieldKey}
               action={createViewAction}
               pendingOverride={pendingOverride}
             />

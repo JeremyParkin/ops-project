@@ -21,6 +21,11 @@ const operatorsByFieldType: Record<FieldType, WorkflowConditionOperator[]> = {
   date: ["equals", "before", "after", "is_set", "is_not_set"],
   boolean: ["equals", "is_set", "is_not_set"],
   relation: ["equals", "not_equals", "is_set", "is_not_set"],
+  // Choice/Select automation conditions are explicitly deferred for Phase
+  // 9.2 (see the field-type plan's "explicit deferrals") -- no operators
+  // offered yet, so a choice field simply won't appear as usable in a
+  // workflow condition's field picker.
+  choice: [],
 };
 
 // Transition operators compare the previous persisted value (from the
@@ -121,6 +126,7 @@ export function parseConditionValue({
   switch (field.type) {
     case "text":
     case "relation":
+    case "choice":
       return { value: rawValue };
     case "number": {
       const value = Number(rawValue);

@@ -1,5 +1,6 @@
 import type { SupabaseServerClient } from "@/lib/supabase/server";
 import { isUuid, isValidDate, validateRecordValues } from "./record-validation";
+import { listChoiceOptionsByFieldIds } from "./choice-option-repository";
 import { getEntityContext } from "./metadata-repository";
 import { getRecordLabel, listEntityRecords } from "./record-repository";
 import type { EntityRecord, FieldDefinition, FieldValue } from "./types";
@@ -127,6 +128,9 @@ export function parseCsvCellValue(field: FieldDefinition, rawCell: string): Cell
     case "relation":
       // Relation cells are resolved separately -- see resolveRelationValues.
       return { success: true, value: trimmed };
+    case "choice":
+      // Choice cells are resolved separately -- see resolveChoiceValues.
+      return { success: true, value: trimmed };
   }
 }
 
@@ -213,6 +217,57 @@ async function resolveRelationValues({
   return { targetEntityTypeName: targetContext.entityType.name, resolutions };
 }
 
+// --- Choice resolution (batched, one lookup per choice field) -----------
+//
+// Exact, case-sensitive match against currently ACTIVE option labels only
+// -- never fuzzy, never matching an archived option, and never falling
+// back to raw option-id passthrough the way relation accepts a raw UUID
+// (nobody hand-types a UUID into a spreadsheet; keeping this label-only
+// is the simpler V1 choice). No "ambiguous" status is possible: the
+// global (active-or-archived) label uniqueness constraint on
+// field_choice_options means at most one option can ever match a given
+// label at all, active or not.
+
+type ChoiceResolution =
+  | { status: "resolved"; optionId: string }
+  | { status: "not_found" }
+  | { status: "archived" };
+
+async function resolveChoiceValues({
+  workspaceId,
+  field,
+  rawValues,
+  supabase,
+}: {
+  workspaceId: string;
+  field: FieldDefinition;
+  rawValues: string[];
+  supabase?: SupabaseServerClient;
+}): Promise<Map<string, ChoiceResolution>> {
+  const resolutions = new Map<string, ChoiceResolution>();
+  const optionsByFieldId = await listChoiceOptionsByFieldIds({
+    workspaceId,
+    fieldDefinitionIds: [field.id],
+    supabase,
+  });
+  const options = optionsByFieldId[field.id] ?? [];
+  const optionByLabel = new Map(options.map((option) => [option.label, option]));
+
+  for (const rawValue of rawValues) {
+    const match = optionByLabel.get(rawValue);
+
+    if (!match) {
+      resolutions.set(rawValue, { status: "not_found" });
+    } else if (match.archivedAt) {
+      resolutions.set(rawValue, { status: "archived" });
+    } else {
+      resolutions.set(rawValue, { status: "resolved", optionId: match.id });
+    }
+  }
+
+  return resolutions;
+}
+
 // --- Row-level preflight -------------------------------------------------
 
 export type ImportRowError = {
@@ -264,11 +319,12 @@ export async function buildImportPreflight({
     string,
     { targetEntityTypeName: string; resolutions: Map<string, RelationResolution> }
   >();
+  const choiceResolutionsByFieldId = new Map<string, Map<string, ChoiceResolution>>();
 
   for (const { fieldId, columnIndex } of mappedColumns) {
     const field = fieldById.get(fieldId)!;
 
-    if (field.type !== "relation") {
+    if (field.type !== "relation" && field.type !== "choice") {
       continue;
     }
 
@@ -282,13 +338,23 @@ export async function buildImportPreflight({
       }
     }
 
-    const result = await resolveRelationValues({
-      workspaceId,
-      field,
-      rawValues: [...distinctValues],
-      supabase,
-    });
-    relationResolutionsByFieldId.set(fieldId, result);
+    if (field.type === "relation") {
+      const result = await resolveRelationValues({
+        workspaceId,
+        field,
+        rawValues: [...distinctValues],
+        supabase,
+      });
+      relationResolutionsByFieldId.set(fieldId, result);
+    } else {
+      const result = await resolveChoiceValues({
+        workspaceId,
+        field,
+        rawValues: [...distinctValues],
+        supabase,
+      });
+      choiceResolutionsByFieldId.set(fieldId, result);
+    }
   }
 
   const rows: ImportRow[] = [];
@@ -332,6 +398,29 @@ export async function buildImportPreflight({
         continue;
       }
 
+      if (field.type === "choice") {
+        const trimmed = rawCell.trim();
+
+        if (trimmed === "") {
+          continue;
+        }
+
+        const resolution = choiceResolutionsByFieldId.get(fieldId)?.get(trimmed);
+
+        if (!resolution || resolution.status === "not_found") {
+          errors.push({ column, message: `No option matches "${trimmed}" for ${field.name}.` });
+        } else if (resolution.status === "archived") {
+          errors.push({
+            column,
+            message: `"${trimmed}" is archived and can't be used for a new ${field.name} value.`,
+          });
+        } else {
+          values[field.key] = resolution.optionId;
+        }
+
+        continue;
+      }
+
       const parsed = parseCsvCellValue(field, rawCell);
 
       if (!parsed.success) {
@@ -347,7 +436,12 @@ export async function buildImportPreflight({
     // above. Every relation value here was already resolved against a live
     // target record, so the relation check only needs to confirm presence.
     if (errors.length === 0) {
-      const validation = await validateRecordValues(fields, values, async () => true);
+      const validation = await validateRecordValues(
+        fields,
+        values,
+        async () => true,
+        async () => true,
+      );
 
       if (!validation.success) {
         const fieldKeyByColumn = new Map(

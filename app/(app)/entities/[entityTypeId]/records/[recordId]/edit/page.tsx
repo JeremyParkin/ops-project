@@ -5,6 +5,8 @@ import { ObjectContextNav } from "@/app/components/object-context-nav";
 import { WorkspacePageLayout } from "@/app/components/page-primitives";
 import { RecordEditForm } from "@/app/components/record-edit-form";
 import { getActiveWorkspaceId } from "@/lib/auth/workspace";
+import { listChoiceOptionsByFieldIds } from "@/lib/domain/choice-option-repository";
+import { toChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import {
   getEntityContext,
   listEntityTypes,
@@ -38,11 +40,19 @@ async function loadRecordEditPageData(
       recordId,
       fields: entityContext.fields,
     });
-    const relationLookups = await getRelationLookups({
-      workspaceId,
-      fields: entityContext.fields,
-      currentRecord: record,
-    });
+    const [relationLookups, choiceOptionsByFieldId] = await Promise.all([
+      getRelationLookups({
+        workspaceId,
+        fields: entityContext.fields,
+        currentRecord: record,
+      }),
+      listChoiceOptionsByFieldIds({
+        workspaceId,
+        fieldDefinitionIds: entityContext.fields
+          .filter((field) => field.type === "choice")
+          .map((field) => field.id),
+      }),
+    ]);
 
     return {
       context,
@@ -51,6 +61,7 @@ async function loadRecordEditPageData(
       entityContext,
       record,
       relationLookups,
+      choiceOptionsByFieldId,
     };
   } catch {
     return null;
@@ -85,7 +96,9 @@ export default async function RecordEditPage({
     entityContext: { entityType, fields },
     record,
     relationLookups,
+    choiceOptionsByFieldId,
   } = pageData;
+  const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(fields, choiceOptionsByFieldId);
 
   if (entityType.archivedAt) {
     redirect(`/entities/${entityType.id}`);
@@ -119,6 +132,7 @@ export default async function RecordEditPage({
           fields={fields}
           record={record}
           relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+          choiceOptionsByFieldKey={choiceOptionsByFieldKey}
           entityNameById={entityNameById}
           updateRecordAction={updateEntityRecord}
           returnTo={returnTo === "detail" ? "detail" : undefined}

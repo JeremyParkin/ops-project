@@ -6,6 +6,7 @@ const fieldTypeLabels = {
   date: "Date",
   boolean: "Boolean",
   relation: "Relation",
+  choice: "Choice",
 };
 
 export function getWorkflowFieldLabel({

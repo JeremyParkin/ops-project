@@ -35,6 +35,16 @@ type RelationValueValidator = (
   value: string,
 ) => Promise<boolean>;
 
+// Mirrors RelationValueValidator: checks the option belongs to this exact
+// field (workspace + field-scoped). Archived options are valid here --
+// this is app-layer UX validation, not the "must be active" boundary; that
+// preserve-vs-assign distinction is enforced at the RPC layer (migration
+// 0080), which is the actual authority.
+type ChoiceValueValidator = (
+  field: FieldDefinition,
+  optionId: string,
+) => Promise<boolean>;
+
 type RecordValuesValidationResult =
   | {
       success: true;
@@ -122,6 +132,12 @@ function parseFieldValue(
       }
 
       return { value: rawValue };
+    case "choice":
+      if (!isUuid(rawValue)) {
+        return { error: `${field.name} must reference a valid option.` };
+      }
+
+      return { value: rawValue };
   }
 }
 
@@ -129,6 +145,7 @@ export async function validateRecordFormData(
   fields: FieldDefinition[],
   formData: FormData,
   validateRelationValue?: RelationValueValidator,
+  validateChoiceValue?: ChoiceValueValidator,
 ): Promise<ValidationResult> {
   const fieldKeys = new Set(fields.map((field) => field.key));
   const errors: Record<string, string> = {};
@@ -171,6 +188,20 @@ export async function validateRecordFormData(
         }
       }
 
+      if (
+        field.type === "choice" &&
+        parsedValue.value !== null &&
+        typeof parsedValue.value === "string" &&
+        validateChoiceValue
+      ) {
+        const isValidChoice = await validateChoiceValue(field, parsedValue.value);
+
+        if (!isValidChoice) {
+          errors[field.key] = `${field.name} must reference a valid option.`;
+          continue;
+        }
+      }
+
       recordValues[field.key] = parsedValue.value;
     }
   }
@@ -194,6 +225,7 @@ export async function validateRecordValues(
   fields: FieldDefinition[],
   values: EntityRecord["values"],
   validateRelationValue?: RelationValueValidator,
+  validateChoiceValue?: ChoiceValueValidator,
 ): Promise<RecordValuesValidationResult> {
   const errors: Record<string, string> = {};
   const recordValues: EntityRecord["values"] = {};
@@ -263,6 +295,22 @@ export async function validateRecordValues(
           !(await validateRelationValue(field, value))
         ) {
           errors[field.key] = `${field.name} must reference an existing record.`;
+          break;
+        }
+
+        recordValues[field.key] = value;
+        break;
+      case "choice":
+        if (typeof value !== "string" || !isUuid(value)) {
+          errors[field.key] = `${field.name} must reference a valid option.`;
+          break;
+        }
+
+        if (
+          validateChoiceValue &&
+          !(await validateChoiceValue(field, value))
+        ) {
+          errors[field.key] = `${field.name} must reference a valid option.`;
           break;
         }
 

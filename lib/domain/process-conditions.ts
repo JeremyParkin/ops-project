@@ -16,6 +16,9 @@ const operatorsByFieldType: Record<FieldType, ProcessBranchConditionOperator[]> 
   date: ["equals", "before", "after", "is_set", "is_not_set"],
   boolean: ["equals", "is_set", "is_not_set"],
   relation: ["equals", "not_equals", "is_set", "is_not_set"],
+  // Same deferral as workflow-conditions.ts: no Choice-aware process branch
+  // conditions in this slice, so no operators are offered for it yet.
+  choice: [],
 };
 
 const operatorsNeedingValue = new Set<ProcessBranchConditionOperator>([

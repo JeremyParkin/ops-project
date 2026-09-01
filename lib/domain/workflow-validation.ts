@@ -204,11 +204,22 @@ export function areFieldsCompatible(
     return false;
   }
 
-  if (sourceField.type !== "relation") {
-    return true;
+  if (sourceField.type === "relation") {
+    return sourceField.relatedEntityTypeId === targetField.relatedEntityTypeId;
   }
 
-  return sourceField.relatedEntityTypeId === targetField.relatedEntityTypeId;
+  // Two different choice fields being "compatible" would let a mapping
+  // copy an option id scoped to the source field into a target field it
+  // was never defined on -- the RPC-layer integrity check (migration
+  // 0080) would reject that at write time, but it's cleaner not to offer
+  // the mapping as valid in the first place. Only a choice field mapped
+  // to itself (e.g. across a relation hop back to the same entity type)
+  // is compatible, mirroring relation's own related-entity-type check.
+  if (sourceField.type === "choice") {
+    return sourceField.id === targetField.id;
+  }
+
+  return true;
 }
 
 function parseConstantValue(
@@ -252,6 +263,12 @@ function parseConstantValue(
 
       return { error: `${targetField.name} constant must be true or false.` };
     case "relation":
+    case "choice":
+      // Choice constants in workflow actions are not exposed by the
+      // workflow editor UI yet (same "no conditional/automation logic
+      // based on choice" deferral as workflow-conditions.ts) -- this case
+      // exists only so the switch stays exhaustive; it is unreachable
+      // through the current UI.
       return { value: rawValue };
   }
 }

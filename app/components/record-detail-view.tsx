@@ -1,17 +1,25 @@
 import Link from "next/link";
 import type { RecordFieldFormState } from "@/app/actions";
+import { ChoicePill } from "@/app/components/choice-pill";
 import { EditableTableCell } from "@/app/components/editable-table-cell";
 import { RecordDetailActions } from "@/app/components/record-detail-actions";
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
 import { ProcessSection, type ProcessSectionEntry } from "@/app/components/process-section";
 import { RecordActivity } from "@/app/components/record-activity";
 import type { RecordActivityEvent } from "@/lib/domain/activity-types";
+import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import type {
   IncomingRelationGroup,
   RelationLabelsByFieldKey,
 } from "@/lib/domain/record-repository";
 import { getRecordIdentityField, getRecordLabel } from "@/lib/domain/record-repository";
-import type { EntityRecord, EntityType, FieldDefinition, FieldValue } from "@/lib/domain/types";
+import type {
+  ChoiceOption,
+  EntityRecord,
+  EntityType,
+  FieldDefinition,
+  FieldValue,
+} from "@/lib/domain/types";
 
 // The collapsed Overview prioritizes populated fields over blank schema
 // slots; "All fields" reveals the complete canonical-order list below it.
@@ -33,6 +41,7 @@ type RecordDetailViewProps = {
   fields: FieldDefinition[];
   record: EntityRecord;
   relationLabelsByFieldKey: RelationLabelsByFieldKey;
+  choiceOptionsByFieldKey?: ChoiceOptionsByFieldKey;
   incomingRelationGroups: IncomingRelationGroup[];
   processSectionEntries: ProcessSectionEntry[];
   activityEvents: RecordActivityEvent[];
@@ -58,6 +67,8 @@ function formatPrimitiveValue(field: FieldDefinition, value: FieldValue) {
     case "boolean":
       return value === true ? "Yes" : "No";
     case "relation":
+      return "—";
+    case "choice":
       return "—";
   }
 }
@@ -94,15 +105,22 @@ function FieldRow({
   field,
   value,
   relationLabel,
+  choiceOptions = [],
   updateFieldAction,
   editHref,
 }: {
   field: FieldDefinition;
   value: FieldValue;
   relationLabel?: string;
+  choiceOptions?: ChoiceOption[];
   updateFieldAction?: UpdateFieldAction;
   editHref?: string;
 }) {
+  const currentChoiceOption =
+    field.type === "choice" && typeof value === "string"
+      ? choiceOptions.find((option) => option.id === value)
+      : undefined;
+
   return (
     <div className="grid gap-2 py-3 md:grid-cols-[minmax(12rem,18rem)_1fr]">
       <dt className="text-sm font-medium text-stone">{field.name}</dt>
@@ -123,9 +141,12 @@ function FieldRow({
             field={field}
             value={value}
             displayValue={formatPrimitiveValue(field, value)}
+            choiceOptions={choiceOptions}
             recordEditHref={editHref}
             updateFieldAction={updateFieldAction}
           />
+        ) : field.type === "choice" ? (
+          currentChoiceOption ? <ChoicePill option={currentChoiceOption} /> : "—"
         ) : (
           formatPrimitiveValue(field, value)
         )}
@@ -139,6 +160,7 @@ export function RecordDetailView({
   fields,
   record,
   relationLabelsByFieldKey,
+  choiceOptionsByFieldKey = {},
   incomingRelationGroups,
   processSectionEntries,
   activityEvents,
@@ -213,6 +235,7 @@ export function RecordDetailView({
                   field={field}
                   value={record.values[field.key]}
                   relationLabel={field.type === "relation" ? relationLabelFor(field) : undefined}
+                  choiceOptions={choiceOptionsByFieldKey[field.key]}
                   updateFieldAction={updateFieldAction}
                   editHref={editHref}
                 />
@@ -230,6 +253,7 @@ export function RecordDetailView({
                       field={field}
                       value={record.values[field.key]}
                       relationLabel={field.type === "relation" ? relationLabelFor(field) : undefined}
+                      choiceOptions={choiceOptionsByFieldKey[field.key]}
                       updateFieldAction={updateFieldAction}
                       editHref={editHref}
                     />
