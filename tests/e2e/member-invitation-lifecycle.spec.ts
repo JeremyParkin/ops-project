@@ -113,7 +113,15 @@ test("invites a brand-new person, who creates an account and joins through the a
   await inviteForm.getByLabel("Email").fill(inviteeEmail);
   await inviteForm.getByLabel("Role").selectOption({ label: "Member" });
   await inviteForm.getByRole("button", { name: "Send invite" }).click();
-  await expect(adminPage.getByText("Invitation created.")).toBeVisible();
+  // 8F.4 made this copy conditional on whether outbound email is configured
+  // (app/workspace-invitation-actions.ts) -- accept both intentional exact
+  // messages, not a loose substring, so an unrelated future copy change
+  // still fails this assertion instead of silently passing.
+  await expect(
+    adminPage.getByText(
+      /^Invitation created\. Share this link with them\.$|^Invitation created and email queued\. You can also share this link manually\.$/,
+    ),
+  ).toBeVisible();
   const link = await inviteForm.getByLabel("Invitation link").inputValue();
   expect(link).toContain("/accept-invitation?token=");
 
