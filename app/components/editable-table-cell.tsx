@@ -15,6 +15,8 @@ import {
 import type { RecordFieldFormState } from "@/app/actions";
 import { ChoicePill } from "@/app/components/choice-pill";
 import type { ChoiceOption, FieldDefinition, FieldValue } from "@/lib/domain/types";
+import type { RelationRecordOption } from "@/lib/domain/record-repository";
+import { linkifyText } from "@/lib/domain/text-linkification";
 
 type UpdateFieldAction = (
   state: RecordFieldFormState,
@@ -32,6 +34,10 @@ type EditableTableCellProps = {
   // already-selected archived value doesn't just disappear from the
   // control -- ignored by every other field type.
   choiceOptions?: ChoiceOption[];
+  // Relation only: active target records for the dropdown, plus this row's
+  // own current target even if archived (see getRelationLookups'
+  // currentRecords) -- ignored by every other field type.
+  relationOptions?: RelationRecordOption[];
 };
 
 const initialFieldState: RecordFieldFormState = {
@@ -55,6 +61,7 @@ export function EditableTableCell({
   recordEditHref,
   updateFieldAction,
   choiceOptions = [],
+  relationOptions = [],
 }: EditableTableCellProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editSessionId, setEditSessionId] = useState(0);
@@ -83,6 +90,37 @@ export function EditableTableCell({
       field.type === "choice" && typeof value === "string"
         ? choiceOptions.find((option) => option.id === value)
         : undefined;
+    // A linkified text value can't share a click target with "enter edit
+    // mode" (see linkifyText) -- the link itself opens/navigates, and a
+    // separate compact button is the only way into the edit flow.
+    const linkified =
+      field.type === "text" && typeof value === "string" && value !== ""
+        ? linkifyText(value)
+        : undefined;
+
+    if (linkified && linkified.kind !== "plain") {
+      return (
+        <span className="flex min-w-[6rem] items-center gap-2 px-1 py-0.5">
+          <a
+            href={linkified.href}
+            target={linkified.kind === "url" ? "_blank" : undefined}
+            rel={linkified.kind === "url" ? "noopener noreferrer" : undefined}
+            className="truncate underline-offset-4 hover:underline"
+          >
+            {linkified.text}
+          </a>
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={openEditor}
+            className="shrink-0 text-xs font-medium text-slate-500 underline-offset-4 hover:text-slate-950 hover:underline"
+            aria-label={`Edit ${field.name}`}
+          >
+            Edit
+          </button>
+        </span>
+      );
+    }
 
     return (
       <button
@@ -92,7 +130,15 @@ export function EditableTableCell({
         className="block w-full min-w-[6rem] rounded-sm px-1 py-0.5 text-left hover:bg-slate-50 focus-visible:bg-slate-50"
         aria-label={`Edit ${field.name}`}
       >
-        {currentChoiceOption ? <ChoicePill option={currentChoiceOption} /> : displayValue}
+        {currentChoiceOption ? (
+          <ChoicePill option={currentChoiceOption} />
+        ) : field.type === "relation" && displayValue !== "—" ? (
+          <span className="inline-flex items-center border border-grit bg-chalk px-2 py-1 text-xs font-medium text-stone">
+            {displayValue}
+          </span>
+        ) : (
+          displayValue
+        )}
       </button>
     );
   }
@@ -105,6 +151,7 @@ export function EditableTableCell({
       recordEditHref={recordEditHref}
       updateFieldAction={updateFieldAction}
       choiceOptions={choiceOptions}
+      relationOptions={relationOptions}
       onClose={closeEditor}
     />
   );
@@ -116,6 +163,7 @@ type EditableCellFormProps = {
   recordEditHref: string;
   updateFieldAction: UpdateFieldAction;
   choiceOptions: ChoiceOption[];
+  relationOptions: RelationRecordOption[];
   onClose: (options: { returnFocus: boolean }) => void;
 };
 
@@ -125,6 +173,7 @@ function EditableCellForm({
   recordEditHref,
   updateFieldAction,
   choiceOptions,
+  relationOptions,
   onClose,
 }: EditableCellFormProps) {
   const [state, formAction, pending] = useActionState(
@@ -147,11 +196,24 @@ function EditableCellForm({
     currentOption?.archivedAt
       ? [currentOption, ...choiceOptions.filter((option) => !option.archivedAt)]
       : choiceOptions.filter((option) => !option.archivedAt);
+  // relationOptions is fetched once per FIELD, not per row (see
+  // getRelationLookups' currentRecords) -- it can carry an archived target
+  // that some OTHER row currently references. Only surface an archived
+  // entry here when it's this row's own current value; every other row
+  // must never be able to newly assign an archived target.
+  const selectableRelationOptions = relationOptions.filter(
+    (option) => !option.archivedAt || option.value === value,
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
 
-    if (field.type !== "boolean" && field.type !== "choice" && inputRef.current) {
+    if (
+      field.type !== "boolean" &&
+      field.type !== "choice" &&
+      field.type !== "relation" &&
+      inputRef.current
+    ) {
       (inputRef.current as HTMLInputElement).select();
     }
     // Runs once, when this edit session mounts.
@@ -231,6 +293,25 @@ function EditableCellForm({
               <option key={option.id} value={option.id}>
                 {option.label}
                 {option.archivedAt ? " (Archived)" : ""}
+              </option>
+            ))}
+          </select>
+        ) : field.type === "relation" ? (
+          <select
+            ref={inputRef as RefObject<HTMLSelectElement>}
+            id={domId}
+            name="value"
+            defaultValue={toDefaultInputValue(field, value) as string}
+            onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
+            aria-invalid={fieldError ? "true" : "false"}
+            aria-describedby={fieldError ? errorId : undefined}
+            className="h-8 w-full min-w-[6rem] border border-slate-300 bg-white px-2 text-sm text-slate-950 outline-none focus:border-slate-950"
+          >
+            <option value="">Choose a record</option>
+            {selectableRelationOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>

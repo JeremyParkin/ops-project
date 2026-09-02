@@ -10,13 +10,17 @@ import { EditableTableCell } from "@/app/components/editable-table-cell";
 import { RecordRowActions } from "@/app/components/record-row-actions";
 import { resolveChoiceOption } from "@/lib/domain/choice-display";
 import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
+import { linkifyText } from "@/lib/domain/text-linkification";
 import type {
   EntityRecord,
   EntityType,
   FieldDefinition,
   FieldValue,
 } from "@/lib/domain/types";
-import type { RelationLabelsByFieldKey } from "@/lib/domain/record-repository";
+import type {
+  RelationLabelsByFieldKey,
+  RelationOptionsByFieldKey,
+} from "@/lib/domain/record-repository";
 import { getRecordIdentityField } from "@/lib/domain/record-repository";
 
 type EntityRecordsTableProps = {
@@ -25,6 +29,7 @@ type EntityRecordsTableProps = {
   identityFields?: FieldDefinition[];
   records: EntityRecord[];
   relationLabelsByFieldKey?: RelationLabelsByFieldKey;
+  relationOptionsByFieldKey?: RelationOptionsByFieldKey;
   choiceOptionsByFieldKey?: ChoiceOptionsByFieldKey;
   recordEditPathBase?: string;
   recordActionContext?: {
@@ -74,9 +79,8 @@ function formatFieldValue(
   }
 }
 
-// Relation and choice are excluded: relation stays read-only inline (see
-// entity-view/record docs), and choice needs a dropdown of options, not a
-// plain text/number/date/boolean input -- EditableTableCell branches on
+// Relation and choice both need a dropdown of options rather than a plain
+// text/number/date/boolean input -- EditableTableCell branches on
 // field.type itself for the actual control.
 const INLINE_EDITABLE_FIELD_TYPES = new Set<FieldDefinition["type"]>([
   "text",
@@ -84,6 +88,7 @@ const INLINE_EDITABLE_FIELD_TYPES = new Set<FieldDefinition["type"]>([
   "date",
   "boolean",
   "choice",
+  "relation",
 ]);
 
 function formatTableCell(
@@ -91,6 +96,9 @@ function formatTableCell(
   value: FieldValue | undefined,
   relationLabelsByFieldKey: RelationLabelsByFieldKey,
   choiceOptionsByFieldKey: ChoiceOptionsByFieldKey,
+  // False for the identity-field column, which the row already wraps in its
+  // own <Link> to the record -- a nested <a> there would be invalid HTML.
+  linkifyPlainText = true,
 ) {
   if (field.type === "choice") {
     const option = resolveChoiceOption(choiceOptionsByFieldKey[field.key] ?? [], value);
@@ -104,15 +112,32 @@ function formatTableCell(
     choiceOptionsByFieldKey,
   );
 
-  if (field.type !== "relation" || formattedValue === "—") {
-    return formattedValue;
+  if (field.type === "relation" && formattedValue !== "—") {
+    return (
+      <span className="inline-flex items-center border border-grit bg-chalk px-2 py-1 text-xs font-medium text-stone">
+        {formattedValue}
+      </span>
+    );
   }
 
-  return (
-    <span className="inline-flex items-center border border-grit bg-chalk px-2 py-1 text-xs font-medium text-stone">
-      {formattedValue}
-    </span>
-  );
+  if (field.type === "text" && linkifyPlainText && typeof value === "string" && value !== "") {
+    const linkified = linkifyText(value);
+
+    if (linkified.kind !== "plain") {
+      return (
+        <a
+          href={linkified.href}
+          target={linkified.kind === "url" ? "_blank" : undefined}
+          rel={linkified.kind === "url" ? "noopener noreferrer" : undefined}
+          className="underline-offset-4 hover:underline"
+        >
+          {linkified.text}
+        </a>
+      );
+    }
+  }
+
+  return formattedValue;
 }
 
 export function EntityRecordsTable({
@@ -121,6 +146,7 @@ export function EntityRecordsTable({
   identityFields = fields,
   records,
   relationLabelsByFieldKey = {},
+  relationOptionsByFieldKey = {},
   choiceOptionsByFieldKey = {},
   recordEditPathBase,
   recordActionContext,
@@ -241,6 +267,7 @@ export function EntityRecordsTable({
                       record.values[field.key],
                       relationLabelsByFieldKey,
                       choiceOptionsByFieldKey,
+                      field.id !== identityField?.id,
                     );
                     const inlineEditProps =
                       updateFieldAction &&
@@ -271,6 +298,7 @@ export function EntityRecordsTable({
                               choiceOptionsByFieldKey,
                             )}
                             choiceOptions={choiceOptionsByFieldKey[field.key] ?? []}
+                            relationOptions={relationOptionsByFieldKey[field.key] ?? []}
                             recordEditHref={inlineEditProps.recordEditHref}
                             updateFieldAction={inlineEditProps.updateFieldAction}
                           />

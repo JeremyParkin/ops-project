@@ -188,15 +188,11 @@ async function loadEntityPageData({
       listWorkflows({ workspaceId }),
       listEntityViews(context),
     ]);
-    const [records, relationLookups, choiceOptionsByFieldId] = await Promise.all([
+    const [records, choiceOptionsByFieldId] = await Promise.all([
       listEntityRecords({
         ...context,
         fields: entityContext.fields,
         includeArchived: showArchivedRecords,
-      }),
-      getRelationLookups({
-        workspaceId,
-        fields: entityContext.fields,
       }),
       listChoiceOptionsByFieldIds({
         workspaceId,
@@ -205,6 +201,14 @@ async function loadEntityPageData({
           .map((field) => field.id),
       }),
     ]);
+    // Needs `records` as input (to keep each row's own archived relation
+    // selection in its dropdown, see getRelationLookups' currentRecords), so
+    // this can't join the Promise.all above.
+    const relationLookups = await getRelationLookups({
+      workspaceId,
+      fields: entityContext.fields,
+      currentRecords: records,
+    });
 
     return {
       context,
@@ -608,6 +612,7 @@ export default async function EntityPage({
           identityFields={fields}
           records={evaluatedView.records}
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
+          relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
           choiceOptionsByFieldKey={choiceOptionsByFieldKey}
           recordEditPathBase={
             isArchivedEntity ? undefined : `/entities/${entityType.id}/records`

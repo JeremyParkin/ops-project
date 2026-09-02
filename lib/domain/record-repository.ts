@@ -70,6 +70,11 @@ type RelationValueRow = {
 export type RelationRecordOption = {
   value: string;
   label: string;
+  // Set only for an already-selected target injected by currentRecord /
+  // currentRecords (see getRelationLookups) -- always absent on the
+  // fetched active-option list itself. Lets a create-style form filter
+  // these back out, the same way choice's activeChoiceOptions does.
+  archivedAt?: string | null;
 };
 
 export type RelationOptionsByFieldKey = Record<string, RelationRecordOption[]>;
@@ -671,11 +676,19 @@ export async function getRelationLookups({
   workspaceId,
   fields,
   currentRecord,
+  currentRecords,
   restrictToCurrentRecordValues = false,
 }: {
   workspaceId: string;
   fields: FieldDefinition[];
   currentRecord?: EntityRecord;
+  // Table callers: every one of these records' own current relation values
+  // is kept selectable in optionsByFieldKey even if archived, so a row's
+  // already-selected archived target doesn't disappear from that row's
+  // dropdown. Unlike currentRecord, this never restricts which target
+  // records get fetched -- the table still needs the full active-option set
+  // for every relation field, not just the values already in use.
+  currentRecords?: EntityRecord[];
   // When true, only fetches the specific target records currentRecord's own
   // relation fields point to (for resolving their display labels), rather
   // than every record of each related entity type. Only safe for callers
@@ -761,28 +774,34 @@ export async function getRelationLookups({
           label: getRelationOptionLabel(data.entityType, data.fields, record),
         };
       });
-    const currentValue = currentRecord?.values[field.key];
-    const currentRecordOption =
-      typeof currentValue === "string"
-        ? records.find((record) => record.id === currentValue)
-        : undefined;
-    const options =
-      currentRecordOption?.archivedAt &&
-      !activeOptions.some((option) => option.value === currentRecordOption.id)
-        ? [
-            ...activeOptions,
-            {
-              value: currentRecordOption.id,
-              label: getRelationOptionLabel(
-                data.entityType,
-                data.fields,
-                currentRecordOption,
-              ),
-            },
-          ]
-        : activeOptions;
+    const referencingRecords = [
+      ...(currentRecord ? [currentRecord] : []),
+      ...(currentRecords ?? []),
+    ];
+    const archivedSelectionsById = new Map<string, RelationRecordOption>();
 
-    optionsByFieldKey[field.key] = options;
+    referencingRecords.forEach((sourceRecord) => {
+      const value = sourceRecord.values[field.key];
+
+      if (typeof value !== "string") {
+        return;
+      }
+
+      const targetRecord = records.find((record) => record.id === value);
+
+      if (
+        targetRecord?.archivedAt &&
+        !activeOptions.some((option) => option.value === targetRecord.id)
+      ) {
+        archivedSelectionsById.set(targetRecord.id, {
+          value: targetRecord.id,
+          label: getRelationOptionLabel(data.entityType, data.fields, targetRecord),
+          archivedAt: targetRecord.archivedAt,
+        });
+      }
+    });
+
+    optionsByFieldKey[field.key] = [...activeOptions, ...archivedSelectionsById.values()];
     labelsByFieldKey[field.key] = Object.fromEntries(
       records.map((record) => [
         record.id,

@@ -241,7 +241,13 @@ function RecordCreateFormContents({
           }
 
           if (field.type === "relation") {
-            const options = relationOptionsByFieldKey[field.key] ?? [];
+            // A new record has no existing value to preserve, so an
+            // already-archived target (kept in optionsByFieldKey only so an
+            // existing row's selection in the table doesn't disappear) is
+            // never a valid choice here -- see getRelationLookups.
+            const options = (relationOptionsByFieldKey[field.key] ?? []).filter(
+              (option) => !option.archivedAt,
+            );
             const relatedEntityName = field.relatedEntityTypeId
               ? entityNameById[field.relatedEntityTypeId]
               : undefined;

@@ -717,7 +717,7 @@ export async function updateRecordField(
     (candidate) => candidate.key === fieldKey && !candidate.archivedAt,
   );
 
-  if (!field || field.type === "relation") {
+  if (!field) {
     return {
       success: false,
       message: "This field can't be edited inline.",

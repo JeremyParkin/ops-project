@@ -70,8 +70,8 @@ This is a major product phase, not cosmetic polish. Business objects are the cen
 ### Editing & Data Quality
 
 - Cautious in-place editing beyond the current primitive-cell foundation, with explicit commit/cancel behavior and server-authoritative validation.
-- Relation editing that is richer than today's mostly read-only table/detail treatment.
-- Clickable URLs, email values, and relation chips where appropriate.
+- **Inline relation editing from the table, and archived-target write integrity — done (Phase 9.3):** the table's relation pill is now the inline-edit trigger (dropdown of active targets plus the row's own current target if archived); record-detail's relation chip stays navigation-only. Migration `0082` closed a genuine, previously-unenforced gap at the canonical write RPCs — an archived, wrong-type, or foreign-workspace relation target could be assigned via direct RPC use with no server-side check. Implementation and verification detail in `PROJECT_CONTEXT.md`. Deliberately deferred, not yet started: a scalable relation-picker (search/pagination) for high-cardinality target objects, bulk/multi-relation editing, and any relation-shape change.
+- **Clickable URLs and email values in text cells — done (Phase 9.3):** whole-value-only detection (never a substring match); a separate compact Edit affordance keeps linkification from conflicting with inline text editing. Relation chips were already clickable before this phase; see the item above for what changed there.
 - Bulk actions for common safe operations, designed around reversibility and dependency checks.
 - Singular and plural business-object labels so collection headings, navigation labels, and record-detail labels can be correct without runtime pluralization guesses.
 
