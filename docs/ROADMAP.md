@@ -63,9 +63,9 @@ This is a major product phase, not cosmetic polish. Business objects are the cen
 - Sorting that feels reliable, persists where appropriate, and respects typed values.
 - Filtering that is easier to create, understand, edit, and recover from.
 - Stronger Saved Views: clearer view management, defaults, stale-reference handling, view-specific column/sort/filter state, and possibly richer operators.
-- Column show/hide, reorder, and resizing.
-- Sticky headers, useful row affordances, better density controls, and polished visual hierarchy.
-- Loading, empty, filtered-empty, and error states that help users decide the next action.
+- Column show/hide and reorder are done (Phase 9.1); resizing remains deliberately deferred — evaluated during Phase 9.4 and found not warranted by any concrete constraint, not simply unstarted.
+- Sticky headers exist (Phase 9.1). Useful row affordances and polished visual hierarchy continue incrementally; density controls remain deliberately deferred — evaluated during Phase 9.4 dogfood (including a wide, many-column table) and found no concrete evidence of need.
+- **Empty and filtered-empty states — done (Phase 9.4):** a truthful four-way precedence (genuinely empty / all records archived and hidden / an unsaved filter zeroing results / a saved view's own filter zeroing results), each with the correct resolving action where one applies. Loading and error states were deliberately not built: the table route is a plain, atomically server-rendered page with no existing `loading.tsx`/`error.tsx` pattern anywhere in the app to extend, and no evidence a client-loading state would ever actually be visible.
 
 ### Editing & Data Quality
 

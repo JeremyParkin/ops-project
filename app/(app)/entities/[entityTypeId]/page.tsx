@@ -29,6 +29,7 @@ import {
   listEntityTypes,
 } from "@/lib/domain/metadata-repository";
 import {
+  countEntityRecords,
   entityRecordExists,
   getRelationLookups,
   getEntityRecord,
@@ -48,10 +49,12 @@ import {
   rawSearchParamsToUrlSearchParams,
   searchParamsToFormData,
   serializeViewState,
+  withoutViewStateParams,
   withViewStateParams,
   type RawSearchParams,
 } from "@/lib/domain/view-query-state";
 import { validateViewFormData } from "@/lib/domain/view-validation";
+import { resolveTableEmptyState } from "@/lib/domain/table-empty-state";
 import type { ViewFilter, ViewSort } from "@/lib/domain/view-types";
 import {
   countViewReferencesByFieldId,
@@ -401,8 +404,15 @@ export default async function EntityPage({
       );
       sortHrefByFieldId[field.id] = `/entities/${entityTypeId}?${nextParams.toString()}`;
     });
-  effectiveSorts.forEach((sort) => {
+  // 1-based position within effectiveSorts -- Kinema supports multi-column
+  // sorts (via the quick bar/Manage Views "Add Sort", not the single-column
+  // header-click cycling above), so a header's accessible sort state needs
+  // to distinguish the primary sort field from any secondary ones sharing
+  // the sortDirectionByFieldId map.
+  const sortPositionByFieldId: Record<string, number> = {};
+  effectiveSorts.forEach((sort, index) => {
     sortDirectionByFieldId[sort.fieldDefinitionId] = sort.direction;
+    sortPositionByFieldId[sort.fieldDefinitionId] = index + 1;
   });
 
   const isArchivedEntity = Boolean(entityType.archivedAt);
@@ -478,18 +488,33 @@ export default async function EntityPage({
     redirect(recordsHref);
   }
 
-  const emptyState =
-    evaluatedView.records.length === 0
-      ? selectedView && records.length > 0
-        ? {
-            title: `No records match ${selectedView.name}.`,
-            description: "Try another view or add a record that matches this view.",
-          }
-        : {
-            title: `No ${entityType.name.toLowerCase()} records yet.`,
-            description: `Add the first ${entityType.name.toLowerCase()} to get started.`,
-          }
+  // Each action link is built from currentSearchParams so it only changes
+  // what it needs to (archived visibility, or the pending filter) and
+  // preserves everything else -- view selection, manage mode, other params
+  // -- unchanged.
+  const showArchivedPreservingContextParams = new URLSearchParams(currentSearchParams);
+  showArchivedPreservingContextParams.set("showArchived", "true");
+  const showArchivedPreservingContextHref = `/entities/${entityTypeId}?${showArchivedPreservingContextParams.toString()}`;
+  const clearFiltersHref = `/entities/${entityTypeId}?${withoutViewStateParams(currentSearchParams).toString()}`;
+
+  // Only fetched when it's actually needed to distinguish "no records yet"
+  // from "all records archived" -- see resolveTableEmptyState.
+  const totalRecordCount =
+    evaluatedView.records.length === 0 && records.length === 0 && !showArchivedRecords
+      ? await countEntityRecords({ workspaceId, entityTypeId: entityType.id })
       : undefined;
+
+  const emptyState = resolveTableEmptyState({
+    entityName: entityType.name,
+    evaluatedRecordCount: evaluatedView.records.length,
+    activeRecordCount: records.length,
+    totalRecordCount,
+    showArchivedRecords,
+    hasPendingViewEdits,
+    selectedViewName: selectedView?.name,
+    showArchivedHref: showArchivedPreservingContextHref,
+    clearFiltersHref,
+  });
 
   return (
     <WorkspacePageLayout
@@ -621,6 +646,8 @@ export default async function EntityPage({
           emptyState={isArchivedEntity || isManaging ? undefined : emptyState}
           sortHrefByFieldId={sortHrefByFieldId}
           sortDirectionByFieldId={sortDirectionByFieldId}
+          sortPositionByFieldId={sortPositionByFieldId}
+          sortFieldCount={effectiveSorts.length}
         />
         <div className="mx-auto w-full max-w-6xl bg-white">
           <Link

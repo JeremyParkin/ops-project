@@ -39,14 +39,30 @@ type EntityRecordsTableProps = {
   emptyState?: {
     title: string;
     description: string;
+    // An optional resolving action (e.g. "Show archived records", "Clear
+    // filters") rendered ahead of the standard Add/Import actions -- only
+    // present for empty states caused by something the user can directly
+    // undo, not a genuinely empty object.
+    action?: { label: string; href: string };
   };
   // Click-to-sort column headers: only sortable, currently-visible fields
   // appear as keys. `sortHrefByFieldId` is the href a header click should
   // navigate to next (cycling none -> asc -> desc -> none);
   // `sortDirectionByFieldId` holds the field's *current* direction, for the
   // arrow indicator, and is only set for fields presently part of the sort.
+  // `sortPositionByFieldId` is that field's 1-based position within the
+  // active multi-column sort (Kinema supports sorting by more than one
+  // field at once via Manage Views/quick-bar "Add Sort", even though a
+  // header click always replaces the sort with just that one column) --
+  // only position 1 (the primary sort) gets `aria-sort`; secondary/tertiary
+  // positions get accessible text instead, since aria-sort has no standard
+  // way to express "2nd of 3" on more than one header at a time.
+  // `sortFieldCount` is the total number of active sort fields, used to
+  // decide whether that secondary-position text is worth showing at all.
   sortHrefByFieldId?: Record<string, string>;
   sortDirectionByFieldId?: Record<string, "asc" | "desc">;
+  sortPositionByFieldId?: Record<string, number>;
+  sortFieldCount?: number;
 };
 
 function formatFieldValue(
@@ -153,6 +169,8 @@ export function EntityRecordsTable({
   emptyState,
   sortHrefByFieldId = {},
   sortDirectionByFieldId = {},
+  sortPositionByFieldId = {},
+  sortFieldCount = 0,
 }: EntityRecordsTableProps) {
   const identityField = getRecordIdentityField({
     entityType,
@@ -170,9 +188,21 @@ export function EntityRecordsTable({
           {emptyState.description}
         </p>
         <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          {emptyState.action ? (
+            <Link
+              href={emptyState.action.href}
+              className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
+            >
+              {emptyState.action.label}
+            </Link>
+          ) : null}
           <Link
             href="#add-record"
-            className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
+            className={
+              emptyState.action
+                ? "inline-flex h-10 items-center justify-center border border-grit px-4 text-sm font-medium text-stone hover:bg-slab/5"
+                : "inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper"
+            }
           >
             Add {entityType.name}
           </Link>
@@ -190,18 +220,37 @@ export function EntityRecordsTable({
   return (
     <section className="mx-auto w-full max-w-6xl">
       <div className="overflow-hidden border border-grit bg-white">
-        <div className="overflow-x-auto">
+        <div
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label={`${entityType.name} records table, scroll horizontally for more columns`}
+        >
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <thead className="sticky top-0 z-10 bg-chalk text-xs uppercase tracking-wide text-stone">
               <tr>
                 {fields.map((field) => {
                   const sortHref = sortHrefByFieldId[field.id];
                   const sortDirection = sortDirectionByFieldId[field.id];
+                  const sortPosition = sortPositionByFieldId[field.id];
+                  // aria-sort has no standard way to mark "2nd of N" on more
+                  // than one header at once, so only the primary sort field
+                  // gets it; a secondary/tertiary field gets accessible text
+                  // instead (below) so the multi-sort state isn't silently
+                  // dropped for assistive tech.
+                  const isPrimarySort = sortPosition === 1;
 
                   return (
                     <th
                       key={field.id}
                       scope="col"
+                      aria-sort={
+                        isPrimarySort
+                          ? sortDirection === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : undefined
+                      }
                       className="border-b border-grit px-4 py-3 font-medium"
                     >
                       {sortHref ? (
@@ -220,6 +269,9 @@ export function EntityRecordsTable({
                           {sortDirection ? (
                             <span className="sr-only">
                               , sorted {sortDirection === "asc" ? "ascending" : "descending"}
+                              {!isPrimarySort && sortFieldCount > 1
+                                ? ` — sort ${sortPosition} of ${sortFieldCount}`
+                                : ""}
                             </span>
                           ) : (
                             <span className="sr-only">, click to sort</span>
