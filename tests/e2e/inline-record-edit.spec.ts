@@ -202,7 +202,7 @@ test.describe("inline record editing", () => {
     await expect(rowForText(page, title)).toContainText("Original");
   });
 
-  test("identity and relation cells stay read-only inline; archived records and entities disable inline edit", async ({
+  test("identity cells stay read-only inline; relation cells are inline-editable; archived records and entities disable inline edit", async ({
     page,
   }) => {
     const run = createScenarioRun();
@@ -225,7 +225,10 @@ test.describe("inline record editing", () => {
       activeRow.getByRole("link", { name: activeTitle, exact: true }),
     ).toBeVisible();
     await expect(inlineEditButton(activeRow, task.fields.title)).toHaveCount(0);
-    await expect(inlineEditButton(activeRow, task.fields.client)).toHaveCount(0);
+    // Relation cells have been inline-editable since Phase 9.3 (the pill
+    // itself is the edit trigger) -- only the identity field stays
+    // read-only inline.
+    await expect(inlineEditButton(activeRow, task.fields.client)).toBeVisible();
     await expect(inlineEditButton(activeRow, task.fields.status)).toBeVisible();
 
     const supabase = createSupabaseTestClient();

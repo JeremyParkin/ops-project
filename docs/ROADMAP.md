@@ -52,7 +52,7 @@ Boundaries:
 
 ## Phase 9 - Table & View Experience
 
-**Status:** Active roadmap focus, now that Phase 8 is complete.
+**Status:** Completed (9.1 column show/hide-reorder and sticky headers, 9.2 Choice/Select field type, 9.3 inline relation editing and link-aware cells, 9.4 table polish and usability, 9.5 bulk archive/restore actions, 9.6 Choice palette/pill/cell visual polish). Implemented details and history live in `PROJECT_CONTEXT.md`. Phase 9 is now complete; Phase 10 is the next roadmap focus.
 
 **Goal:** Make Kinema's core business-object table experience genuinely delightful for everyday work: Airtable-class in quality, but grounded in Kinema's stronger operational model.
 
@@ -66,6 +66,7 @@ This is a major product phase, not cosmetic polish. Business objects are the cen
 - Column show/hide and reorder are done (Phase 9.1); resizing remains deliberately deferred — evaluated during Phase 9.4 and found not warranted by any concrete constraint, not simply unstarted.
 - Sticky headers exist (Phase 9.1). Useful row affordances and polished visual hierarchy continue incrementally; density controls remain deliberately deferred — evaluated during Phase 9.4 dogfood (including a wide, many-column table) and found no concrete evidence of need.
 - **Empty and filtered-empty states — done (Phase 9.4):** a truthful four-way precedence (genuinely empty / all records archived and hidden / an unsaved filter zeroing results / a saved view's own filter zeroing results), each with the correct resolving action where one applies. Loading and error states were deliberately not built: the table route is a plain, atomically server-rendered page with no existing `loading.tsx`/`error.tsx` pattern anywhere in the app to extend, and no evidence a client-loading state would ever actually be visible.
+- **Choice pill/palette, cell visual polish — done (Phase 9.6):** a stronger Choice pill treatment, the fixed color palette expanded 6 → 12 with contrast/distinctness independently verified (migration `0084`), a keyboard-accessible swatch picker replacing the plain color `<select>`, and a 2-line clamp with a keyboard-accessible More/Less toggle for long plain-text cells (identity field and linkified URL/email values excluded). Visual/presentation only — no new field types, sorting/filtering, or authorization changes. Implementation and verification detail in `PROJECT_CONTEXT.md`.
 
 ### Editing & Data Quality
 

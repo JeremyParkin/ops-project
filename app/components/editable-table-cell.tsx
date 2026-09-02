@@ -14,6 +14,7 @@ import {
 } from "react";
 import type { RecordFieldFormState } from "@/app/actions";
 import { ChoicePill } from "@/app/components/choice-pill";
+import { ClampedText } from "@/app/components/clamped-text";
 import type { ChoiceOption, FieldDefinition, FieldValue } from "@/lib/domain/types";
 import type { RelationRecordOption } from "@/lib/domain/record-repository";
 import { linkifyText } from "@/lib/domain/text-linkification";
@@ -113,7 +114,29 @@ export function EditableTableCell({
             ref={triggerRef}
             type="button"
             onClick={openEditor}
-            className="shrink-0 text-xs font-medium text-slate-500 underline-offset-4 hover:text-slate-950 hover:underline"
+            className="shrink-0 text-xs font-medium text-stone underline-offset-4 hover:text-graphite hover:underline"
+            aria-label={`Edit ${field.name}`}
+          >
+            Edit
+          </button>
+        </span>
+      );
+    }
+
+    // Ordinary long text (not linkified) clamps to 2 lines with its own
+    // "More"/"Less" toggle -- that control can't share a click target with
+    // "enter edit mode" any more than the linkified case above can, so
+    // "Edit" is again a separate sibling button rather than the clamped
+    // text itself being clickable-to-edit.
+    if (field.type === "text" && typeof value === "string" && value !== "") {
+      return (
+        <span className="flex min-w-[6rem] items-start gap-2 px-1 py-0.5">
+          <ClampedText text={value} className="max-w-xs" />
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={openEditor}
+            className="shrink-0 text-xs font-medium text-stone underline-offset-4 hover:text-graphite hover:underline"
             aria-label={`Edit ${field.name}`}
           >
             Edit
@@ -127,7 +150,7 @@ export function EditableTableCell({
         ref={triggerRef}
         type="button"
         onClick={openEditor}
-        className="block w-full min-w-[6rem] rounded-sm px-1 py-0.5 text-left hover:bg-slate-50 focus-visible:bg-slate-50"
+        className="block w-full min-w-[6rem] rounded-sm px-1 py-0.5 text-left hover:bg-chalk focus-visible:bg-chalk"
         aria-label={`Edit ${field.name}`}
       >
         {currentChoiceOption ? (
@@ -273,7 +296,7 @@ function EditableCellForm({
               onBlur={handleBlur}
               aria-invalid={fieldError ? "true" : "false"}
               aria-describedby={fieldError ? errorId : undefined}
-              className="h-4 w-4 border-slate-300 text-slate-950"
+              className="h-4 w-4 border-grit text-graphite"
             />
           </>
         ) : field.type === "choice" ? (
@@ -286,7 +309,7 @@ function EditableCellForm({
             onBlur={handleBlur}
             aria-invalid={fieldError ? "true" : "false"}
             aria-describedby={fieldError ? errorId : undefined}
-            className="h-8 w-full min-w-[6rem] border border-slate-300 bg-white px-2 text-sm text-slate-950 outline-none focus:border-slate-950"
+            className="h-8 w-full min-w-[6rem] border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-graphite"
           >
             <option value="">Choose an option</option>
             {selectableChoiceOptions.map((option) => (
@@ -306,7 +329,7 @@ function EditableCellForm({
             onBlur={handleBlur}
             aria-invalid={fieldError ? "true" : "false"}
             aria-describedby={fieldError ? errorId : undefined}
-            className="h-8 w-full min-w-[6rem] border border-slate-300 bg-white px-2 text-sm text-slate-950 outline-none focus:border-slate-950"
+            className="h-8 w-full min-w-[6rem] border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-graphite"
           >
             <option value="">Choose a record</option>
             {selectableRelationOptions.map((option) => (
@@ -326,13 +349,13 @@ function EditableCellForm({
             onBlur={handleBlur}
             aria-invalid={fieldError ? "true" : "false"}
             aria-describedby={fieldError ? errorId : undefined}
-            className="h-8 w-full min-w-[6rem] border border-slate-300 px-2 text-sm text-slate-950 outline-none focus:border-slate-950"
+            className="h-8 w-full min-w-[6rem] border border-grit px-2 text-sm text-graphite outline-none focus:border-graphite"
           />
         )}
         <button
           type="submit"
           disabled={pending}
-          className="text-xs font-medium text-slate-950 underline-offset-4 hover:underline disabled:text-slate-400"
+          className="text-xs font-medium text-graphite underline-offset-4 hover:underline disabled:text-grit"
         >
           {pending ? "Saving..." : "Save"}
         </button>
@@ -341,20 +364,20 @@ function EditableCellForm({
           disabled={pending}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => onClose({ returnFocus: true })}
-          className="text-xs font-medium text-slate-600 underline-offset-4 hover:underline disabled:text-slate-400"
+          className="text-xs font-medium text-stone underline-offset-4 hover:underline disabled:text-grit"
         >
           Cancel
         </button>
       </div>
       {state.blocked ? (
-        <p id={errorId} className="text-xs text-red-700" role="alert">
+        <p id={errorId} className="text-xs text-status-oxide" role="alert">
           {state.message}{" "}
           <Link href={recordEditHref} className="underline underline-offset-4">
             Open full edit
           </Link>
         </p>
       ) : fieldError ? (
-        <p id={errorId} className="text-xs text-red-700" role="alert">
+        <p id={errorId} className="text-xs text-status-oxide" role="alert">
           {fieldError}
         </p>
       ) : null}

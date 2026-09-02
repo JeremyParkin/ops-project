@@ -8,6 +8,7 @@ import {
   updateRecordField,
 } from "@/app/actions";
 import { ChoicePill } from "@/app/components/choice-pill";
+import { ClampedText } from "@/app/components/clamped-text";
 import { EditableTableCell } from "@/app/components/editable-table-cell";
 import { RecordBulkActionsBar } from "@/app/components/record-bulk-actions-bar";
 import { RecordRowActions } from "@/app/components/record-row-actions";
@@ -157,6 +158,11 @@ function formatTableCell(
         </a>
       );
     }
+
+    // Ordinary text only -- the identity field never reaches here
+    // (linkifyPlainText is false for it), and a linkified URL/email value
+    // already returned above.
+    return <ClampedText text={value} className="max-w-xs" />;
   }
 
   return formattedValue;

@@ -11,7 +11,7 @@ export function ChoicePill({ option }: { option: ChoiceOption }) {
 
   return (
     <span
-      className={`inline-flex items-center border px-2 py-1 text-xs font-medium ${classes}`}
+      className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-xs font-medium ${classes}`}
       title={option.archivedAt ? `${option.label} (Archived)` : option.label}
     >
       {option.label}
