@@ -86,6 +86,7 @@ import {
   getEntityRecord,
   getIncomingReferenceSummary,
   restoreEntityRecord,
+  setEntityRecordsArchived,
   type RecordActionState,
   updateEntityRecord as updateEntityRecordInRepository,
 } from "@/lib/domain/record-repository";
@@ -411,6 +412,85 @@ export async function restoreRecord(
     success: true,
     message: "Record restored.",
   };
+}
+
+// Shared by bulkArchiveRecords/bulkRestoreRecords: both submit the same
+// selected-record-ids shape and differ only in which archive direction they
+// request from the one all-or-nothing RPC (0083). Record ids are read from
+// the submission itself (repeated "recordId" fields, the same convention
+// columnFieldDefinitionId already uses), not bound ahead of time -- unlike
+// single-record actions, the selected set is only known at submit time.
+async function setRecordsArchivedBulk(
+  context: EntityTypeContext,
+  formData: FormData,
+  archived: boolean,
+): Promise<RecordActionState> {
+  const recordIds = formData
+    .getAll("recordId")
+    .filter((value): value is string => typeof value === "string" && value !== "");
+
+  if (recordIds.length === 0) {
+    return {
+      success: false,
+      message: "Select at least one record first.",
+    };
+  }
+
+  try {
+    const { entityType } = await getEntityContext(context);
+
+    if (entityType.archivedAt) {
+      return {
+        success: false,
+        message:
+          "Archived entities are read-only. Restore this entity before editing records.",
+      };
+    }
+
+    const { updatedCount } = await setEntityRecordsArchived({
+      workspaceId: context.workspaceId,
+      entityTypeId: context.entityTypeId,
+      recordIds,
+      archived,
+    });
+
+    revalidatePath(`/entities/${context.entityTypeId}`);
+
+    return {
+      success: true,
+      message: `${updatedCount} record${updatedCount === 1 ? "" : "s"} ${archived ? "archived" : "restored"}.`,
+    };
+  } catch (error) {
+    // The RPC's own error messages (count mismatch, permission denied) are
+    // hand-written and safe to show directly -- more useful here than a
+    // generic fallback, since bulk failure is exactly where a user needs to
+    // know *why* nothing changed, not just that it didn't.
+    return {
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : `Unable to ${archived ? "archive" : "restore"} the selected records. Please try again.`,
+    };
+  }
+}
+
+export async function bulkArchiveRecords(
+  context: EntityTypeContext,
+  previousState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  void previousState;
+  return setRecordsArchivedBulk(context, formData, true);
+}
+
+export async function bulkRestoreRecords(
+  context: EntityTypeContext,
+  previousState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  void previousState;
+  return setRecordsArchivedBulk(context, formData, false);
 }
 
 function formatReferenceSummary(

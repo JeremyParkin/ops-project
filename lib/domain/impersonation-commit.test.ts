@@ -418,6 +418,43 @@ describe("effective-identity enforcement: records.operate", () => {
 
     await endAnyActiveSession(adminClient);
   });
+
+  it("set_entity_records_archived_authorized (Phase 9.5 bulk archive/restore) evaluates the effective user's records.operate, not the real admin's", async () => {
+    const recordId = await createRecord(fixture.workspaceId, fixture.entityTypeId, "Bulk archive impersonation target");
+    const adminClient = await sharedAdminClient();
+    await endAnyActiveSession(adminClient);
+
+    const asRestricted = await adminClient.rpc("start_impersonation_session_authorized", {
+      p_workspace_id: fixture.workspaceId, p_target_user_id: fixture.restrictedMember.id,
+    });
+    expect(asRestricted.error).toBeNull();
+
+    const denied = await adminClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.entityTypeId,
+      p_record_ids: [recordId], p_archived: true,
+    });
+    expect(denied.error?.message).toContain("records.operate");
+    const admin = createSupabaseTestClient();
+    const { data: stillActive } = await admin.from("entity_records").select("archived_at").eq("id", recordId).single();
+    expect(stillActive?.archived_at).toBeNull();
+
+    await endAnyActiveSession(adminClient);
+    const asWorker = await adminClient.rpc("start_impersonation_session_authorized", {
+      p_workspace_id: fixture.workspaceId, p_target_user_id: fixture.worker.id,
+    });
+    expect(asWorker.error).toBeNull();
+
+    const allowed = await adminClient
+      .rpc("set_entity_records_archived_authorized", {
+        p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.entityTypeId,
+        p_record_ids: [recordId], p_archived: true,
+      })
+      .single<{ updated_record_count: number }>();
+    expect(allowed.error).toBeNull();
+    expect(allowed.data?.updated_record_count).toBe(1);
+
+    await endAnyActiveSession(adminClient);
+  });
 });
 
 describe("scope boundary: governance and builder capabilities stay real-actor-bound", () => {

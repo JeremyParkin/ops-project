@@ -1,13 +1,19 @@
 import Link from "next/link";
 import {
   archiveRecord,
+  bulkArchiveRecords,
+  bulkRestoreRecords,
   deleteRecord,
   restoreRecord,
   updateRecordField,
 } from "@/app/actions";
 import { ChoicePill } from "@/app/components/choice-pill";
 import { EditableTableCell } from "@/app/components/editable-table-cell";
+import { RecordBulkActionsBar } from "@/app/components/record-bulk-actions-bar";
 import { RecordRowActions } from "@/app/components/record-row-actions";
+import { RecordSelectionCheckbox } from "@/app/components/record-selection-checkbox";
+import { RecordSelectionProvider } from "@/app/components/record-selection-context";
+import { RecordSelectionHeaderCheckbox } from "@/app/components/record-selection-header-checkbox";
 import { resolveChoiceOption } from "@/lib/domain/choice-display";
 import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import { linkifyText } from "@/lib/domain/text-linkification";
@@ -217,8 +223,24 @@ export function EntityRecordsTable({
     );
   }
 
+  const recordIds = records.map((record) => record.id);
+  // Restoring only ever makes sense once at least one currently-rendered
+  // row is archived -- true whenever "Show archived records" is on and the
+  // object actually has any. In the default (active-only) view, every
+  // selectable row is already active, so the bar never offers it there.
+  const showRestoreAction = records.some((record) => record.archivedAt);
+
   return (
-    <section className="mx-auto w-full max-w-6xl">
+    // resetKey is the exact rendered id order: a filter/sort/
+    // archived-toggle change (different ids or a different order) resets
+    // selection -- see record-selection-context.tsx for why this is a
+    // plain prop the provider reacts to internally, not a React `key`
+    // (which would remount the bulk bar's own action-result state right as
+    // a successful action's own revalidation changes this same value). A
+    // pure column-visibility change doesn't affect `records`, so it
+    // correctly leaves selection untouched.
+    <RecordSelectionProvider resetKey={recordIds.join(",")}>
+      <section className="mx-auto w-full max-w-6xl">
       <div className="overflow-hidden border border-grit bg-white">
         <div
           className="overflow-x-auto"
@@ -229,6 +251,11 @@ export function EntityRecordsTable({
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <thead className="sticky top-0 z-10 bg-chalk text-xs uppercase tracking-wide text-stone">
               <tr>
+                {recordActionContext ? (
+                  <th scope="col" className="border-b border-grit px-4 py-3 font-medium">
+                    <RecordSelectionHeaderCheckbox recordIds={recordIds} />
+                  </th>
+                ) : null}
                 {fields.map((field) => {
                   const sortHref = sortHrefByFieldId[field.id];
                   const sortDirection = sortDirectionByFieldId[field.id];
@@ -307,12 +334,28 @@ export function EntityRecordsTable({
                 const recordEditHref = recordEditPathBase
                   ? `${recordEditPathBase}/${record.id}/edit`
                   : undefined;
+                const recordLabel = identityField
+                  ? formatFieldValue(
+                      identityField,
+                      record.values[identityField.key],
+                      relationLabelsByFieldKey,
+                      choiceOptionsByFieldKey,
+                    )
+                  : record.id;
 
                 return (
                 <tr
                   key={record.id}
                   className={record.archivedAt ? "bg-chalk text-stone" : ""}
                 >
+                  {recordActionContext ? (
+                    <td className="px-4 py-3 align-middle">
+                      <RecordSelectionCheckbox
+                        recordId={record.id}
+                        recordLabel={recordLabel}
+                      />
+                    </td>
+                  ) : null}
                   {fields.map((field) => {
                     const cell = formatTableCell(
                       field,
@@ -416,6 +459,15 @@ export function EntityRecordsTable({
           </table>
         </div>
       </div>
-    </section>
+      {recordActionContext ? (
+        <RecordBulkActionsBar
+          totalCount={recordIds.length}
+          showRestoreAction={showRestoreAction}
+          bulkArchiveAction={bulkArchiveRecords.bind(null, recordActionContext)}
+          bulkRestoreAction={bulkRestoreRecords.bind(null, recordActionContext)}
+        />
+      ) : null}
+      </section>
+    </RecordSelectionProvider>
   );
 }

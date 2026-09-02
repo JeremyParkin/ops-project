@@ -279,9 +279,11 @@ test("sorting, column visibility, and column order persist", async ({ page }) =>
   // Sortable headers (all but the relation column) render as click-to-sort
   // links, which also carry a visually-hidden sort-state description -- so
   // this asserts the visible column order via containment, not exact text.
-  await expect(headers.nth(0)).toContainText("Priority");
-  await expect(headers.nth(1)).toContainText("Title");
-  await expect(headers.nth(2)).toContainText("Status");
+  // Index 0 is the Phase 9.5 bulk-selection header checkbox column, which
+  // always leads and carries no text -- field columns start at index 1.
+  await expect(headers.nth(1)).toContainText("Priority");
+  await expect(headers.nth(2)).toContainText("Title");
+  await expect(headers.nth(3)).toContainText("Status");
   await expect(headers.filter({ hasText: "Due" })).toHaveCount(0);
 
   const rows = page.getByRole("table").getByRole("row");
@@ -290,7 +292,7 @@ test("sorting, column visibility, and column order persist", async ({ page }) =>
   await expect(rows.nth(3)).toContainText(`${run.label} Launch`);
 
   await page.reload();
-  await expect(headers.nth(0)).toContainText("Priority");
+  await expect(headers.nth(1)).toContainText("Priority");
 });
 
 test("default view can be used and cleared back to All Records", async ({

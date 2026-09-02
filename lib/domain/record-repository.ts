@@ -879,6 +879,41 @@ export async function restoreEntityRecord({
   }
 }
 
+// Bulk archive/restore, backed by the set_entity_records_archived_authorized
+// RPC (0083) -- a single transaction that validates the complete requested
+// id set (workspace + entity type + existence, all locked before checking)
+// and only then updates it. All-or-nothing: a thrown error here means
+// nothing was changed, never a partial result.
+export async function setEntityRecordsArchived({
+  workspaceId,
+  entityTypeId,
+  recordIds,
+  archived,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+  recordIds: string[];
+  archived: boolean;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_record_ids: recordIds,
+      p_archived: archived,
+    })
+    .single<{ updated_record_count: number }>();
+
+  if (error) {
+    throw new Error(
+      `Unable to ${archived ? "archive" : "restore"} the selected records: ${error.message}`,
+    );
+  }
+
+  return { updatedCount: data?.updated_record_count ?? 0 };
+}
+
 export async function getIncomingReferenceSummary({
   workspaceId,
   entityTypeId,
