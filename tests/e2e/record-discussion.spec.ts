@@ -187,6 +187,8 @@ test.afterAll(async () => {
   const admin = createSupabaseTestClient();
   const failures: string[] = [];
   if (fixture?.workspaceId) {
+    const { error: notificationError } = await admin.from("notifications").delete().eq("workspace_id", fixture.workspaceId);
+    if (notificationError) failures.push(notificationError.message);
     const { error: commentError } = await admin.from("record_comments").delete().eq("workspace_id", fixture.workspaceId);
     if (commentError) failures.push(commentError.message);
     const { error: workspaceError } = await admin.from("workspaces").delete().eq("id", fixture.workspaceId);
@@ -221,6 +223,9 @@ test("Discussion supports create, ordering, validation, tombstone, and remains d
   await discussion(page).getByRole("button", { name: "Add comment" }).click();
   await expect(discussion(page).getByRole("alert")).toContainText("4000 characters or fewer");
 
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
+  await expect(discussion(page).getByText("No comments yet.")).toBeVisible();
+
   await discussion(page).getByLabel("Add a comment").fill("Second visible comment");
   await discussion(page).getByRole("button", { name: "Add comment" }).click();
   await expect(discussion(page).getByText("Second visible comment")).toBeVisible();
@@ -240,6 +245,84 @@ test("Discussion supports create, ordering, validation, tombstone, and remains d
   await expect(discussion(page).getByText("Comment removed")).toBeVisible();
   await expect(discussion(page).getByText("Second visible comment")).toHaveCount(0);
   await expect(activity(page).getByText("Comment removed")).toHaveCount(0);
+});
+
+test("Discussion mentions active members and creates navigable notifications", async ({ page }) => {
+  const admin = createSupabaseTestClient();
+
+  await signIn(page, fixture.worker);
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
+
+  const composer = discussion(page).getByLabel("Add a comment");
+  await composer.fill("Escape check @");
+  await expect(discussion(page).getByRole("listbox")).toBeVisible();
+  await composer.press("Escape");
+  await expect(discussion(page).getByRole("listbox")).toHaveCount(0);
+
+  await composer.fill("Please review @second");
+  await discussion(page).getByRole("option", { name: `@${fixture.secondWorker.email}` }).waitFor();
+  await composer.press("ArrowDown");
+  await composer.press("ArrowUp");
+  await composer.press("Enter");
+  await expect(composer).toHaveValue(`Please review @${fixture.secondWorker.email} `);
+  await composer.pressSequentially("and duplicate @second");
+  await composer.press("Tab");
+  await composer.pressSequentially("\nBefore tomorrow.");
+  await discussion(page).getByRole("button", { name: "Add comment" }).click();
+
+  const mentionedComment = discussion(page).locator("li").filter({ hasText: "Before tomorrow." });
+  await expect(mentionedComment.getByText(`@${fixture.secondWorker.email}`)).toBeVisible();
+  await expect(mentionedComment).toHaveAttribute("id", /^comment-/);
+
+  const mentionedStorage = await admin
+    .from("record_comments")
+    .select("id")
+    .eq("workspace_id", fixture.workspaceId)
+    .eq("entity_record_id", fixture.recordId)
+    .like("body", "Please review%Before tomorrow.");
+  expect(mentionedStorage.error).toBeNull();
+  expect(mentionedStorage.data).toHaveLength(1);
+  const mentionedCommentId = mentionedStorage.data![0].id;
+
+  const durableMentions = await admin
+    .from("record_comment_mentions")
+    .select("mentioned_user_id")
+    .eq("workspace_id", fixture.workspaceId)
+    .eq("record_comment_id", mentionedCommentId);
+  expect(durableMentions.error).toBeNull();
+  expect(durableMentions.data).toEqual([{ mentioned_user_id: fixture.secondWorker.id }]);
+
+  await composer.fill("No durable mention @second");
+  await discussion(page).getByRole("option", { name: `@${fixture.secondWorker.email}` }).waitFor();
+  await composer.press("Enter");
+  await composer.fill("No durable mention after removing visible text");
+  await discussion(page).getByRole("button", { name: "Add comment" }).click();
+  await expect(discussion(page).getByText("No durable mention after removing visible text")).toBeVisible();
+
+  const removedSelectionStorage = await admin
+    .from("record_comments")
+    .select("id")
+    .eq("workspace_id", fixture.workspaceId)
+    .eq("entity_record_id", fixture.recordId)
+    .eq("body", "No durable mention after removing visible text")
+    .single();
+  expect(removedSelectionStorage.error).toBeNull();
+  const removedDurableMentions = await admin
+    .from("record_comment_mentions")
+    .select("mentioned_user_id")
+    .eq("workspace_id", fixture.workspaceId)
+    .eq("record_comment_id", removedSelectionStorage.data!.id);
+  expect(removedDurableMentions.error).toBeNull();
+  expect(removedDurableMentions.data).toEqual([]);
+
+  await signIn(page, fixture.secondWorker);
+  await page.goto("/notifications");
+  await expect(page.getByText(`${fixture.worker.email} mentioned you`)).toBeVisible();
+  await expect(page.getByText("Discussion Acme")).toBeVisible();
+
+  await page.getByRole("link", { name: new RegExp(`${fixture.worker.email} mentioned you`) }).click();
+  await page.waitForURL(new RegExp(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}#comment-`));
+  await expect(discussion(page).getByText("Before tomorrow.")).toBeVisible();
 });
 
 test("archived records keep discussion readable but remove the composer", async ({ page }) => {

@@ -18,6 +18,11 @@ export type RecordComment = {
   tombstonedByRealActorLabel?: string;
 };
 
+export type RecordCommentMentionCandidate = {
+  userId: string;
+  email: string;
+};
+
 type RecordCommentRow = {
   id: string;
   workspace_id: string;
@@ -34,6 +39,11 @@ type RecordCommentRow = {
   tombstoned_by_label: string | null;
   tombstoned_by_real_actor_user_id: string | null;
   tombstoned_by_real_actor_label: string | null;
+};
+
+type WorkspaceMemberIdentityRow = {
+  user_id: string;
+  email: string;
 };
 
 function mapRecordComment(row: RecordCommentRow): RecordComment {
@@ -114,6 +124,41 @@ export async function createRecordComment({
   return data;
 }
 
+export async function createRecordCommentWithMentions({
+  workspaceId,
+  entityTypeId,
+  recordId,
+  body,
+  mentionedUserIds,
+  supabase: injectedSupabase,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+  recordId: string;
+  body: string;
+  mentionedUserIds: string[];
+  supabase?: SupabaseServerClient;
+}) {
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+  const { data, error } = await supabase.rpc("create_record_comment_with_mentions_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_entity_record_id: recordId,
+    p_body: body,
+    p_mentioned_user_ids: [...new Set(mentionedUserIds)],
+  });
+
+  if (error) {
+    throw new Error(`Unable to add comment: ${error.message}`);
+  }
+
+  if (typeof data !== "string") {
+    throw new Error("Unable to add comment: unexpected RPC response.");
+  }
+
+  return data;
+}
+
 export async function tombstoneRecordComment({
   workspaceId,
   commentId,
@@ -132,4 +177,26 @@ export async function tombstoneRecordComment({
   if (error) {
     throw new Error(`Unable to remove comment: ${error.message}`);
   }
+}
+
+export async function listRecordCommentMentionCandidates({
+  workspaceId,
+  supabase: injectedSupabase,
+}: {
+  workspaceId: string;
+  supabase?: SupabaseServerClient;
+}): Promise<RecordCommentMentionCandidate[]> {
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+  const { data, error } = await supabase.rpc("list_workspace_member_identities_authorized", {
+    p_workspace_id: workspaceId,
+  });
+
+  if (error) {
+    throw new Error(`Unable to load mention candidates: ${error.message}`);
+  }
+
+  return ((data ?? []) as WorkspaceMemberIdentityRow[]).map((row) => ({
+    userId: row.user_id,
+    email: row.email,
+  }));
 }

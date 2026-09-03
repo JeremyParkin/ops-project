@@ -9,7 +9,10 @@ import { RecordActivity } from "@/app/components/record-activity";
 import { RecordDiscussion } from "@/app/components/record-discussion";
 import type { RecordActivityEvent } from "@/lib/domain/activity-types";
 import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
-import type { RecordComment } from "@/lib/domain/record-comment-repository";
+import type {
+  RecordComment,
+  RecordCommentMentionCandidate,
+} from "@/lib/domain/record-comment-repository";
 import type {
   IncomingRelationGroup,
   RelationLabelsByFieldKey,
@@ -50,6 +53,7 @@ type RecordDetailViewProps = {
   processSectionEntries: ProcessSectionEntry[];
   activityEvents: RecordActivityEvent[];
   comments: RecordComment[];
+  mentionCandidates: RecordCommentMentionCandidate[];
   editHref?: string;
   updateFieldAction?: UpdateFieldAction;
   createCommentAction: CommentAction;
@@ -172,6 +176,7 @@ export function RecordDetailView({
   processSectionEntries,
   activityEvents,
   comments,
+  mentionCandidates,
   editHref,
   updateFieldAction,
   createCommentAction,
@@ -358,6 +363,7 @@ export function RecordDetailView({
 
       <RecordDiscussion
         comments={comments}
+        mentionCandidates={mentionCandidates}
         isArchivedRecord={Boolean(record.archivedAt)}
         createCommentAction={createCommentAction}
         tombstoneCommentAction={tombstoneCommentAction}

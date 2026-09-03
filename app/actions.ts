@@ -113,7 +113,7 @@ import {
   validateViewFormData,
 } from "@/lib/domain/view-validation";
 import {
-  createRecordComment as createRecordCommentInRepository,
+  createRecordCommentWithMentions as createRecordCommentWithMentionsInRepository,
   tombstoneRecordComment as tombstoneRecordCommentInRepository,
 } from "@/lib/domain/record-comment-repository";
 import { RECORD_COMMENT_BODY_MAX_LENGTH } from "@/lib/domain/record-comment-validation";
@@ -663,11 +663,17 @@ export async function createRecordComment(
   }
 
   try {
-    await createRecordCommentInRepository({
+    const mentionedUserIds = formData
+      .getAll("mentionedUserIds")
+      .map((value) => String(value))
+      .filter((value) => value.length > 0);
+
+    await createRecordCommentWithMentionsInRepository({
       workspaceId: context.workspaceId,
       entityTypeId: context.entityTypeId,
       recordId: context.recordId,
       body,
+      mentionedUserIds,
     });
   } catch (error) {
     return {

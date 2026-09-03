@@ -22,7 +22,10 @@ import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/
 import { listRecordActivity } from "@/lib/domain/activity-repository";
 import { listChoiceOptionsByFieldIds } from "@/lib/domain/choice-option-repository";
 import { toChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
-import { listRecordComments } from "@/lib/domain/record-comment-repository";
+import {
+  listRecordCommentMentionCandidates,
+  listRecordComments,
+} from "@/lib/domain/record-comment-repository";
 import { getEntityContext } from "@/lib/domain/metadata-repository";
 import {
   getProcessRunWithSteps,
@@ -181,7 +184,15 @@ async function loadRecordDetailPageData(
       recordId,
       fields: entityContext.fields,
     });
-    const [relationLookups, choiceOptionsByFieldId, incomingRelationGroups, processSectionEntries, activityEvents, comments] = await Promise.all([
+    const [
+      relationLookups,
+      choiceOptionsByFieldId,
+      incomingRelationGroups,
+      processSectionEntries,
+      activityEvents,
+      comments,
+      mentionCandidates,
+    ] = await Promise.all([
       getRelationLookups({
         workspaceId,
         fields: entityContext.fields,
@@ -211,6 +222,7 @@ async function loadRecordDetailPageData(
       // itself, only leave its own section looking empty.
       listRecordActivity({ workspaceId, entityTypeId, recordId }).catch(() => []),
       listRecordComments({ workspaceId, entityTypeId, recordId }).catch(() => []),
+      listRecordCommentMentionCandidates({ workspaceId }).catch(() => []),
     ]);
 
     return {
@@ -224,6 +236,7 @@ async function loadRecordDetailPageData(
       processSectionEntries,
       activityEvents,
       comments,
+      mentionCandidates,
     };
   } catch {
     return null;
@@ -257,6 +270,7 @@ export default async function RecordDetailPage({
     processSectionEntries,
     activityEvents,
     comments,
+    mentionCandidates,
   } = pageData;
   const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(fields, choiceOptionsByFieldId);
   const actionContext = {
@@ -294,6 +308,7 @@ export default async function RecordDetailPage({
           processSectionEntries={record.archivedAt ? [] : processSectionEntries}
           activityEvents={activityEvents}
           comments={comments}
+          mentionCandidates={mentionCandidates}
           editHref={editHref}
           updateFieldAction={updateFieldAction}
           createCommentAction={createRecordComment.bind(null, actionContext)}

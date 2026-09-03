@@ -23,6 +23,7 @@ type Fixture = {
   secondWorker: User;
   administrator: User;
   readOnly: User;
+  deactivatedMember: User;
 };
 
 const createdUserIds: string[] = [];
@@ -162,6 +163,25 @@ async function createComment(
   return String(data);
 }
 
+async function createCommentWithMentions(
+  client: SupabaseClient,
+  workspaceId: string,
+  entityTypeId: string,
+  recordId: string,
+  body: string,
+  mentionedUserIds: string[],
+) {
+  const { data, error } = await client.rpc("create_record_comment_with_mentions_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_entity_record_id: recordId,
+    p_body: body,
+    p_mentioned_user_ids: mentionedUserIds,
+  });
+  if (error) throw new Error(error.message);
+  return String(data);
+}
+
 async function listComments(
   client: SupabaseClient,
   workspaceId: string,
@@ -198,6 +218,7 @@ async function endAnyActiveSession(client: SupabaseClient) {
 }
 
 async function createFixture(): Promise<Fixture> {
+  const admin = createSupabaseTestClient();
   const workspaceId = await createWorkspace("E2E Record Comments");
   const otherWorkspaceId = await createWorkspace("E2E Record Comments Other");
 
@@ -217,12 +238,21 @@ async function createFixture(): Promise<Fixture> {
   const secondWorker = await createUser("second-worker");
   const administrator = await createUser("administrator");
   const readOnly = await createUser("read-only");
+  const deactivatedMember = await createUser("deactivated");
 
   await addMembership(workspaceId, worker.id, workerRoleId);
   await addMembership(workspaceId, secondWorker.id, workerRoleId);
   await addMembership(workspaceId, administrator.id, administratorRoleId);
   await addMembership(workspaceId, readOnly.id, readOnlyRoleId);
+  await addMembership(workspaceId, deactivatedMember.id, workerRoleId);
   await addMembership(otherWorkspaceId, otherWorker.id, otherWorkerRoleId);
+
+  const { error: deactivateError } = await admin
+    .from("workspace_memberships")
+    .update({ deactivated_at: new Date().toISOString() })
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", deactivatedMember.id);
+  if (deactivateError) throw new Error(deactivateError.message);
 
   const entityTypeId = await createEntityType(workspaceId, `Record Comment Object ${workspaceId.slice(0, 6)}`);
   const otherEntityTypeId = await createEntityType(otherWorkspaceId, `Record Comment Other Object ${otherWorkspaceId.slice(0, 6)}`);
@@ -241,6 +271,7 @@ async function createFixture(): Promise<Fixture> {
     secondWorker,
     administrator,
     readOnly,
+    deactivatedMember,
   };
 }
 
@@ -257,6 +288,8 @@ afterAll(async () => {
   const failures: string[] = [];
 
   if (createdWorkspaceIds.length > 0) {
+    const { error: notificationError } = await admin.from("notifications").delete().in("workspace_id", createdWorkspaceIds);
+    if (notificationError) failures.push(notificationError.message);
     const { error: commentError } = await admin.from("record_comments").delete().in("workspace_id", createdWorkspaceIds);
     if (commentError) failures.push(commentError.message);
     const { error: workspaceError } = await admin.from("workspaces").delete().in("id", createdWorkspaceIds);
@@ -434,6 +467,426 @@ describe("record comment create/read RPCs", () => {
       p_limit: 100,
     });
     expect(isolatedRead.error?.message).toContain("Workspace access denied");
+  });
+});
+
+describe("record comment mentions and notifications", () => {
+  it("creates mentions and notifications atomically from stable active member ids", async () => {
+    const workerClient = await authenticatedClient(fixture.worker);
+    const secondWorkerClient = await authenticatedClient(fixture.secondWorker);
+    const otherWorkerClient = await authenticatedClient(fixture.otherWorker);
+    const admin = createSupabaseTestClient();
+
+    const plainCommentId = await createCommentWithMentions(
+      workerClient,
+      fixture.workspaceId,
+      fixture.entityTypeId,
+      fixture.recordId,
+      "Plain comment through 10.2 RPC",
+      [],
+    );
+    const plainComment = await admin
+      .from("record_comments")
+      .select("body")
+      .eq("id", plainCommentId)
+      .single();
+    expect(plainComment.error).toBeNull();
+    expect(plainComment.data?.body).toBe("Plain comment through 10.2 RPC");
+    const plainMentions = await admin
+      .from("record_comment_mentions")
+      .select("id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", plainCommentId);
+    expect(plainMentions.error).toBeNull();
+    expect(plainMentions.data).toEqual([]);
+
+    const multiMentionId = await createCommentWithMentions(
+      workerClient,
+      fixture.workspaceId,
+      fixture.entityTypeId,
+      fixture.recordId,
+      `Looping in @${fixture.secondWorker.email} and @${fixture.administrator.email}`,
+      [fixture.secondWorker.id, fixture.administrator.id],
+    );
+    const multiNotifications = await admin
+      .from("notifications")
+      .select("recipient_user_id, event_type, record_comment_id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", multiMentionId)
+      .order("recipient_user_id", { ascending: true });
+    expect(multiNotifications.error).toBeNull();
+    expect(multiNotifications.data).toEqual([
+      {
+        recipient_user_id: fixture.administrator.id,
+        event_type: "record_comment_mentioned",
+        record_comment_id: multiMentionId,
+      },
+      {
+        recipient_user_id: fixture.secondWorker.id,
+        event_type: "record_comment_mentioned",
+        record_comment_id: multiMentionId,
+      },
+    ].sort((a, b) => a.recipient_user_id.localeCompare(b.recipient_user_id)));
+
+    const commentId = await createCommentWithMentions(
+      workerClient,
+      fixture.workspaceId,
+      fixture.entityTypeId,
+      fixture.recordId,
+      ` Heads up @${fixture.secondWorker.email}\n\nStill plain text. `,
+      [fixture.secondWorker.id, fixture.secondWorker.id, fixture.worker.id],
+    );
+
+    const stored = await admin
+      .from("record_comments")
+      .select("body, author_user_id, real_actor_user_id")
+      .eq("id", commentId)
+      .single();
+    expect(stored.error).toBeNull();
+    expect(stored.data).toEqual({
+      body: `Heads up @${fixture.secondWorker.email}\n\nStill plain text.`,
+      author_user_id: fixture.worker.id,
+      real_actor_user_id: null,
+    });
+
+    const mentions = await admin
+      .from("record_comment_mentions")
+      .select("record_comment_id, mentioned_user_id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId)
+      .order("mentioned_user_id", { ascending: true });
+    expect(mentions.error).toBeNull();
+    expect(mentions.data).toEqual([
+      { record_comment_id: commentId, mentioned_user_id: fixture.secondWorker.id },
+      { record_comment_id: commentId, mentioned_user_id: fixture.worker.id },
+    ].sort((a, b) => a.mentioned_user_id.localeCompare(b.mentioned_user_id)));
+
+    const notifications = await admin
+      .from("notifications")
+      .select("recipient_user_id, event_type, record_comment_id, entity_type_id, entity_record_id, title, destination_href, dedup_key, read_at")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId);
+    expect(notifications.error).toBeNull();
+    expect(notifications.data).toEqual([
+      {
+        recipient_user_id: fixture.secondWorker.id,
+        event_type: "record_comment_mentioned",
+        record_comment_id: commentId,
+        entity_type_id: fixture.entityTypeId,
+        entity_record_id: fixture.recordId,
+        title: `${fixture.worker.email} mentioned you`,
+        destination_href: `/entities/${fixture.entityTypeId}/records/${fixture.recordId}#comment-${commentId}`,
+        dedup_key: `record_comment_mention:${commentId}:${fixture.secondWorker.id}`,
+        read_at: null,
+      },
+    ]);
+
+    const recipientVisible = await secondWorkerClient
+      .from("notifications")
+      .select("recipient_user_id, record_comment_id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId);
+    expect(recipientVisible.error).toBeNull();
+    expect(recipientVisible.data).toEqual([
+      { recipient_user_id: fixture.secondWorker.id, record_comment_id: commentId },
+    ]);
+
+    const authorVisible = await workerClient
+      .from("notifications")
+      .select("id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId);
+    expect(authorVisible.error).toBeNull();
+    expect(authorVisible.data).toEqual([]);
+
+    const invalidMention = await workerClient.rpc("create_record_comment_with_mentions_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_entity_type_id: fixture.entityTypeId,
+      p_entity_record_id: fixture.recordId,
+      p_body: "Invalid recipient should roll back",
+      p_mentioned_user_ids: [fixture.otherWorker.id],
+    });
+    expect(invalidMention.error?.message).toContain("Mention recipients must be active workspace members");
+
+    const nonexistentMention = await workerClient.rpc("create_record_comment_with_mentions_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_entity_type_id: fixture.entityTypeId,
+      p_entity_record_id: fixture.recordId,
+      p_body: "Nonexistent recipient should roll back",
+      p_mentioned_user_ids: [randomUUID()],
+    });
+    expect(nonexistentMention.error?.message).toContain("Mention recipients must be active workspace members");
+
+    const deactivatedMention = await workerClient.rpc("create_record_comment_with_mentions_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_entity_type_id: fixture.entityTypeId,
+      p_entity_record_id: fixture.recordId,
+      p_body: "Deactivated recipient should roll back",
+      p_mentioned_user_ids: [fixture.deactivatedMember.id],
+    });
+    expect(deactivatedMention.error?.message).toContain("Mention recipients must be active workspace members");
+
+    const invalidStored = await admin
+      .from("record_comments")
+      .select("id")
+      .eq("workspace_id", fixture.workspaceId)
+      .in("body", [
+        "Invalid recipient should roll back",
+        "Nonexistent recipient should roll back",
+        "Deactivated recipient should roll back",
+      ]);
+    expect(invalidStored.error).toBeNull();
+    expect(invalidStored.data).toEqual([]);
+
+    const rawMentionInsert = await workerClient.from("record_comment_mentions").insert({
+      workspace_id: fixture.workspaceId,
+      record_comment_id: commentId,
+      mentioned_user_id: fixture.secondWorker.id,
+    });
+    expect(rawMentionInsert.error).not.toBeNull();
+
+    const rawMentionUpdate = await workerClient
+      .from("record_comment_mentions")
+      .update({ mentioned_user_id: fixture.worker.id })
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId);
+    expect(rawMentionUpdate.error).not.toBeNull();
+
+    const rawMentionDelete = await workerClient
+      .from("record_comment_mentions")
+      .delete()
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId);
+    expect(rawMentionDelete.error).not.toBeNull();
+
+    const rawNotificationInsert = await workerClient.from("notifications").insert({
+      workspace_id: fixture.workspaceId,
+      recipient_user_id: fixture.secondWorker.id,
+      event_type: "record_comment_mentioned",
+      record_comment_id: commentId,
+      entity_type_id: fixture.entityTypeId,
+      entity_record_id: fixture.recordId,
+      title: "Forged mention",
+      destination_href: `/entities/${fixture.entityTypeId}/records/${fixture.recordId}#comment-${commentId}`,
+      dedup_key: `forged:${randomUUID()}`,
+    });
+    expect(rawNotificationInsert.error).not.toBeNull();
+
+    const tombstone = await workerClient.rpc("tombstone_record_comment_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_comment_id: commentId,
+    });
+    expect(tombstone.error).toBeNull();
+
+    const mentionsAfterTombstone = await admin
+      .from("record_comment_mentions")
+      .select("mentioned_user_id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId);
+    expect(mentionsAfterTombstone.error).toBeNull();
+    expect(mentionsAfterTombstone.data).toHaveLength(2);
+
+    const notificationAfterTombstone = await admin
+      .from("notifications")
+      .select("record_comment_id, recipient_user_id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId);
+    expect(notificationAfterTombstone.error).toBeNull();
+    expect(notificationAfterTombstone.data).toHaveLength(1);
+
+    const foreignWorkspaceCreate = await otherWorkerClient.rpc("create_record_comment_with_mentions_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_entity_type_id: fixture.entityTypeId,
+      p_entity_record_id: fixture.recordId,
+      p_body: "Foreign workspace mention",
+      p_mentioned_user_ids: [fixture.secondWorker.id],
+    });
+    expect(foreignWorkspaceCreate.error).not.toBeNull();
+  });
+
+  it("keeps notification recipient reads auth.uid-scoped, including during impersonation", async () => {
+    const workerClient = await authenticatedClient(fixture.worker);
+    const secondWorkerClient = await authenticatedClient(fixture.secondWorker);
+    const adminClient = await administratorClient();
+
+    const commentId = await createCommentWithMentions(
+      workerClient,
+      fixture.workspaceId,
+      fixture.entityTypeId,
+      fixture.recordId,
+      `Recipient visibility @${fixture.secondWorker.email}`,
+      [fixture.secondWorker.id],
+    );
+
+    const admin = createSupabaseTestClient();
+    const notification = await admin
+      .from("notifications")
+      .select("id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId)
+      .single();
+    expect(notification.error).toBeNull();
+    const notificationId = notification.data!.id;
+
+    const workerRead = await workerClient
+      .from("notifications")
+      .select("id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("id", notificationId);
+    expect(workerRead.error).toBeNull();
+    expect(workerRead.data).toEqual([]);
+
+    const workerMark = await workerClient.rpc("mark_notification_read_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_notification_id: notificationId,
+    });
+    expect(workerMark.error).toBeNull();
+    const stillUnread = await admin
+      .from("notifications")
+      .select("read_at")
+      .eq("id", notificationId)
+      .single();
+    expect(stillUnread.data?.read_at).toBeNull();
+
+    const recipientMark = await secondWorkerClient.rpc("mark_notification_read_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_notification_id: notificationId,
+    });
+    expect(recipientMark.error).toBeNull();
+    const nowRead = await admin
+      .from("notifications")
+      .select("read_at")
+      .eq("id", notificationId)
+      .single();
+    expect(nowRead.data?.read_at).not.toBeNull();
+
+    const impersonationStart = await adminClient.rpc("start_impersonation_session_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_target_user_id: fixture.secondWorker.id,
+    });
+    expect(impersonationStart.error).toBeNull();
+
+    const impersonatedRecipientRead = await adminClient
+      .from("notifications")
+      .select("id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("id", notificationId);
+    expect(impersonatedRecipientRead.error).toBeNull();
+    expect(impersonatedRecipientRead.data).toEqual([]);
+
+    await endAnyActiveSession(adminClient);
+  });
+
+  it("keeps mention notifications navigable after tombstone and archive while blocking new archived comments", async () => {
+    const workerClient = await authenticatedClient(fixture.worker);
+    const admin = createSupabaseTestClient();
+    const archivalRecordId = await createRecord(fixture.workspaceId, fixture.entityTypeId, "Mention archive target");
+
+    const commentId = await createCommentWithMentions(
+      workerClient,
+      fixture.workspaceId,
+      fixture.entityTypeId,
+      archivalRecordId,
+      `Archive-safe mention @${fixture.secondWorker.email}`,
+      [fixture.secondWorker.id],
+    );
+
+    const tombstone = await workerClient.rpc("tombstone_record_comment_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_comment_id: commentId,
+    });
+    expect(tombstone.error).toBeNull();
+
+    const archive = await workerClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_entity_type_id: fixture.entityTypeId,
+      p_record_ids: [archivalRecordId],
+      p_archived: true,
+    });
+    expect(archive.error).toBeNull();
+
+    const notification = await admin
+      .from("notifications")
+      .select("title, destination_href, record_comment_id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId)
+      .single();
+    expect(notification.error).toBeNull();
+    expect(notification.data).toEqual({
+      title: `${fixture.worker.email} mentioned you`,
+      destination_href: `/entities/${fixture.entityTypeId}/records/${archivalRecordId}#comment-${commentId}`,
+      record_comment_id: commentId,
+    });
+    expect(notification.data?.title).not.toContain("Archive-safe mention");
+
+    const listed = await listComments(workerClient, fixture.workspaceId, fixture.entityTypeId, archivalRecordId);
+    const listedComment = listed.find((comment) => comment.id === commentId);
+    expect(listedComment?.body).toBeNull();
+
+    const mentionsAfterArchive = await admin
+      .from("record_comment_mentions")
+      .select("mentioned_user_id")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("record_comment_id", commentId);
+    expect(mentionsAfterArchive.error).toBeNull();
+    expect(mentionsAfterArchive.data).toEqual([{ mentioned_user_id: fixture.secondWorker.id }]);
+
+    const deniedCreate = await workerClient.rpc("create_record_comment_with_mentions_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_entity_type_id: fixture.entityTypeId,
+      p_entity_record_id: archivalRecordId,
+      p_body: `Archived mention @${fixture.secondWorker.email}`,
+      p_mentioned_user_ids: [fixture.secondWorker.id],
+    });
+    expect(deniedCreate.error?.message).toContain("Record not found or archived");
+  });
+
+  it("stores effective author and real actor for impersonated mention comments", async () => {
+    const adminClient = await administratorClient();
+
+    const startImpersonating = await adminClient.rpc("start_impersonation_session_authorized", {
+      p_workspace_id: fixture.workspaceId,
+      p_target_user_id: fixture.worker.id,
+    });
+    expect(startImpersonating.error).toBeNull();
+
+    const commentId = await createCommentWithMentions(
+      adminClient,
+      fixture.workspaceId,
+      fixture.entityTypeId,
+      fixture.recordId,
+      `Impersonated ping @${fixture.secondWorker.email}`,
+      [fixture.secondWorker.id],
+    );
+
+    const [commentStorage, notificationStorage] = await Promise.all([
+      createSupabaseTestClient()
+        .from("record_comments")
+        .select("author_user_id, author_label, real_actor_user_id, real_actor_label")
+        .eq("id", commentId)
+        .single(),
+      createSupabaseTestClient()
+        .from("notifications")
+        .select("recipient_user_id, title")
+        .eq("workspace_id", fixture.workspaceId)
+        .eq("record_comment_id", commentId)
+        .single(),
+    ]);
+
+    expect(commentStorage.error).toBeNull();
+    expect(commentStorage.data).toEqual({
+      author_user_id: fixture.worker.id,
+      author_label: fixture.worker.email,
+      real_actor_user_id: fixture.administrator.id,
+      real_actor_label: fixture.administrator.email,
+    });
+    expect(notificationStorage.error).toBeNull();
+    expect(notificationStorage.data).toEqual({
+      recipient_user_id: fixture.secondWorker.id,
+      title: `${fixture.worker.email} mentioned you`,
+    });
+
+    await endAnyActiveSession(adminClient);
   });
 });
 

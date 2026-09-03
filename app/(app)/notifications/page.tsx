@@ -13,7 +13,7 @@ export default async function NotificationsPage() {
     <WorkspacePageLayout>
       <PageHeader
         title="Notifications"
-        description="Assignments and due dates for work assigned to you. Marking a notification read never changes My Work."
+        description="Assignments, due dates, and record mentions for work assigned to you. Marking a notification read never changes My Work."
       />
       <NotificationList workspaceId={workspaceId} notifications={notifications} />
     </WorkspacePageLayout>

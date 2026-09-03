@@ -1,6 +1,10 @@
 import type { IsoUtcTimestamp } from "./types";
 
-export type NotificationEventType = "step_assigned" | "step_due_soon" | "step_overdue";
+export type NotificationEventType =
+  | "step_assigned"
+  | "step_due_soon"
+  | "step_overdue"
+  | "record_comment_mentioned";
 
 export type WorkspaceNotification = {
   id: string;
@@ -10,6 +14,7 @@ export type WorkspaceNotification = {
   processTemplateId?: string;
   processRunId?: string;
   processStepRunId?: string;
+  recordCommentId?: string;
   entityTypeId?: string;
   entityRecordId?: string;
   title: string;
