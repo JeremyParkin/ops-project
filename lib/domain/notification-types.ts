@@ -4,7 +4,8 @@ export type NotificationEventType =
   | "step_assigned"
   | "step_due_soon"
   | "step_overdue"
-  | "record_comment_mentioned";
+  | "record_comment_mentioned"
+  | "process_step_run_comment_mentioned";
 
 export type WorkspaceNotification = {
   id: string;
@@ -15,6 +16,7 @@ export type WorkspaceNotification = {
   processRunId?: string;
   processStepRunId?: string;
   recordCommentId?: string;
+  processStepRunCommentId?: string;
   entityTypeId?: string;
   entityRecordId?: string;
   title: string;

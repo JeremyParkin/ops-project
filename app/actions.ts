@@ -632,6 +632,7 @@ export type RecordCommentActionState = {
   success: boolean;
   message: string;
   body?: string;
+  resetKey?: string;
 };
 
 const initialRecordCommentActionState: RecordCommentActionState = {
@@ -662,13 +663,15 @@ export async function createRecordComment(
     };
   }
 
+  let commentId: string;
+
   try {
     const mentionedUserIds = formData
       .getAll("mentionedUserIds")
       .map((value) => String(value))
       .filter((value) => value.length > 0);
 
-    await createRecordCommentWithMentionsInRepository({
+    commentId = await createRecordCommentWithMentionsInRepository({
       workspaceId: context.workspaceId,
       entityTypeId: context.entityTypeId,
       recordId: context.recordId,
@@ -689,6 +692,7 @@ export async function createRecordComment(
     success: true,
     message: "Comment added.",
     body: "",
+    resetKey: commentId,
   };
 }
 

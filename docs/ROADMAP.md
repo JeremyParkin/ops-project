@@ -92,7 +92,7 @@ This is a major product phase, not cosmetic polish. Business objects are the cen
 
 ## Phase 10 - Collaboration
 
-**Status:** In progress. Phase 10.1 record-level Discussion and Phase 10.2 record-comment mentions with narrow in-app notifications are complete. Implemented details and verification live in `PROJECT_CONTEXT.md`.
+**Status:** In progress. Phase 10.1 record-level Discussion, Phase 10.2 record-comment mentions with narrow in-app notifications, and Phase 10.3 Process Step Run Discussion are complete. Implemented details and verification live in `PROJECT_CONTEXT.md`.
 
 **Goal:** Add the human collaboration layer around Kinema's operational objects and process work.
 
@@ -100,9 +100,8 @@ Phase 10 should make it natural for people to discuss, request input, and preser
 
 Likely scope:
 
-- Record-level comments/discussions are done for Phase 10.1; record-comment mentions with in-app notifications are done for Phase 10.2. Continue from those primitives rather than rebuilding a generic chat system.
-- Comments or contextual discussion on process runs and tasks where the workflow warrants it.
-- A likely next collaboration decision is whether discussion should attach to process runs/tasks, or whether record-level Discussion needs small lifecycle refinements first.
+- Record-level comments/discussions are done for Phase 10.1; record-comment mentions with in-app notifications are done for Phase 10.2; human-operable Process Step Run discussion is done for Phase 10.3. Continue from those primitives rather than rebuilding a generic chat system.
+- A likely next collaboration decision is whether to add lightweight input-request/request-for-response semantics on top of comments and mentions, still anchored to records or human-operable process steps.
 - Requests for input and lightweight collaboration patterns tied to records, tasks, or approvals.
 - Durable conversation history with clear authorship, timestamps, and permission behavior.
 - Notification integration for comments, mentions, and input requests.

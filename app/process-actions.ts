@@ -13,10 +13,15 @@ import {
   startProcessRun as startProcessRunInRepository,
 } from "@/lib/domain/process-repository";
 import {
+  createProcessStepRunCommentWithMentions as createProcessStepRunCommentWithMentionsInRepository,
+  tombstoneProcessStepRunComment as tombstoneProcessStepRunCommentInRepository,
+} from "@/lib/domain/process-step-run-comment-repository";
+import {
   type ProcessTemplateFormState,
   validateProcessTemplateFormData,
 } from "@/lib/domain/process-validation";
 import type { ProcessConditionWaitRule, ProcessWaitRule } from "@/lib/domain/process-types";
+import { RECORD_COMMENT_BODY_MAX_LENGTH } from "@/lib/domain/record-comment-validation";
 import {
   createRecurrenceRule,
   setRecurrenceRuleActive,
@@ -28,6 +33,19 @@ import type { ProcessRecurrenceRuleInput } from "@/lib/domain/recurrence-types";
 export type ProcessActionState = {
   success: boolean;
   message: string;
+};
+
+export type ProcessStepRunCommentActionState = {
+  success: boolean;
+  message: string;
+  body?: string;
+  resetKey?: string;
+};
+
+const initialProcessStepRunCommentActionState: ProcessStepRunCommentActionState = {
+  success: false,
+  message: "",
+  body: "",
 };
 
 type ProcessTemplateContext = {
@@ -67,6 +85,11 @@ type CompleteProcessStepRunContext = {
 };
 
 type DecideProcessApprovalContext = CompleteProcessStepRunContext;
+
+type ProcessStepRunCommentContext = CompleteProcessStepRunContext & {
+  processStepRunId?: string;
+  commentId?: string;
+};
 
 function getWaitRule(step: ProcessTemplateFormState["values"]["steps"][number]): ProcessWaitRule | undefined {
   if (step.nodeType !== "wait") return undefined;
@@ -382,6 +405,103 @@ export async function decideProcessApprovalAction(
   revalidatePath(`/process-runs/${context.processRunId}`);
 
   return { success: true, message: "Approval decision recorded." };
+}
+
+export async function createProcessStepRunCommentAction(
+  context: ProcessStepRunCommentContext,
+  _previousState: ProcessStepRunCommentActionState,
+  formData: FormData,
+): Promise<ProcessStepRunCommentActionState> {
+  const processStepRunId = context.processStepRunId ?? String(formData.get("processStepRunId") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!processStepRunId) {
+    return {
+      ...initialProcessStepRunCommentActionState,
+      message: "Invalid step.",
+    };
+  }
+
+  if (!body) {
+    return {
+      ...initialProcessStepRunCommentActionState,
+      message: "Comment body is required.",
+    };
+  }
+
+  if (body.length > RECORD_COMMENT_BODY_MAX_LENGTH) {
+    return {
+      success: false,
+      message: `Comment body must be ${RECORD_COMMENT_BODY_MAX_LENGTH} characters or fewer.`,
+      body,
+    };
+  }
+
+  let commentId: string;
+
+  try {
+    const mentionedUserIds = formData
+      .getAll("mentionedUserIds")
+      .map((value) => String(value))
+      .filter((value) => value.length > 0);
+
+    commentId = await createProcessStepRunCommentWithMentionsInRepository({
+      workspaceId: context.workspaceId,
+      processRunId: context.processRunId,
+      processStepRunId,
+      body,
+      mentionedUserIds,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to add comment. Please try again.",
+      body,
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return {
+    success: true,
+    message: "Comment added.",
+    body: "",
+    resetKey: commentId,
+  };
+}
+
+export async function tombstoneProcessStepRunCommentAction(
+  context: ProcessStepRunCommentContext,
+  _previousState: ProcessStepRunCommentActionState,
+  formData: FormData,
+): Promise<ProcessStepRunCommentActionState> {
+  const commentId = context.commentId ?? String(formData.get("commentId") ?? "");
+
+  if (!commentId) {
+    return {
+      success: false,
+      message: "Unable to remove comment. Please try again.",
+    };
+  }
+
+  try {
+    await tombstoneProcessStepRunCommentInRepository({
+      workspaceId: context.workspaceId,
+      commentId,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to remove comment. Please try again.",
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return {
+    success: true,
+    message: "Comment removed.",
+  };
 }
 
 function parseRecurrenceRuleFormData(formData: FormData): ProcessRecurrenceRuleInput | null {
