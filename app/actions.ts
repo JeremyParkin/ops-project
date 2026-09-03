@@ -112,6 +112,11 @@ import {
   type ViewFormState,
   validateViewFormData,
 } from "@/lib/domain/view-validation";
+import {
+  createRecordComment as createRecordCommentInRepository,
+  tombstoneRecordComment as tombstoneRecordCommentInRepository,
+} from "@/lib/domain/record-comment-repository";
+import { RECORD_COMMENT_BODY_MAX_LENGTH } from "@/lib/domain/record-comment-validation";
 
 type CreateRecordContext = {
   workspaceId: string;
@@ -138,6 +143,10 @@ type MoveFieldDefinitionContext = UpdateFieldDefinitionContext & {
 
 type EntityViewContext = CreateRecordContext & {
   viewId?: string;
+};
+
+type RecordCommentContext = UpdateRecordContext & {
+  commentId?: string;
 };
 
 export type EntityTypeActionState = {
@@ -516,6 +525,12 @@ function formatReferenceSummary(
   }.`;
 }
 
+function formatCommentReferenceMessage(entityName: string, commentCount: number) {
+  return `Cannot delete this ${entityName} because ${commentCount} comment${
+    commentCount === 1 ? "" : "s"
+  } are part of its discussion history.`;
+}
+
 export async function deleteRecord(
   context: UpdateRecordContext,
   previousState: RecordActionState,
@@ -547,6 +562,13 @@ export async function deleteRecord(
             ...summary,
             total: result.referenceCount,
           }),
+        };
+      }
+
+      if (result.commentCount > 0) {
+        return {
+          success: false,
+          message: formatCommentReferenceMessage(entityType.name, result.commentCount),
         };
       }
 
@@ -604,6 +626,98 @@ export async function deleteRecordFromDetail(
   }
 
   redirect(`/entities/${context.entityTypeId}`);
+}
+
+export type RecordCommentActionState = {
+  success: boolean;
+  message: string;
+  body?: string;
+};
+
+const initialRecordCommentActionState: RecordCommentActionState = {
+  success: false,
+  message: "",
+  body: "",
+};
+
+export async function createRecordComment(
+  context: RecordCommentContext,
+  _previousState: RecordCommentActionState,
+  formData: FormData,
+): Promise<RecordCommentActionState> {
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!body) {
+    return {
+      ...initialRecordCommentActionState,
+      message: "Comment body is required.",
+    };
+  }
+
+  if (body.length > RECORD_COMMENT_BODY_MAX_LENGTH) {
+    return {
+      success: false,
+      message: `Comment body must be ${RECORD_COMMENT_BODY_MAX_LENGTH} characters or fewer.`,
+      body,
+    };
+  }
+
+  try {
+    await createRecordCommentInRepository({
+      workspaceId: context.workspaceId,
+      entityTypeId: context.entityTypeId,
+      recordId: context.recordId,
+      body,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to add comment. Please try again.",
+      body,
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
+
+  return {
+    success: true,
+    message: "Comment added.",
+    body: "",
+  };
+}
+
+export async function tombstoneRecordComment(
+  context: RecordCommentContext,
+  _previousState: RecordCommentActionState,
+  formData: FormData,
+): Promise<RecordCommentActionState> {
+  const commentId = context.commentId ?? String(formData.get("commentId") ?? "");
+
+  if (!commentId) {
+    return {
+      success: false,
+      message: "Unable to remove comment. Please try again.",
+    };
+  }
+
+  try {
+    await tombstoneRecordCommentInRepository({
+      workspaceId: context.workspaceId,
+      commentId,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to remove comment. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
+
+  return {
+    success: true,
+    message: "Comment removed.",
+  };
 }
 
 export async function updateRecord(

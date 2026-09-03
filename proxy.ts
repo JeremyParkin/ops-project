@@ -53,6 +53,14 @@ export async function proxy(request: NextRequest) {
 // /sign-in by this proxy before its own route handler ever ran, found by
 // making a real, unauthenticated HTTP call to /api/v1/objects rather than
 // only testing these routes via direct in-process function calls.
+//
+// icon.svg/apple-icon.png/manifest.webmanifest are Next.js's app-icon file
+// conventions (favicon.ico was already excluded here) -- a signed-out
+// visitor's browser requests these directly, so without the same exclusion
+// they'd get redirected to the /sign-in HTML page instead of the actual
+// asset.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|branding|favicon.ico|api/v1|api/internal).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|branding|favicon.ico|icon.svg|apple-icon.png|manifest.webmanifest|api/v1|api/internal).*)",
+  ],
 };

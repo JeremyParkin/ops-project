@@ -1,0 +1,40 @@
+kinema — favicon package
+========================
+
+Drop these in your site root and paste the HTML below into <head>.
+
+  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+
+Modern browsers take favicon.svg and scale it perfectly. favicon.ico is the
+fallback for older browsers and for some feed readers and chat unfurlers.
+
+
+FILES
+
+favicon.svg          the master. Vector, transparent groove, no background.
+favicon.ico          multi-size 16/32/48, transparent
+favicon-16/32/48.png transparent, for anywhere that wants a specific size
+favicon-192/512.png  transparent, PWA / Android
+apple-touch-icon.png 180px, brass on graphite, 14% padding
+                     (iOS ignores transparency and adds its own corner radius,
+                      so this one needs an opaque ground)
+maskable-512.png     brass on graphite, 20% safe-zone inset for Android
+                     adaptive icons that crop to a circle or squircle
+site.webmanifest     wire-up for the PNGs above
+icon-graphite.svg    512 vector, brass on graphite — social avatars, app tiles
+icon-paper.svg       512 vector, brass on paper — light-ground avatars
+
+
+A NOTE ON THE TRANSPARENT GROOVE
+
+favicon.svg and the PNGs leave the groove empty, so it picks up whatever is
+behind it — a dark browser tab bar, a light one, either works. The trade is
+that against a brass-coloured surface the mark would disappear. If you ever
+need it on brass, use icon-graphite.svg instead.
+
+Mark geometry is fixed at all sizes: body plus sliver, groove = stroke 11.5
+on r 64 about (12,88), converted to outline. Never re-weight the groove.
+Brass is #C8913A everywhere.

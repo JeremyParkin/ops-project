@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   archiveRecord,
+  createRecordComment,
   deleteRecordFromDetail,
   restoreRecord,
+  tombstoneRecordComment,
   updateRecordField,
 } from "@/app/actions";
 import { ObjectContextNav } from "@/app/components/object-context-nav";
@@ -20,6 +22,7 @@ import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/
 import { listRecordActivity } from "@/lib/domain/activity-repository";
 import { listChoiceOptionsByFieldIds } from "@/lib/domain/choice-option-repository";
 import { toChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
+import { listRecordComments } from "@/lib/domain/record-comment-repository";
 import { getEntityContext } from "@/lib/domain/metadata-repository";
 import {
   getProcessRunWithSteps,
@@ -178,7 +181,7 @@ async function loadRecordDetailPageData(
       recordId,
       fields: entityContext.fields,
     });
-    const [relationLookups, choiceOptionsByFieldId, incomingRelationGroups, processSectionEntries, activityEvents] = await Promise.all([
+    const [relationLookups, choiceOptionsByFieldId, incomingRelationGroups, processSectionEntries, activityEvents, comments] = await Promise.all([
       getRelationLookups({
         workspaceId,
         fields: entityContext.fields,
@@ -207,6 +210,7 @@ async function loadRecordDetailPageData(
       // written but not yet applied) must never take down the record page
       // itself, only leave its own section looking empty.
       listRecordActivity({ workspaceId, entityTypeId, recordId }).catch(() => []),
+      listRecordComments({ workspaceId, entityTypeId, recordId }).catch(() => []),
     ]);
 
     return {
@@ -219,6 +223,7 @@ async function loadRecordDetailPageData(
       incomingRelationGroups,
       processSectionEntries,
       activityEvents,
+      comments,
     };
   } catch {
     return null;
@@ -251,6 +256,7 @@ export default async function RecordDetailPage({
     incomingRelationGroups,
     processSectionEntries,
     activityEvents,
+    comments,
   } = pageData;
   const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(fields, choiceOptionsByFieldId);
   const actionContext = {
@@ -287,8 +293,11 @@ export default async function RecordDetailPage({
           incomingRelationGroups={incomingRelationGroups}
           processSectionEntries={record.archivedAt ? [] : processSectionEntries}
           activityEvents={activityEvents}
+          comments={comments}
           editHref={editHref}
           updateFieldAction={updateFieldAction}
+          createCommentAction={createRecordComment.bind(null, actionContext)}
+          tombstoneCommentAction={tombstoneRecordComment.bind(null, actionContext)}
           archiveRecordAction={archiveRecord.bind(null, actionContext)}
           restoreRecordAction={restoreRecord.bind(null, actionContext)}
           deleteRecordAction={deleteRecordFromDetail.bind(null, actionContext)}

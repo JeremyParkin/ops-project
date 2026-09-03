@@ -6,8 +6,10 @@ import { RecordDetailActions } from "@/app/components/record-detail-actions";
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
 import { ProcessSection, type ProcessSectionEntry } from "@/app/components/process-section";
 import { RecordActivity } from "@/app/components/record-activity";
+import { RecordDiscussion } from "@/app/components/record-discussion";
 import type { RecordActivityEvent } from "@/lib/domain/activity-types";
 import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
+import type { RecordComment } from "@/lib/domain/record-comment-repository";
 import type {
   IncomingRelationGroup,
   RelationLabelsByFieldKey,
@@ -36,6 +38,8 @@ type UpdateFieldAction = (
   formData: FormData,
 ) => Promise<RecordFieldFormState>;
 
+type CommentAction = Parameters<typeof RecordDiscussion>[0]["createCommentAction"];
+
 type RecordDetailViewProps = {
   entityType: EntityType;
   fields: FieldDefinition[];
@@ -45,8 +49,11 @@ type RecordDetailViewProps = {
   incomingRelationGroups: IncomingRelationGroup[];
   processSectionEntries: ProcessSectionEntry[];
   activityEvents: RecordActivityEvent[];
+  comments: RecordComment[];
   editHref?: string;
   updateFieldAction?: UpdateFieldAction;
+  createCommentAction: CommentAction;
+  tombstoneCommentAction: Parameters<typeof RecordDiscussion>[0]["tombstoneCommentAction"];
   archiveRecordAction: Parameters<typeof RecordDetailActions>[0]["archiveRecordAction"];
   restoreRecordAction: Parameters<typeof RecordDetailActions>[0]["restoreRecordAction"];
   deleteRecordAction: Parameters<typeof RecordDetailActions>[0]["deleteRecordAction"];
@@ -164,8 +171,11 @@ export function RecordDetailView({
   incomingRelationGroups,
   processSectionEntries,
   activityEvents,
+  comments,
   editHref,
   updateFieldAction,
+  createCommentAction,
+  tombstoneCommentAction,
   archiveRecordAction,
   restoreRecordAction,
   deleteRecordAction,
@@ -345,6 +355,13 @@ export function RecordDetailView({
       ) : null}
 
       <ProcessSection entries={processSectionEntries} />
+
+      <RecordDiscussion
+        comments={comments}
+        isArchivedRecord={Boolean(record.archivedAt)}
+        createCommentAction={createCommentAction}
+        tombstoneCommentAction={tombstoneCommentAction}
+      />
 
       <RecordActivity events={activityEvents} />
     </div>

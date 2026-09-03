@@ -543,6 +543,19 @@ async function cleanupEntitiesById(supabase: SupabaseClient, entityTypeIds: stri
       throwOnError(
         () =>
           supabase
+            .from("record_comments")
+            .delete()
+            .eq("workspace_id", DEMO_WORKSPACE_ID)
+            .in("entity_type_id", entityTypeIds),
+        "clean up E2E record comments",
+      ),
+    failures,
+  );
+  await attemptCleanupStep(
+    () =>
+      throwOnError(
+        () =>
+          supabase
             .from("field_definitions")
             .delete()
             .eq("workspace_id", DEMO_WORKSPACE_ID)

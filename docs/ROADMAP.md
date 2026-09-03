@@ -92,15 +92,17 @@ This is a major product phase, not cosmetic polish. Business objects are the cen
 
 ## Phase 10 - Collaboration
 
+**Status:** In progress. Phase 10.1 record-level Discussion is complete: durable plain-text comments on business records, distinct from system Activity, with tombstoning, impersonation-aware attribution, archived-record read-only behavior, and delete-safety protection. Implemented details and verification live in `PROJECT_CONTEXT.md`.
+
 **Goal:** Add the human collaboration layer around Kinema's operational objects and process work.
 
 Phase 10 should make it natural for people to discuss, request input, and preserve context directly where work happens.
 
 Likely scope:
 
-- Comments or discussions on business-object records.
+- Record-level comments/discussions are done for Phase 10.1; continue from there rather than rebuilding a generic chat system.
 - Comments or contextual discussion on process runs and tasks where the workflow warrants it.
-- @mentions with durable mention records and notification delivery.
+- A likely next slice is durable mentions on record comments with narrow in-app notification integration, if it can preserve authored discussion as distinct from system Activity and avoid premature channel/preferences/email complexity.
 - Requests for input and lightweight collaboration patterns tied to records, tasks, or approvals.
 - Durable conversation history with clear authorship, timestamps, and permission behavior.
 - Notification integration for comments, mentions, and input requests.

@@ -1,0 +1,1 @@
+export const RECORD_COMMENT_BODY_MAX_LENGTH = 4000;
