@@ -13,6 +13,7 @@ import {
 import {
   addRecordSection,
   chooseRecordField,
+  editRecordFromRow,
   expectTableValue,
   fillRecordField,
   gotoEntity,
@@ -236,7 +237,7 @@ async function editDeliverableStatus({
   status: string;
 }) {
   await gotoEntity(page, fixture.deliverable);
-  await rowForText(page, name).getByRole("link", { name: "Edit" }).click();
+  await editRecordFromRow(page, rowForText(page, name), name);
   await expect(
     page.getByRole("heading", {
       name: `Edit ${fixture.deliverable.name}`,

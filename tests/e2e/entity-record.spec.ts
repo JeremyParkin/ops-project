@@ -9,6 +9,7 @@ import {
 } from "./helpers/supabase-test-data";
 import {
   addRecordSection,
+  editRecordFromRow,
   expectTableValue,
   fillRecordField,
   gotoEntity,
@@ -79,9 +80,11 @@ test("navigates entities, validates, creates, and edits records", async ({
   await expect(page.getByText(`${fixture.client.name} created.`)).toBeVisible();
   await expectTableValue(page, `${run.label} Bad Revenue`);
 
-  await rowForText(page, `${run.label} Bad Revenue`)
-    .getByRole("link", { name: "Edit" })
-    .click();
+  await editRecordFromRow(
+    page,
+    rowForText(page, `${run.label} Bad Revenue`),
+    `${run.label} Bad Revenue`,
+  );
   await expect(
     page.getByRole("heading", {
       name: `Edit ${fixture.client.name}`,

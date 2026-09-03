@@ -12,6 +12,7 @@ import {
 import {
   addRecordSection,
   chooseRecordField,
+  editRecordFromRow,
   expectAfterMutation,
   fillRecordField,
   gotoEntity,
@@ -182,7 +183,7 @@ async function editTicket({
   changes: { status?: string; notes?: string; clientLabel?: string };
 }) {
   await gotoEntity(page, fixture.ticket);
-  await rowForText(page, title).getByRole("link", { name: "Edit" }).click();
+  await editRecordFromRow(page, rowForText(page, title), title);
   await expect(
     page.getByRole("heading", {
       name: `Edit ${fixture.ticket.name}`,

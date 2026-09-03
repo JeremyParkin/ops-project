@@ -14,6 +14,7 @@ import {
 import {
   addRecordSection,
   chooseRecordField,
+  editRecordFromRow,
   expectTableValue,
   fillRecordField,
   gotoEntity,
@@ -192,7 +193,7 @@ async function editTicket({
   clientLabel?: string;
 }) {
   await gotoEntity(page, fixture.ticket);
-  await rowForText(page, title).getByRole("link", { name: "Edit" }).click();
+  await editRecordFromRow(page, rowForText(page, title), title);
   await expect(
     page.getByRole("heading", {
       name: `Edit ${fixture.ticket.name}`,
@@ -294,7 +295,7 @@ test("changed fires only when its own field changes, not merely when eligibility
 
   await createTicket({ page, fixture, title: skippedTitle, status: "Draft" });
   await gotoEntity(page, fixture.ticket);
-  await rowForText(page, skippedTitle).getByRole("link", { name: "Edit" }).click();
+  await editRecordFromRow(page, rowForText(page, skippedTitle), skippedTitle);
   await expect(
     page.getByRole("heading", {
       name: `Edit ${fixture.ticket.name}`,
@@ -344,7 +345,7 @@ test("changed_to fires only on the transition into the value, not while already 
 
   await createTicket({ page, fixture, title: alreadyTitle, status: "Approved" });
   await gotoEntity(page, fixture.ticket);
-  await rowForText(page, alreadyTitle).getByRole("link", { name: "Edit" }).click();
+  await editRecordFromRow(page, rowForText(page, alreadyTitle), alreadyTitle);
   await expect(
     page.getByRole("heading", {
       name: `Edit ${fixture.ticket.name}`,
@@ -683,9 +684,11 @@ test("0 and false are treated as real transition values, not unset", async ({ pa
   await expect(page.getByText(`${counter.name} created.`)).toBeVisible();
 
   await gotoEntity(page, counter);
-  await rowForText(page, `${run.label} Item`)
-    .getByRole("link", { name: "Edit" })
-    .click();
+  await editRecordFromRow(
+    page,
+    rowForText(page, `${run.label} Item`),
+    `${run.label} Item`,
+  );
   await expect(
     page.getByRole("heading", { name: `Edit ${counter.name}`, exact: true }),
   ).toBeVisible();

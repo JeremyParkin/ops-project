@@ -85,6 +85,19 @@ export function rowForText(page: Page, text: string) {
   return page.getByRole("row").filter({ hasText: text });
 }
 
+// The records table's Actions column no longer has its own Edit shortcut
+// (Phase 9 interaction polish -- record detail and each cell's own
+// click-to-edit already cover it). Tests that need the full /edit form for
+// setup (not exercising inline editing itself) go straight there via the
+// row's own identity link href, the same destination the removed shortcut
+// used to point to.
+export async function editRecordFromRow(page: Page, row: Locator, identityText: string) {
+  const href = await row
+    .getByRole("link", { name: identityText, exact: true })
+    .getAttribute("href");
+  await page.goto(`${href}/edit`);
+}
+
 export async function expectTableValue(page: Page, value: string) {
   await expect(rowForText(page, value)).toBeVisible();
 }
