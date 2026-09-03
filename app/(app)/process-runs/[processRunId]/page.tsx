@@ -1,8 +1,11 @@
 import { notFound } from "next/navigation";
 import {
+  cancelProcessStepRunInputRequestAction,
   completeProcessStepRunAction,
   createProcessStepRunCommentAction,
+  createProcessStepRunInputRequestAction,
   decideProcessApprovalAction,
+  respondProcessStepRunInputRequestAction,
   retryProcessActionStepAction,
   tombstoneProcessStepRunCommentAction,
 } from "@/app/process-actions";
@@ -16,6 +19,10 @@ import {
   listProcessStepRunCommentMentionCandidates,
   listProcessStepRunComments,
 } from "@/lib/domain/process-step-run-comment-repository";
+import {
+  listProcessStepRunInputRequestRecipientCandidates,
+  listProcessStepRunInputRequests,
+} from "@/lib/domain/process-step-run-input-request-repository";
 import { getEntityRecord, getRecordLabel } from "@/lib/domain/record-repository";
 
 export const dynamic = "force-dynamic";
@@ -36,19 +43,31 @@ async function loadProcessRunPageData(workspaceId: string, processRunId: string)
     const discussionStepIds = run.steps
       .filter((step) => step.nodeType === "human_task" || step.nodeType === "approval")
       .map((step) => step.id);
-    const [stepCommentEntries, mentionCandidates] = await Promise.all([
-      Promise.all(
-        discussionStepIds.map(async (stepRunId) => [
-          stepRunId,
-          await listProcessStepRunComments({
-            workspaceId,
-            processRunId: run.id,
-            processStepRunId: stepRunId,
-          }).catch(() => []),
-        ] as const),
-      ),
-      listProcessStepRunCommentMentionCandidates({ workspaceId }).catch(() => []),
-    ]);
+    const [stepCommentEntries, mentionCandidates, stepInputRequestEntries, inputRequestRecipientCandidates] =
+      await Promise.all([
+        Promise.all(
+          discussionStepIds.map(async (stepRunId) => [
+            stepRunId,
+            await listProcessStepRunComments({
+              workspaceId,
+              processRunId: run.id,
+              processStepRunId: stepRunId,
+            }).catch(() => []),
+          ] as const),
+        ),
+        listProcessStepRunCommentMentionCandidates({ workspaceId }).catch(() => []),
+        Promise.all(
+          discussionStepIds.map(async (stepRunId) => [
+            stepRunId,
+            await listProcessStepRunInputRequests({
+              workspaceId,
+              processRunId: run.id,
+              processStepRunId: stepRunId,
+            }).catch(() => []),
+          ] as const),
+        ),
+        listProcessStepRunInputRequestRecipientCandidates({ workspaceId }).catch(() => []),
+      ]);
 
     return {
       run,
@@ -57,6 +76,8 @@ async function loadProcessRunPageData(workspaceId: string, processRunId: string)
       isOriginRecordArchived: Boolean(record.archivedAt),
       stepCommentsByStepRunId: Object.fromEntries(stepCommentEntries),
       mentionCandidates,
+      stepInputRequestsByStepRunId: Object.fromEntries(stepInputRequestEntries),
+      inputRequestRecipientCandidates,
     };
   } catch {
     return null;
@@ -87,7 +108,20 @@ export default async function ProcessRunPage({
     isOriginRecordArchived,
     stepCommentsByStepRunId,
     mentionCandidates,
+    stepInputRequestsByStepRunId,
+    inputRequestRecipientCandidates,
   } = pageData;
+
+  // Mirrors the record-detail page's own canCancelAnyInputRequest exactly:
+  // Workspace administrator authority stays bound to the real actor, never
+  // the impersonated effective user, consistent with every other
+  // governance capability in this app.
+  const canCancelAnyInputRequest =
+    !impersonation.isImpersonating &&
+    Boolean(
+      permissions?.capabilities.has("workspace.manage_members") &&
+        permissions.capabilities.has("workspace.manage_roles"),
+    );
 
   return (
     <WorkspacePageLayout>
@@ -102,12 +136,27 @@ export default async function ProcessRunPage({
         publicAppUrl={process.env.KINEMA_PUBLIC_APP_URL ?? ""}
         stepCommentsByStepRunId={stepCommentsByStepRunId}
         mentionCandidates={mentionCandidates}
+        stepInputRequestsByStepRunId={stepInputRequestsByStepRunId}
+        inputRequestRecipientCandidates={inputRequestRecipientCandidates}
+        canCancelAnyInputRequest={canCancelAnyInputRequest}
         isOriginRecordArchived={isOriginRecordArchived}
         createProcessStepRunCommentAction={createProcessStepRunCommentAction.bind(null, {
           workspaceId,
           processRunId,
         })}
         tombstoneProcessStepRunCommentAction={tombstoneProcessStepRunCommentAction.bind(null, {
+          workspaceId,
+          processRunId,
+        })}
+        createProcessStepRunInputRequestAction={createProcessStepRunInputRequestAction.bind(null, {
+          workspaceId,
+          processRunId,
+        })}
+        respondProcessStepRunInputRequestAction={respondProcessStepRunInputRequestAction.bind(null, {
+          workspaceId,
+          processRunId,
+        })}
+        cancelProcessStepRunInputRequestAction={cancelProcessStepRunInputRequestAction.bind(null, {
           workspaceId,
           processRunId,
         })}

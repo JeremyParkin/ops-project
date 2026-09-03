@@ -3,6 +3,7 @@
 import {
   DiscussionSection,
   type DiscussionActionState,
+  type DiscussionInputRequest,
 } from "@/app/components/discussion-section";
 import type {
   RecordInputRequest,
@@ -51,11 +52,22 @@ export function RecordDiscussion({
     ? inputRequestRecipientCandidates.filter((candidate) => candidate.userId !== currentUserId)
     : inputRequestRecipientCandidates;
 
+  const discussionInputRequests: DiscussionInputRequest[] = inputRequests.map((request) => ({
+    id: request.id,
+    originCommentId: request.originRecordCommentId,
+    recipientUserId: request.recipientUserId,
+    recipientLabel: request.recipientLabel,
+    responseCommentId: request.responseRecordCommentId,
+    cancelledAt: request.cancelledAt,
+    originAuthorUserId: request.originAuthorUserId,
+    state: request.state,
+  }));
+
   return (
     <DiscussionSection
       comments={comments}
       mentionCandidates={mentionCandidates}
-      inputRequests={inputRequests}
+      inputRequests={discussionInputRequests}
       inputRequestRecipientCandidates={recipientCandidates}
       currentUserId={currentUserId}
       canCancelAnyInputRequest={canCancelAnyInputRequest}

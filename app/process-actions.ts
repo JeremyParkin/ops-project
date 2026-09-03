@@ -17,6 +17,11 @@ import {
   tombstoneProcessStepRunComment as tombstoneProcessStepRunCommentInRepository,
 } from "@/lib/domain/process-step-run-comment-repository";
 import {
+  cancelProcessStepRunInputRequest as cancelProcessStepRunInputRequestInRepository,
+  createProcessStepRunInputRequest as createProcessStepRunInputRequestInRepository,
+  respondProcessStepRunInputRequest as respondProcessStepRunInputRequestInRepository,
+} from "@/lib/domain/process-step-run-input-request-repository";
+import {
   type ProcessTemplateFormState,
   validateProcessTemplateFormData,
 } from "@/lib/domain/process-validation";
@@ -89,6 +94,11 @@ type DecideProcessApprovalContext = CompleteProcessStepRunContext;
 type ProcessStepRunCommentContext = CompleteProcessStepRunContext & {
   processStepRunId?: string;
   commentId?: string;
+};
+
+type ProcessStepRunInputRequestContext = CompleteProcessStepRunContext & {
+  processStepRunId?: string;
+  requestId?: string;
 };
 
 function getWaitRule(step: ProcessTemplateFormState["values"]["steps"][number]): ProcessWaitRule | undefined {
@@ -501,6 +511,164 @@ export async function tombstoneProcessStepRunCommentAction(
   return {
     success: true,
     message: "Comment removed.",
+  };
+}
+
+export async function createProcessStepRunInputRequestAction(
+  context: ProcessStepRunInputRequestContext,
+  _previousState: ProcessStepRunCommentActionState,
+  formData: FormData,
+): Promise<ProcessStepRunCommentActionState> {
+  const processStepRunId = context.processStepRunId ?? String(formData.get("processStepRunId") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+  const recipientUserId = String(formData.get("recipientUserId") ?? "");
+
+  if (!processStepRunId) {
+    return {
+      ...initialProcessStepRunCommentActionState,
+      message: "Invalid step.",
+    };
+  }
+
+  if (!recipientUserId) {
+    return {
+      ...initialProcessStepRunCommentActionState,
+      message: "Choose who should respond.",
+      body,
+    };
+  }
+
+  if (!body) {
+    return {
+      ...initialProcessStepRunCommentActionState,
+      message: "Request body is required.",
+    };
+  }
+
+  if (body.length > RECORD_COMMENT_BODY_MAX_LENGTH) {
+    return {
+      success: false,
+      message: `Request body must be ${RECORD_COMMENT_BODY_MAX_LENGTH} characters or fewer.`,
+      body,
+    };
+  }
+
+  let requestId: string;
+
+  try {
+    requestId = await createProcessStepRunInputRequestInRepository({
+      workspaceId: context.workspaceId,
+      processRunId: context.processRunId,
+      processStepRunId,
+      recipientUserId,
+      body,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to request input. Please try again.",
+      body,
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return {
+    success: true,
+    message: "Input requested.",
+    body: "",
+    resetKey: requestId,
+  };
+}
+
+export async function respondProcessStepRunInputRequestAction(
+  context: ProcessStepRunInputRequestContext,
+  _previousState: ProcessStepRunCommentActionState,
+  formData: FormData,
+): Promise<ProcessStepRunCommentActionState> {
+  const requestId = context.requestId ?? String(formData.get("requestId") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!requestId) {
+    return {
+      success: false,
+      message: "Unable to respond to request. Please try again.",
+      body,
+    };
+  }
+
+  if (!body) {
+    return {
+      ...initialProcessStepRunCommentActionState,
+      message: "Response body is required.",
+    };
+  }
+
+  if (body.length > RECORD_COMMENT_BODY_MAX_LENGTH) {
+    return {
+      success: false,
+      message: `Response body must be ${RECORD_COMMENT_BODY_MAX_LENGTH} characters or fewer.`,
+      body,
+    };
+  }
+
+  let commentId: string;
+
+  try {
+    commentId = await respondProcessStepRunInputRequestInRepository({
+      workspaceId: context.workspaceId,
+      requestId,
+      body,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to respond to request. Please try again.",
+      body,
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return {
+    success: true,
+    message: "Response added.",
+    body: "",
+    resetKey: commentId,
+  };
+}
+
+export async function cancelProcessStepRunInputRequestAction(
+  context: ProcessStepRunInputRequestContext,
+  _previousState: ProcessStepRunCommentActionState,
+  formData: FormData,
+): Promise<ProcessStepRunCommentActionState> {
+  const requestId = context.requestId ?? String(formData.get("requestId") ?? "");
+
+  if (!requestId) {
+    return {
+      success: false,
+      message: "Unable to cancel request. Please try again.",
+    };
+  }
+
+  try {
+    await cancelProcessStepRunInputRequestInRepository({
+      workspaceId: context.workspaceId,
+      requestId,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to cancel request. Please try again.",
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return {
+    success: true,
+    message: "Input request cancelled.",
   };
 }
 

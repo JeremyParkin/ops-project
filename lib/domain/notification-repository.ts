@@ -16,6 +16,7 @@ type NotificationRow = {
   record_comment_id: string | null;
   process_step_run_comment_id: string | null;
   record_input_request_id: string | null;
+  process_step_run_input_request_id: string | null;
   entity_type_id: string | null;
   entity_record_id: string | null;
   title: string;
@@ -36,6 +37,7 @@ function mapNotification(row: NotificationRow): WorkspaceNotification {
     recordCommentId: row.record_comment_id ?? undefined,
     processStepRunCommentId: row.process_step_run_comment_id ?? undefined,
     recordInputRequestId: row.record_input_request_id ?? undefined,
+    processStepRunInputRequestId: row.process_step_run_input_request_id ?? undefined,
     entityTypeId: row.entity_type_id ?? undefined,
     entityRecordId: row.entity_record_id ?? undefined,
     title: row.title,

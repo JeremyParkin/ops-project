@@ -92,21 +92,23 @@ This is a major product phase, not cosmetic polish. Business objects are the cen
 
 ## Phase 10 - Collaboration
 
-**Status:** In progress. Phase 10.1 record-level Discussion, Phase 10.2 record-comment mentions with narrow in-app notifications, Phase 10.3 Process Step Run Discussion, and Phase 10.4 record-level Request for Input are complete. Implemented details and verification live in `PROJECT_CONTEXT.md`.
+**Status:** Completed (10.1 record-level Discussion, 10.2 record-comment mentions with narrow in-app notifications, 10.3 Process Step Run Discussion, 10.4 record-level Request for Input, 10.5 Process Step Run Request for Input). Implemented details and verification live in `PROJECT_CONTEXT.md`. Phase 10 is now complete; the next roadmap focus is unset -- see `PROJECT_CONTEXT.md`'s Phase 10 closure recommendation for why further collaboration work was deliberately not continued on roadmap momentum alone.
 
 **Goal:** Add the human collaboration layer around Kinema's operational objects and process work.
 
 Phase 10 should make it natural for people to discuss, request input, and preserve context directly where work happens.
 
-Likely scope:
+Delivered scope:
 
-- Record-level comments/discussions are done for Phase 10.1; record-comment mentions with in-app notifications are done for Phase 10.2; human-operable Process Step Run discussion is done for Phase 10.3; record-level Request for Input is done for Phase 10.4. Continue from those primitives rather than rebuilding a generic chat system.
-- A likely next collaboration decision is whether to extend lightweight input-request/request-for-response semantics to human-operable process steps, still explicitly anchored and without becoming My Work, due-date, reminder, or task-management behavior.
-- Requests for input and lightweight collaboration patterns tied to human-operable process work, if the record-level pattern continues to hold up.
-- Durable conversation history with clear authorship, timestamps, and permission behavior.
-- Notification integration for comments, mentions, and input requests.
-- Email delivery and preferences for collaborative notifications, using provider infrastructure if Phase 8F establishes it.
-- Attachments/files if they have not landed earlier, especially when needed to support comments, record context, or process evidence.
+- Record-level comments/discussions (10.1), record-comment mentions with in-app notifications (10.2), human-operable Process Step Run discussion (10.3), record-level Request for Input (10.4), and Process Step Run Request for Input (10.5) together give both records and process-step work three consistent, non-overlapping collaboration primitives: conversation, attention, and explicit response obligation. None of it became a generic chat system or an alternate task engine.
+- Durable conversation history with clear authorship, timestamps, and permission behavior -- done, at both the record and process-step level.
+- Notification integration for comments, mentions, and input requests -- done, at both levels, in-app only.
+
+Deliberately not pursued as part of Phase 10, remaining genuinely open for a future phase if a concrete need justifies them (not simply "next" by momentum):
+
+- Email delivery and preferences for collaborative notifications, using provider infrastructure if Phase 8F establishes it. No dogfood evidence yet that in-app notifications are insufficient.
+- Attachments/files for comments, record context, or process evidence. A materially larger scope (storage, validation, a new capability class) than anything Phase 10 built.
+- Subscriptions/following (passive, non-explicit notification) -- a different shape from every primitive Phase 10 actually shipped, all of which are explicit (mention, request, assignment).
 
 Design constraints:
 

@@ -4,7 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { ApprovalDecisionButtons } from "@/app/components/approval-decision-buttons";
 import { CompleteStepButton } from "@/app/components/complete-step-button";
-import { DiscussionSection, type DiscussionActionState } from "@/app/components/discussion-section";
+import {
+  DiscussionSection,
+  type DiscussionActionState,
+  type DiscussionInputRequest,
+} from "@/app/components/discussion-section";
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
 import { ProcessDueAt } from "@/app/components/process-due-at";
 import { ProcessRunGraphView } from "@/app/components/process-run-graph-view";
@@ -23,6 +27,10 @@ import type {
   ProcessStepRunComment,
   ProcessStepRunCommentMentionCandidate,
 } from "@/lib/domain/process-step-run-comment-repository";
+import type {
+  ProcessStepRunInputRequest,
+  ProcessStepRunInputRequestRecipientCandidate,
+} from "@/lib/domain/process-step-run-input-request-repository";
 import type { ProcessRunWithSteps } from "@/lib/domain/process-types";
 
 type CommentAction = (
@@ -39,9 +47,15 @@ type ProcessRunDetailViewProps = {
   publicAppUrl: string;
   stepCommentsByStepRunId: Record<string, ProcessStepRunComment[]>;
   mentionCandidates: ProcessStepRunCommentMentionCandidate[];
+  stepInputRequestsByStepRunId: Record<string, ProcessStepRunInputRequest[]>;
+  inputRequestRecipientCandidates: ProcessStepRunInputRequestRecipientCandidate[];
+  canCancelAnyInputRequest: boolean;
   isOriginRecordArchived: boolean;
   createProcessStepRunCommentAction: CommentAction;
   tombstoneProcessStepRunCommentAction: CommentAction;
+  createProcessStepRunInputRequestAction: CommentAction;
+  respondProcessStepRunInputRequestAction: CommentAction;
+  cancelProcessStepRunInputRequestAction: CommentAction;
   completeProcessStepRunAction: (
     state: ProcessActionState,
     formData: FormData,
@@ -65,9 +79,15 @@ export function ProcessRunDetailView({
   publicAppUrl,
   stepCommentsByStepRunId,
   mentionCandidates,
+  stepInputRequestsByStepRunId,
+  inputRequestRecipientCandidates,
+  canCancelAnyInputRequest,
   isOriginRecordArchived,
   createProcessStepRunCommentAction,
   tombstoneProcessStepRunCommentAction,
+  createProcessStepRunInputRequestAction,
+  respondProcessStepRunInputRequestAction,
+  cancelProcessStepRunInputRequestAction,
   completeProcessStepRunAction,
   decideProcessApprovalAction,
   retryProcessActionStepAction,
@@ -82,6 +102,9 @@ export function ProcessRunDetailView({
   const archivedComposerUnavailableMessage = isOriginRecordArchived
     ? "Archived origin records are read-only. Existing discussion remains available."
     : undefined;
+  const inputRequestRecipientCandidatesExcludingSelf = inputRequestRecipientCandidates.filter(
+    (candidate) => candidate.userId !== currentUserId,
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -254,6 +277,21 @@ export function ProcessRunDetailView({
                       title="Step discussion"
                       comments={stepCommentsByStepRunId[step.id] ?? []}
                       mentionCandidates={mentionCandidates}
+                      inputRequests={(stepInputRequestsByStepRunId[step.id] ?? []).map(
+                        (request): DiscussionInputRequest => ({
+                          id: request.id,
+                          originCommentId: request.originProcessStepRunCommentId,
+                          recipientUserId: request.recipientUserId,
+                          recipientLabel: request.recipientLabel,
+                          responseCommentId: request.responseProcessStepRunCommentId,
+                          cancelledAt: request.cancelledAt,
+                          originAuthorUserId: request.originAuthorUserId,
+                          state: request.state,
+                        }),
+                      )}
+                      inputRequestRecipientCandidates={inputRequestRecipientCandidatesExcludingSelf}
+                      currentUserId={currentUserId}
+                      canCancelAnyInputRequest={canCancelAnyInputRequest}
                       composerUnavailableMessage={
                         archivedComposerUnavailableMessage ??
                         (step.status !== "active" && step.status !== "completed"
@@ -263,7 +301,11 @@ export function ProcessRunDetailView({
                       hiddenFields={[{ name: "processStepRunId", value: step.id }]}
                       createCommentAction={createProcessStepRunCommentAction}
                       tombstoneCommentAction={tombstoneProcessStepRunCommentAction}
+                      createInputRequestAction={createProcessStepRunInputRequestAction}
+                      respondInputRequestAction={respondProcessStepRunInputRequestAction}
+                      cancelInputRequestAction={cancelProcessStepRunInputRequestAction}
                       commentAnchorPrefix="step-comment"
+                      inputRequestAnchorPrefix="step-input-request"
                       inputIdPrefix={`process-step-${step.id}`}
                     />
                   </div>

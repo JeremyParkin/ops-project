@@ -8,7 +8,10 @@ export type NotificationEventType =
   | "process_step_run_comment_mentioned"
   | "record_input_request_created"
   | "record_input_request_responded"
-  | "record_input_request_cancelled";
+  | "record_input_request_cancelled"
+  | "process_step_run_input_request_created"
+  | "process_step_run_input_request_responded"
+  | "process_step_run_input_request_cancelled";
 
 export type WorkspaceNotification = {
   id: string;
@@ -21,6 +24,7 @@ export type WorkspaceNotification = {
   recordCommentId?: string;
   processStepRunCommentId?: string;
   recordInputRequestId?: string;
+  processStepRunInputRequestId?: string;
   entityTypeId?: string;
   entityRecordId?: string;
   title: string;

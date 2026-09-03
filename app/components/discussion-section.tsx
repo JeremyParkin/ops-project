@@ -36,12 +36,16 @@ export type DiscussionMentionCandidate = {
   email: string;
 };
 
+// Field names are data-shape-agnostic (originCommentId, not
+// originRecordCommentId) -- this type is shared by record Discussion and
+// Step Discussion, whose input requests link to record_comments and
+// process_step_run_comments respectively, not a common table.
 export type DiscussionInputRequest = {
   id: string;
-  originRecordCommentId: string;
+  originCommentId: string;
   recipientUserId: string;
   recipientLabel: string;
-  responseRecordCommentId?: string;
+  responseCommentId?: string;
   cancelledAt?: string;
   originAuthorUserId: string;
   state: "open" | "responded" | "cancelled";
@@ -68,6 +72,7 @@ type DiscussionSectionProps = {
   respondInputRequestAction?: DiscussionAction;
   cancelInputRequestAction?: DiscussionAction;
   commentAnchorPrefix?: string;
+  inputRequestAnchorPrefix?: string;
   inputIdPrefix: string;
 };
 
@@ -386,10 +391,12 @@ function TombstoneCommentForm({
 function RequestInputForm({
   action,
   recipientCandidates,
+  hiddenFields = [],
   inputIdPrefix,
 }: {
   action: DiscussionAction;
   recipientCandidates: DiscussionMentionCandidate[];
+  hiddenFields?: Array<{ name: string; value: string }>;
   inputIdPrefix: string;
 }) {
   const [state, formAction, pending] = useActionState(action, initialCommentState);
@@ -398,6 +405,9 @@ function RequestInputForm({
     <details className="mt-4 border border-grit bg-chalk px-3 py-2">
       <summary className="cursor-pointer text-sm font-medium text-graphite">Request input</summary>
       <form key={state.resetKey ?? "request-input-form"} action={formAction} className="mt-3 grid gap-3">
+        {hiddenFields.map((field) => (
+          <input key={`${field.name}:${field.value}`} type="hidden" name={field.name} value={field.value} />
+        ))}
         <label htmlFor={`${inputIdPrefix}-request-recipient`} className="sr-only">
           Recipient
         </label>
@@ -531,6 +541,8 @@ function InputRequestTreatment({
   respondAction,
   cancelAction,
   inputIdPrefix,
+  inputRequestAnchorPrefix,
+  commentAnchorPrefix,
 }: {
   request: DiscussionInputRequest;
   currentUserId?: string;
@@ -539,6 +551,8 @@ function InputRequestTreatment({
   respondAction?: DiscussionAction;
   cancelAction?: DiscussionAction;
   inputIdPrefix: string;
+  inputRequestAnchorPrefix: string;
+  commentAnchorPrefix: string;
 }) {
   const canRespond = request.state === "open" && currentUserId === request.recipientUserId;
   const canCancel =
@@ -553,7 +567,7 @@ function InputRequestTreatment({
 
   return (
     <div
-      id={`input-request-${request.id}`}
+      id={`${inputRequestAnchorPrefix}-${request.id}`}
       className="mt-3 scroll-mt-24 border-l-4 border-brass bg-chalk px-3 py-2"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -565,9 +579,9 @@ function InputRequestTreatment({
           <CancelInputRequestForm action={cancelAction} requestId={request.id} />
         ) : null}
       </div>
-      {request.responseRecordCommentId ? (
+      {request.responseCommentId ? (
         <a
-          href={`#comment-${request.responseRecordCommentId}`}
+          href={`#${commentAnchorPrefix}-${request.responseCommentId}`}
           className="mt-1 inline-flex text-xs font-medium text-stone underline-offset-4 hover:text-graphite hover:underline"
         >
           View response
@@ -604,15 +618,16 @@ export function DiscussionSection({
   respondInputRequestAction,
   cancelInputRequestAction,
   commentAnchorPrefix = "comment",
+  inputRequestAnchorPrefix = "input-request",
   inputIdPrefix,
 }: DiscussionSectionProps) {
   const inputRequestByOriginCommentId = new Map(
-    inputRequests.map((request) => [request.originRecordCommentId, request]),
+    inputRequests.map((request) => [request.originCommentId, request]),
   );
   const responseRequestByCommentId = new Map(
     inputRequests
-      .filter((request) => request.responseRecordCommentId)
-      .map((request) => [request.responseRecordCommentId as string, request]),
+      .filter((request) => request.responseCommentId)
+      .map((request) => [request.responseCommentId as string, request]),
   );
 
   return (
@@ -675,6 +690,8 @@ export function DiscussionSection({
                     respondAction={respondInputRequestAction}
                     cancelAction={cancelInputRequestAction}
                     inputIdPrefix={inputIdPrefix}
+                    inputRequestAnchorPrefix={inputRequestAnchorPrefix}
+                    commentAnchorPrefix={commentAnchorPrefix}
                   />
                 ) : null}
                 {responseRequest ? (
@@ -692,6 +709,7 @@ export function DiscussionSection({
         <RequestInputForm
           action={createInputRequestAction}
           recipientCandidates={inputRequestRecipientCandidates}
+          hiddenFields={hiddenFields}
           inputIdPrefix={inputIdPrefix}
         />
       ) : null}
