@@ -223,8 +223,14 @@ test("record create/edit/inline-edit through the Choice picker, with colored pil
   await expect(row.getByText("High", { exact: true })).toHaveCount(0);
 
   // Full edit form picker: confirms the current value ("Medium", from the
-  // inline edit above) is preselected, then changes it.
-  await row.getByRole("link", { name: "Edit" }).click();
+  // inline edit above) is preselected, then changes it. The table's own
+  // Edit shortcut was removed (Phase 9 interaction polish) -- go straight
+  // to the /edit route via the record's own link href, the same
+  // destination the removed shortcut used to point to.
+  const recordHref = await row
+    .getByRole("link", { name: `${run.label} Server down`, exact: true })
+    .getAttribute("href");
+  await page.goto(`${recordHref}/edit`);
   const editSelect = page.locator(`select[name="${entity.fields.priority.key}"]`);
   await expect(editSelect).toHaveValue(/.+/);
   await editSelect.selectOption({ label: "Low" });

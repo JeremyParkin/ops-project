@@ -188,10 +188,95 @@ test("Long text clamps to 2 lines by default with a separate More/Less toggle; i
   // Light regression check: a non-text inline-editable field on the same
   // row still opens and saves correctly after the cell-rendering changes.
   await inlineEditButton(row, entity.fields.active).click();
-  const checkbox = row.locator('input[name="value"][type="checkbox"]');
-  await checkbox.check();
-  await checkbox.press("Enter");
+  // The radio itself is visually hidden (sr-only) in favor of its labeled
+  // chip -- dispatched via evaluate() rather than Playwright's own
+  // coordinate-based click; see inline-record-edit.spec.ts's boolean test
+  // for why.
+  const yesRadio = row.getByRole("radio", { name: "Yes" });
+  await yesRadio.locator("xpath=..").evaluate((label) => (label as HTMLElement).click());
+  await expect(yesRadio).toBeChecked();
+  await row.getByRole("button", { name: "Save" }).click();
   await expect(inlineEditButton(row, entity.fields.active)).toHaveText("Yes");
+});
+
+test("Text field editing opens a multiline anchored editor with the full value; Save persists, Escape cancels, the clamped display is unaffected afterward, and URL/email editing still behaves correctly", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const admin = createSupabaseTestClient();
+  const entity = await createEntity(admin, run, "Client", [
+    { slug: "name", name: "Name", type: "text", required: true },
+    { slug: "notes", name: "Notes", type: "text" },
+    { slug: "website", name: "Website", type: "text" },
+  ]);
+
+  const longNotes =
+    "Referred by an existing customer; first call went well. This value is written long enough on purpose " +
+    "that only a small fragment of it would ever be visible through a single-line input, which is exactly " +
+    "the presentation this anchored multiline editor replaces.";
+  const websiteUrl = "https://example.com/cobalt-legal";
+
+  await createEntityRecord({
+    entity,
+    valuesBySlug: { name: `${run.label} Notes Co.`, notes: longNotes, website: websiteUrl },
+  });
+
+  await gotoEntity(page, entity, false);
+  const row = rowForText(page, `${run.label} Notes Co.`);
+  await expect(row).toBeVisible();
+
+  // Opening the editor: a viewport-anchored popover, not a one-line input
+  // squeezed into the cell -- the full value is present in a <textarea>,
+  // not just the fragment the clamped display shows.
+  await inlineEditButton(row, entity.fields.notes).click();
+  const popover = page.getByRole("group", { name: "Notes" });
+  const textarea = popover.locator("textarea");
+  await expect(textarea).toBeVisible();
+  await expect(textarea).toHaveValue(longNotes);
+  await expect(textarea).toBeFocused();
+  const popoverBox = await popover.boundingBox();
+  expect(popoverBox?.width).toBeGreaterThanOrEqual(360);
+  expect(popoverBox?.width).toBeLessThanOrEqual(480);
+
+  // Multiline editing: Enter inserts a newline rather than submitting the
+  // form (Save is an explicit button here, unlike the single-line inputs).
+  await textarea.press("End");
+  await textarea.press("Enter");
+  await textarea.pressSequentially("A follow-up line added inline.");
+  await expect(textarea).toBeVisible();
+  await expect(popover.getByRole("button", { name: "Save" })).toBeVisible();
+
+  // Escape cancels without persisting the in-progress multiline edit.
+  await textarea.press("Escape");
+  await expect(popover).toHaveCount(0);
+  await expect(inlineEditButton(row, entity.fields.notes)).toBeFocused();
+  await page.reload();
+  await expect(rowForText(page, `${run.label} Notes Co.`)).not.toContainText("follow-up line");
+
+  // A real Save: persists, and the table cell's own clamp/More behavior
+  // (established by the earlier long-text test in this file) is
+  // unaffected by having gone through the larger editor.
+  const rowAgain = rowForText(page, `${run.label} Notes Co.`);
+  await inlineEditButton(rowAgain, entity.fields.notes).click();
+  const textareaAgain = page.getByRole("group", { name: "Notes" }).locator("textarea");
+  await textareaAgain.fill(`${longNotes} Saved follow-up.`);
+  await page.getByRole("group", { name: "Notes" }).getByRole("button", { name: "Save" }).click();
+  const clampedNotes = rowAgain.getByText(`${longNotes} Saved follow-up.`);
+  await expectAfterMutation(clampedNotes);
+  await expect(clampedNotes).toHaveClass(/line-clamp-2/);
+  await expect(rowAgain.getByRole("button", { name: "More" })).toBeVisible();
+
+  // URL editing: the link stays the real, separately-clickable link;
+  // opening its own pencil-triggered editor uses the same multiline
+  // control (every text field, short or long, per this pass's scope) and
+  // doesn't disturb the link on cancel.
+  await inlineEditButton(rowAgain, entity.fields.website).click();
+  const websiteTextarea = page.getByRole("group", { name: "Website" }).locator("textarea");
+  await expect(websiteTextarea).toHaveValue(websiteUrl);
+  await websiteTextarea.press("Escape");
+  const websiteLink = rowAgain.getByRole("link", { name: websiteUrl });
+  await expect(websiteLink).toBeVisible();
+  await expect(websiteLink).toHaveAttribute("href", websiteUrl);
 });
 
 test("Short text and empty values never show a More toggle", async ({ page }: { page: Page }) => {

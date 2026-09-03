@@ -399,11 +399,13 @@ test("Overview prefers populated fields up to the cap, with All fields revealing
   await expect(page.getByText("Golf", { exact: true })).not.toBeVisible();
 
   // Inline editing reuses the same EditableTableCell/updateRecordField
-  // wiring as the records table.
+  // wiring as the records table -- Alpha is a text field, so this opens
+  // the larger multiline editor (a <textarea>, Save is an explicit click)
+  // rather than a single-line <input> + Enter-submits.
   await overviewList.getByRole("button", { name: "Edit Alpha" }).click();
-  const input = page.locator('input[name="value"]');
-  await input.fill("Alpha updated");
-  await input.press("Enter");
+  const textarea = page.locator('textarea[name="value"]');
+  await textarea.fill("Alpha updated");
+  await page.getByRole("button", { name: "Save" }).click();
   await expect(overviewList.getByRole("button", { name: "Edit Alpha" })).toBeVisible();
   await expect(overviewList.getByText("Alpha updated")).toBeVisible();
 

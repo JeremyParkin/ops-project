@@ -47,6 +47,20 @@ function inlineEditButton(row: Locator, field: TestField) {
 
 async function inlineEditText(row: Locator, field: TestField, value: string) {
   await inlineEditButton(row, field).click();
+
+  // Text fields open the larger multiline editor (a <textarea> in an
+  // anchored popover) -- Enter inserts a newline there rather than
+  // submitting, so Save is an explicit click. Every other inline-editable
+  // type used through this helper (currently just date) keeps the
+  // original single-line <input> + Enter-submits behavior.
+  const textarea = row.locator('textarea[name="value"]');
+  if ((await textarea.count()) > 0) {
+    await expect(textarea).toBeVisible();
+    await textarea.fill(value);
+    await row.getByRole("button", { name: "Save" }).click();
+    return;
+  }
+
   const input = row.locator('input[name="value"]');
   await expect(input).toBeVisible();
   await input.fill(value);
@@ -165,10 +179,20 @@ test.describe("inline record editing", () => {
     await expect(row).toContainText("No");
 
     await inlineEditButton(row, task.fields.active).click();
-    const checkbox = row.locator('input[name="value"][type="checkbox"]');
-    await expect(checkbox).toBeVisible();
-    await expect(checkbox).not.toBeChecked();
-    await checkbox.check();
+    const noRadio = row.getByRole("radio", { name: "No" });
+    const yesRadio = row.getByRole("radio", { name: "Yes" });
+    await expect(noRadio).toBeVisible();
+    await expect(noRadio).toBeChecked();
+    // The radio itself is visually hidden (sr-only) in favor of its
+    // labeled chip. A genuine label.click() (verified directly against
+    // the real running app to behave correctly -- focus moves to the Yes
+    // radio, the blur-containment check sees it's still inside the form,
+    // the editor stays open) is dispatched here via evaluate() rather than
+    // Playwright's own coordinate-based click, which -- only for this
+    // specific hidden-input-behind-a-label pattern -- doesn't reproduce
+    // that same native behavior even with `force`.
+    await yesRadio.locator("xpath=..").evaluate((label) => (label as HTMLElement).click());
+    await expect(yesRadio).toBeChecked();
     await row.getByRole("button", { name: "Save" }).click();
 
     await expect(inlineEditButton(row, task.fields.active)).toBeVisible();
@@ -190,9 +214,9 @@ test.describe("inline record editing", () => {
     await gotoEntity(page, task);
     const row = rowForText(page, title);
     await inlineEditButton(row, task.fields.status).click();
-    const input = row.locator('input[name="value"]');
-    await input.fill("Should not save");
-    await input.press("Escape");
+    const textarea = row.locator('textarea[name="value"]');
+    await textarea.fill("Should not save");
+    await textarea.press("Escape");
 
     await expect(inlineEditButton(row, task.fields.status)).toBeVisible();
     await expect(row).toContainText("Original");

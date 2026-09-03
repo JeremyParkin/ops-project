@@ -420,12 +420,6 @@ export function EntityRecordsTable({
                               Open
                             </Link>
                           ) : null}
-                          <Link
-                            href={`${recordEditPathBase}/${record.id}/edit`}
-                            className="text-sm font-medium text-graphite underline-offset-4 hover:underline"
-                          >
-                            Edit
-                          </Link>
                           {record.archivedAt ? (
                             <span className="border border-grit px-2 py-1 text-xs font-medium uppercase tracking-wide text-stone">
                               Archived

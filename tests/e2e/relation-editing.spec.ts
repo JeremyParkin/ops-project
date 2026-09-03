@@ -409,13 +409,17 @@ test.describe("link-aware text cells", () => {
       await popup.close();
     }
     // The click must have gone to the link, not to the edit trigger -- no
-    // select/Save/Cancel form appeared on the original row.
-    await expect(row.locator('select[name="value"], input[name="value"]')).toHaveCount(0);
+    // select/textarea/Save/Cancel form appeared on the original row.
+    await expect(
+      row.locator('select[name="value"], input[name="value"], textarea[name="value"]'),
+    ).toHaveCount(0);
     await expect(row.getByRole("button", { name: "Save" })).toHaveCount(0);
 
-    // The separate Edit affordance still works normally.
+    // The separate Edit affordance still works normally -- Link is a text
+    // field, so this opens the larger multiline editor (a <textarea>), not
+    // a single-line <input>.
     await editButton.click();
-    await expect(row.locator('input[name="value"]')).toBeVisible();
+    await expect(row.locator('textarea[name="value"]')).toBeVisible();
     await row.getByRole("button", { name: "Cancel" }).click();
   });
 
