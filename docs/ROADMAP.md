@@ -154,7 +154,7 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 - Advanced search across workflows, views, settings, archived records, comments, and files.
 - Fuzzy or indexed search only if real scale or query patterns require it.
 - Schema-from-CSV, multi-object import, relation matching improvements, and background import jobs if synchronous flows stop being sufficient.
-- Custom record layouts or page-builder-like detail experiences, kept generic enough to preserve Kinema's metadata-driven model.
+- Configurable record-field sections for create/edit/detail surfaces: named sections per business object, explicit section order, explicit field order within each section, and sensible handling of ungrouped fields. Section placement is presentation metadata only; moving a field between sections must not change field identity, field key, stored record data, API representation, automation/process references, or underlying schema semantics. Table and saved-view column configuration remains independent. Defer drag-and-drop page-layout designers, arbitrary grid/canvas layouts, role/persona-specific layouts, reusable layout templates, Salesforce-style page-layout machinery, and collapsible sections unless later justified.
 
 ### Production & Platform Readiness
 
