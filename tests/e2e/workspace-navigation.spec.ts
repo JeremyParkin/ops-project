@@ -183,7 +183,13 @@ test("archived entities stay out of normal home navigation and the plain All obj
   await page.getByRole("link", { name: "Show archived objects", exact: true }).click();
   await expect(page).toHaveURL(/\/entities\?manage=true&showArchived=true$/);
   await expect(page.getByRole("heading", { name: entity.name, exact: true })).toBeVisible();
-  await expect(page.getByText("Archived", { exact: true })).toBeVisible();
+  // Scoped to this entity's own card: other archived entities from other
+  // specs sharing the same workspace can otherwise make a bare page-wide
+  // "Archived" locator ambiguous.
+  const entityCard = page
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("heading", { name: entity.name, exact: true }) });
+  await expect(entityCard.getByText("Archived", { exact: true })).toBeVisible();
 });
 
 type TestUser = { id: string; email: string; password: string };

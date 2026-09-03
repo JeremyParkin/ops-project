@@ -130,8 +130,11 @@ test("required field cannot be added when active records exist", async () => {
     required: true,
   });
 
+  // Wording last set by migration 0080 (Phase 9.2); the earlier 0013 wording
+  // was superseded by that migration's CREATE OR REPLACE. Still the same
+  // rejection, just different text.
   expect(result.error?.message).toContain(
-    "Required fields can only be added before this entity has records",
+    "Cannot add a required field to an object that already has records",
   );
 });
 
@@ -160,7 +163,7 @@ test("required field cannot be added when only archived records exist", async ()
   });
 
   expect(result.error?.message).toContain(
-    "Required fields can only be added before this entity has records",
+    "Cannot add a required field to an object that already has records",
   );
 });
 

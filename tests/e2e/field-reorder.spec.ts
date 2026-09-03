@@ -85,9 +85,13 @@ test("Move up/down reorders fields, persists, and updates the records table colu
   expect(await nameOrder()).toEqual(["Bravo", "Alpha", "Charlie"]);
 
   // Field position also drives the plain records table's column order.
+  // Exclude the leading bulk-select checkbox header (Phase 9.5) -- it's not
+  // a field column, and its presence would otherwise shift every index by 1.
   await gotoEntity(page, entity, false);
-  const headers = page.locator("thead th");
-  await expect(headers.nth(0)).toHaveText("Bravo");
-  await expect(headers.nth(1)).toHaveText("Alpha");
-  await expect(headers.nth(2)).toHaveText("Charlie");
+  const headers = page.locator("thead th").filter({ hasNot: page.locator("input") });
+  // toContainText, not toHaveText: sortable headers also carry an sr-only
+  // ", click to sort"/", sorted ..." suffix for accessible sort state.
+  await expect(headers.nth(0)).toContainText("Bravo");
+  await expect(headers.nth(1)).toContainText("Alpha");
+  await expect(headers.nth(2)).toContainText("Charlie");
 });
