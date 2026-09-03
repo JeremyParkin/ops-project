@@ -376,12 +376,23 @@ export async function listEntityRecords({
   }
 
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+  // `id` is a secondary, stable tiebreaker -- created_at alone is not a
+  // deterministic order for rows inserted within the same timestamp
+  // granularity (a real possibility for records created in rapid
+  // succession, e.g. a fixture or an import batch), which Postgres leaves
+  // as an unspecified tie-break otherwise. This is a correctness property
+  // of "the default record order," not merely a test convenience: any
+  // downstream consumer of this order (a saved/quick-bar sort applies its
+  // own comparator via a stable Array.prototype.sort, which only preserves
+  // *this* order for values it considers equal) inherits the same
+  // nondeterminism unless the base query is already fully ordered.
   let query = supabase
     .from("entity_records")
     .select("*")
     .eq("workspace_id", workspaceId)
     .eq("entity_type_id", entityTypeId)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   if (ids) {
     query = query.in("id", ids);

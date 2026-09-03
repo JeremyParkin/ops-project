@@ -159,7 +159,20 @@ test("selection resets after a filter/sort navigation", async ({ page }) => {
   await expect(page.getByText("1 of 3 selected")).toBeVisible();
 
   await page.getByRole("columnheader").getByRole("link", { name: "Title" }).click();
-  await page.waitForLoadState("networkidle");
+  // Not waitForLoadState("networkidle"): a Next.js App Router client-side
+  // Link navigation updates the URL/content as the last step of its own
+  // background RSC fetch, which can still be in flight after Playwright
+  // already considers the network idle -- confirmed directly (a
+  // `framenavigated` listener fired with the sorted URL well after both an
+  // immediate post-click check and a settled networkidle wait already saw
+  // the stale, unsorted URL). Waiting on the header's own aria-sort
+  // instead waits for the actual, semantically-meaningful effect of the
+  // click -- the column is now genuinely sorted -- rather than a proxy for
+  // it that this app's real navigation pattern doesn't reliably satisfy.
+  await expect(page.getByRole("columnheader", { name: "Title" })).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
   await expect(page.getByText(/selected$/)).toHaveCount(0);
 });
 
