@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import {
   archiveRecord,
   createRecordComment,
+  createRecordInputRequest,
   deleteRecordFromDetail,
+  cancelRecordInputRequest,
+  respondRecordInputRequest,
   restoreRecord,
   tombstoneRecordComment,
   updateRecordField,
@@ -18,7 +21,7 @@ import {
   startProcessRunAction,
   updateRecurrenceRuleAction,
 } from "@/app/process-actions";
-import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
+import { getActiveWorkspaceId, getCurrentUser, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import { listRecordActivity } from "@/lib/domain/activity-repository";
 import { listChoiceOptionsByFieldIds } from "@/lib/domain/choice-option-repository";
 import { toChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
@@ -26,6 +29,11 @@ import {
   listRecordCommentMentionCandidates,
   listRecordComments,
 } from "@/lib/domain/record-comment-repository";
+import {
+  listRecordInputRequestRecipientCandidates,
+  listRecordInputRequests,
+} from "@/lib/domain/record-input-request-repository";
+import { resolveImpersonationContext } from "@/lib/auth/impersonation";
 import { getEntityContext } from "@/lib/domain/metadata-repository";
 import {
   getProcessRunWithSteps,
@@ -192,6 +200,8 @@ async function loadRecordDetailPageData(
       activityEvents,
       comments,
       mentionCandidates,
+      inputRequests,
+      inputRequestRecipientCandidates,
     ] = await Promise.all([
       getRelationLookups({
         workspaceId,
@@ -223,7 +233,19 @@ async function loadRecordDetailPageData(
       listRecordActivity({ workspaceId, entityTypeId, recordId }).catch(() => []),
       listRecordComments({ workspaceId, entityTypeId, recordId }).catch(() => []),
       listRecordCommentMentionCandidates({ workspaceId }).catch(() => []),
+      listRecordInputRequests({ workspaceId, entityTypeId, recordId }).catch(() => []),
+      listRecordInputRequestRecipientCandidates({ workspaceId }).catch(() => []),
     ]);
+    const impersonation = await resolveImpersonationContext(workspaceId);
+    const currentUserId = impersonation.isImpersonating
+      ? impersonation.effectiveUserId
+      : (await getCurrentUser())?.id;
+    const canCancelAnyInputRequest =
+      !impersonation.isImpersonating &&
+      Boolean(
+        permissions?.capabilities.has("workspace.manage_members") &&
+          permissions.capabilities.has("workspace.manage_roles"),
+      );
 
     return {
       context,
@@ -237,6 +259,10 @@ async function loadRecordDetailPageData(
       activityEvents,
       comments,
       mentionCandidates,
+      inputRequests,
+      inputRequestRecipientCandidates,
+      currentUserId,
+      canCancelAnyInputRequest,
     };
   } catch {
     return null;
@@ -271,6 +297,10 @@ export default async function RecordDetailPage({
     activityEvents,
     comments,
     mentionCandidates,
+    inputRequests,
+    inputRequestRecipientCandidates,
+    currentUserId,
+    canCancelAnyInputRequest,
   } = pageData;
   const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(fields, choiceOptionsByFieldId);
   const actionContext = {
@@ -309,10 +339,17 @@ export default async function RecordDetailPage({
           activityEvents={activityEvents}
           comments={comments}
           mentionCandidates={mentionCandidates}
+          inputRequests={inputRequests}
+          inputRequestRecipientCandidates={inputRequestRecipientCandidates}
+          currentUserId={currentUserId}
+          canCancelAnyInputRequest={canCancelAnyInputRequest}
           editHref={editHref}
           updateFieldAction={updateFieldAction}
           createCommentAction={createRecordComment.bind(null, actionContext)}
           tombstoneCommentAction={tombstoneRecordComment.bind(null, actionContext)}
+          createInputRequestAction={createRecordInputRequest.bind(null, actionContext)}
+          respondInputRequestAction={respondRecordInputRequest.bind(null, actionContext)}
+          cancelInputRequestAction={cancelRecordInputRequest.bind(null, actionContext)}
           archiveRecordAction={archiveRecord.bind(null, actionContext)}
           restoreRecordAction={restoreRecord.bind(null, actionContext)}
           deleteRecordAction={deleteRecordFromDetail.bind(null, actionContext)}

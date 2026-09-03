@@ -36,6 +36,17 @@ export type DiscussionMentionCandidate = {
   email: string;
 };
 
+export type DiscussionInputRequest = {
+  id: string;
+  originRecordCommentId: string;
+  recipientUserId: string;
+  recipientLabel: string;
+  responseRecordCommentId?: string;
+  cancelledAt?: string;
+  originAuthorUserId: string;
+  state: "open" | "responded" | "cancelled";
+};
+
 type DiscussionAction = (
   state: DiscussionActionState,
   formData: FormData,
@@ -45,10 +56,17 @@ type DiscussionSectionProps = {
   title?: string;
   comments: DiscussionComment[];
   mentionCandidates: DiscussionMentionCandidate[];
+  inputRequests?: DiscussionInputRequest[];
+  inputRequestRecipientCandidates?: DiscussionMentionCandidate[];
+  currentUserId?: string;
+  canCancelAnyInputRequest?: boolean;
   composerUnavailableMessage?: string;
   hiddenFields?: Array<{ name: string; value: string }>;
   createCommentAction: DiscussionAction;
   tombstoneCommentAction: DiscussionAction;
+  createInputRequestAction?: DiscussionAction;
+  respondInputRequestAction?: DiscussionAction;
+  cancelInputRequestAction?: DiscussionAction;
   commentAnchorPrefix?: string;
   inputIdPrefix: string;
 };
@@ -365,17 +383,238 @@ function TombstoneCommentForm({
   );
 }
 
+function RequestInputForm({
+  action,
+  recipientCandidates,
+  inputIdPrefix,
+}: {
+  action: DiscussionAction;
+  recipientCandidates: DiscussionMentionCandidate[];
+  inputIdPrefix: string;
+}) {
+  const [state, formAction, pending] = useActionState(action, initialCommentState);
+
+  return (
+    <details className="mt-4 border border-grit bg-chalk px-3 py-2">
+      <summary className="cursor-pointer text-sm font-medium text-graphite">Request input</summary>
+      <form key={state.resetKey ?? "request-input-form"} action={formAction} className="mt-3 grid gap-3">
+        <label htmlFor={`${inputIdPrefix}-request-recipient`} className="sr-only">
+          Recipient
+        </label>
+        <select
+          id={`${inputIdPrefix}-request-recipient`}
+          name="recipientUserId"
+          className="h-9 border border-grit bg-white px-2 text-sm text-graphite"
+          defaultValue=""
+        >
+          <option value="" disabled>
+            Choose recipient
+          </option>
+          {recipientCandidates.map((candidate) => (
+            <option key={candidate.userId} value={candidate.userId}>
+              {candidate.email}
+            </option>
+          ))}
+        </select>
+        <label htmlFor={`${inputIdPrefix}-request-body`} className="sr-only">
+          Request body
+        </label>
+        <textarea
+          id={`${inputIdPrefix}-request-body`}
+          name="body"
+          rows={3}
+          maxLength={RECORD_COMMENT_BODY_MAX_LENGTH}
+          defaultValue={state.success ? "" : state.body ?? ""}
+          className="w-full resize-y border border-grit bg-white px-3 py-2 text-sm text-graphite outline-none focus:border-graphite"
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            disabled={pending}
+            className="inline-flex h-9 items-center justify-center bg-brass px-3 text-sm font-medium text-graphite hover:bg-brass-deep hover:text-paper disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone"
+          >
+            {pending ? "Sending..." : "Send request"}
+          </button>
+          {state.message ? (
+            <p
+              className={state.success ? "text-sm text-status-sage" : "text-sm text-red-700"}
+              role={state.success ? "status" : "alert"}
+            >
+              {state.message}
+            </p>
+          ) : null}
+        </div>
+      </form>
+    </details>
+  );
+}
+
+function RespondInputRequestForm({
+  action,
+  requestId,
+  inputIdPrefix,
+}: {
+  action: DiscussionAction;
+  requestId: string;
+  inputIdPrefix: string;
+}) {
+  const [state, formAction, pending] = useActionState(action, initialCommentState);
+
+  return (
+    <form key={state.resetKey ?? `respond-${requestId}`} action={formAction} className="mt-3 grid gap-2">
+      <input type="hidden" name="requestId" value={requestId} />
+      <label htmlFor={`${inputIdPrefix}-request-${requestId}-response`} className="sr-only">
+        Response
+      </label>
+      <textarea
+        id={`${inputIdPrefix}-request-${requestId}-response`}
+        name="body"
+        rows={3}
+        maxLength={RECORD_COMMENT_BODY_MAX_LENGTH}
+        defaultValue={state.success ? "" : state.body ?? ""}
+        className="w-full resize-y border border-grit bg-white px-3 py-2 text-sm text-graphite outline-none focus:border-graphite"
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          disabled={pending}
+          className="inline-flex h-8 items-center justify-center bg-graphite px-3 text-xs font-medium text-paper hover:bg-slate disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone"
+        >
+          {pending ? "Responding..." : "Respond"}
+        </button>
+        {state.message ? (
+          <p
+            className={state.success ? "text-xs text-status-sage" : "text-xs text-red-700"}
+            role={state.success ? "status" : "alert"}
+          >
+            {state.message}
+          </p>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+
+function CancelInputRequestForm({
+  action,
+  requestId,
+}: {
+  action: DiscussionAction;
+  requestId: string;
+}) {
+  const [state, formAction, pending] = useActionState(action, initialCommentState);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="requestId" value={requestId} />
+      <button
+        type="submit"
+        disabled={pending}
+        className="text-xs font-medium text-stone underline-offset-4 hover:text-graphite hover:underline disabled:cursor-not-allowed disabled:text-grit"
+      >
+        {pending ? "Cancelling..." : "Cancel request"}
+      </button>
+      {state.message && !state.success ? (
+        <p className="mt-1 text-xs text-red-700" role="alert">
+          {state.message}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+function InputRequestTreatment({
+  request,
+  currentUserId,
+  canCancelAnyInputRequest,
+  isArchived,
+  respondAction,
+  cancelAction,
+  inputIdPrefix,
+}: {
+  request: DiscussionInputRequest;
+  currentUserId?: string;
+  canCancelAnyInputRequest?: boolean;
+  isArchived: boolean;
+  respondAction?: DiscussionAction;
+  cancelAction?: DiscussionAction;
+  inputIdPrefix: string;
+}) {
+  const canRespond = request.state === "open" && currentUserId === request.recipientUserId;
+  const canCancel =
+    request.state === "open" &&
+    (currentUserId === request.originAuthorUserId || Boolean(canCancelAnyInputRequest));
+  const statusCopy =
+    request.state === "responded"
+      ? "Responded"
+      : request.state === "cancelled"
+        ? "Cancelled"
+        : "Open";
+
+  return (
+    <div
+      id={`input-request-${request.id}`}
+      className="mt-3 scroll-mt-24 border-l-4 border-brass bg-chalk px-3 py-2"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm font-medium text-graphite">
+          Input requested from {request.recipientLabel}
+          <span className="ml-2 text-xs font-medium uppercase text-stone">{statusCopy}</span>
+        </p>
+        {canCancel && cancelAction ? (
+          <CancelInputRequestForm action={cancelAction} requestId={request.id} />
+        ) : null}
+      </div>
+      {request.responseRecordCommentId ? (
+        <a
+          href={`#comment-${request.responseRecordCommentId}`}
+          className="mt-1 inline-flex text-xs font-medium text-stone underline-offset-4 hover:text-graphite hover:underline"
+        >
+          View response
+        </a>
+      ) : null}
+      {isArchived && request.state === "open" ? (
+        <p className="mt-2 text-xs text-stone">
+          Archived records can no longer receive responses.
+        </p>
+      ) : canRespond && respondAction ? (
+        <RespondInputRequestForm
+          action={respondAction}
+          requestId={request.id}
+          inputIdPrefix={inputIdPrefix}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function DiscussionSection({
   title = "Discussion",
   comments,
   mentionCandidates,
+  inputRequests = [],
+  inputRequestRecipientCandidates = [],
+  currentUserId,
+  canCancelAnyInputRequest,
   composerUnavailableMessage,
   hiddenFields,
   createCommentAction,
   tombstoneCommentAction,
+  createInputRequestAction,
+  respondInputRequestAction,
+  cancelInputRequestAction,
   commentAnchorPrefix = "comment",
   inputIdPrefix,
 }: DiscussionSectionProps) {
+  const inputRequestByOriginCommentId = new Map(
+    inputRequests.map((request) => [request.originRecordCommentId, request]),
+  );
+  const responseRequestByCommentId = new Map(
+    inputRequests
+      .filter((request) => request.responseRecordCommentId)
+      .map((request) => [request.responseRecordCommentId as string, request]),
+  );
+
   return (
     <section className="border border-grit bg-white p-5">
       <SectionHeader title={title} />
@@ -386,6 +625,8 @@ export function DiscussionSection({
         <ul className="mt-4 divide-y divide-chalk">
           {comments.map((comment) => {
             const isRemoved = Boolean(comment.tombstonedAt);
+            const inputRequest = inputRequestByOriginCommentId.get(comment.id);
+            const responseRequest = responseRequestByCommentId.get(comment.id);
 
             return (
               <li key={comment.id} id={`${commentAnchorPrefix}-${comment.id}`} className="scroll-mt-24 py-3">
@@ -425,11 +666,35 @@ export function DiscussionSection({
                     {renderPlainTextWithMentions(comment.body ?? "")}
                   </p>
                 )}
+                {inputRequest ? (
+                  <InputRequestTreatment
+                    request={inputRequest}
+                    currentUserId={currentUserId}
+                    canCancelAnyInputRequest={canCancelAnyInputRequest}
+                    isArchived={Boolean(composerUnavailableMessage)}
+                    respondAction={respondInputRequestAction}
+                    cancelAction={cancelInputRequestAction}
+                    inputIdPrefix={inputIdPrefix}
+                  />
+                ) : null}
+                {responseRequest ? (
+                  <p className="mt-2 text-xs font-medium text-stone">
+                    Response to input request
+                  </p>
+                ) : null}
               </li>
             );
           })}
         </ul>
       )}
+
+      {!composerUnavailableMessage && createInputRequestAction ? (
+        <RequestInputForm
+          action={createInputRequestAction}
+          recipientCandidates={inputRequestRecipientCandidates}
+          inputIdPrefix={inputIdPrefix}
+        />
+      ) : null}
 
       <CommentComposer
         action={createCommentAction}

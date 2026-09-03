@@ -92,7 +92,7 @@ This is a major product phase, not cosmetic polish. Business objects are the cen
 
 ## Phase 10 - Collaboration
 
-**Status:** In progress. Phase 10.1 record-level Discussion, Phase 10.2 record-comment mentions with narrow in-app notifications, and Phase 10.3 Process Step Run Discussion are complete. Implemented details and verification live in `PROJECT_CONTEXT.md`.
+**Status:** In progress. Phase 10.1 record-level Discussion, Phase 10.2 record-comment mentions with narrow in-app notifications, Phase 10.3 Process Step Run Discussion, and Phase 10.4 record-level Request for Input are complete. Implemented details and verification live in `PROJECT_CONTEXT.md`.
 
 **Goal:** Add the human collaboration layer around Kinema's operational objects and process work.
 
@@ -100,9 +100,9 @@ Phase 10 should make it natural for people to discuss, request input, and preser
 
 Likely scope:
 
-- Record-level comments/discussions are done for Phase 10.1; record-comment mentions with in-app notifications are done for Phase 10.2; human-operable Process Step Run discussion is done for Phase 10.3. Continue from those primitives rather than rebuilding a generic chat system.
-- A likely next collaboration decision is whether to add lightweight input-request/request-for-response semantics on top of comments and mentions, still anchored to records or human-operable process steps.
-- Requests for input and lightweight collaboration patterns tied to records, tasks, or approvals.
+- Record-level comments/discussions are done for Phase 10.1; record-comment mentions with in-app notifications are done for Phase 10.2; human-operable Process Step Run discussion is done for Phase 10.3; record-level Request for Input is done for Phase 10.4. Continue from those primitives rather than rebuilding a generic chat system.
+- A likely next collaboration decision is whether to extend lightweight input-request/request-for-response semantics to human-operable process steps, still explicitly anchored and without becoming My Work, due-date, reminder, or task-management behavior.
+- Requests for input and lightweight collaboration patterns tied to human-operable process work, if the record-level pattern continues to hold up.
 - Durable conversation history with clear authorship, timestamps, and permission behavior.
 - Notification integration for comments, mentions, and input requests.
 - Email delivery and preferences for collaborative notifications, using provider infrastructure if Phase 8F establishes it.

@@ -14,6 +14,10 @@ import type {
   RecordCommentMentionCandidate,
 } from "@/lib/domain/record-comment-repository";
 import type {
+  RecordInputRequest,
+  RecordInputRequestRecipientCandidate,
+} from "@/lib/domain/record-input-request-repository";
+import type {
   IncomingRelationGroup,
   RelationLabelsByFieldKey,
 } from "@/lib/domain/record-repository";
@@ -54,10 +58,17 @@ type RecordDetailViewProps = {
   activityEvents: RecordActivityEvent[];
   comments: RecordComment[];
   mentionCandidates: RecordCommentMentionCandidate[];
+  inputRequests: RecordInputRequest[];
+  inputRequestRecipientCandidates: RecordInputRequestRecipientCandidate[];
+  currentUserId?: string;
+  canCancelAnyInputRequest?: boolean;
   editHref?: string;
   updateFieldAction?: UpdateFieldAction;
   createCommentAction: CommentAction;
   tombstoneCommentAction: Parameters<typeof RecordDiscussion>[0]["tombstoneCommentAction"];
+  createInputRequestAction: Parameters<typeof RecordDiscussion>[0]["createInputRequestAction"];
+  respondInputRequestAction: Parameters<typeof RecordDiscussion>[0]["respondInputRequestAction"];
+  cancelInputRequestAction: Parameters<typeof RecordDiscussion>[0]["cancelInputRequestAction"];
   archiveRecordAction: Parameters<typeof RecordDetailActions>[0]["archiveRecordAction"];
   restoreRecordAction: Parameters<typeof RecordDetailActions>[0]["restoreRecordAction"];
   deleteRecordAction: Parameters<typeof RecordDetailActions>[0]["deleteRecordAction"];
@@ -177,10 +188,17 @@ export function RecordDetailView({
   activityEvents,
   comments,
   mentionCandidates,
+  inputRequests,
+  inputRequestRecipientCandidates,
+  currentUserId,
+  canCancelAnyInputRequest,
   editHref,
   updateFieldAction,
   createCommentAction,
   tombstoneCommentAction,
+  createInputRequestAction,
+  respondInputRequestAction,
+  cancelInputRequestAction,
   archiveRecordAction,
   restoreRecordAction,
   deleteRecordAction,
@@ -364,9 +382,16 @@ export function RecordDetailView({
       <RecordDiscussion
         comments={comments}
         mentionCandidates={mentionCandidates}
+        inputRequests={inputRequests}
+        inputRequestRecipientCandidates={inputRequestRecipientCandidates}
+        currentUserId={currentUserId}
+        canCancelAnyInputRequest={canCancelAnyInputRequest}
         isArchivedRecord={Boolean(record.archivedAt)}
         createCommentAction={createCommentAction}
         tombstoneCommentAction={tombstoneCommentAction}
+        createInputRequestAction={createInputRequestAction}
+        respondInputRequestAction={respondInputRequestAction}
+        cancelInputRequestAction={cancelInputRequestAction}
       />
 
       <RecordActivity events={activityEvents} />

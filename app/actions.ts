@@ -116,6 +116,11 @@ import {
   createRecordCommentWithMentions as createRecordCommentWithMentionsInRepository,
   tombstoneRecordComment as tombstoneRecordCommentInRepository,
 } from "@/lib/domain/record-comment-repository";
+import {
+  cancelRecordInputRequest as cancelRecordInputRequestInRepository,
+  createRecordInputRequest as createRecordInputRequestInRepository,
+  respondRecordInputRequest as respondRecordInputRequestInRepository,
+} from "@/lib/domain/record-input-request-repository";
 import { RECORD_COMMENT_BODY_MAX_LENGTH } from "@/lib/domain/record-comment-validation";
 
 type CreateRecordContext = {
@@ -147,6 +152,10 @@ type EntityViewContext = CreateRecordContext & {
 
 type RecordCommentContext = UpdateRecordContext & {
   commentId?: string;
+};
+
+type RecordInputRequestContext = UpdateRecordContext & {
+  requestId?: string;
 };
 
 export type EntityTypeActionState = {
@@ -727,6 +736,156 @@ export async function tombstoneRecordComment(
   return {
     success: true,
     message: "Comment removed.",
+  };
+}
+
+export async function createRecordInputRequest(
+  context: RecordInputRequestContext,
+  _previousState: RecordCommentActionState,
+  formData: FormData,
+): Promise<RecordCommentActionState> {
+  const body = String(formData.get("body") ?? "").trim();
+  const recipientUserId = String(formData.get("recipientUserId") ?? "");
+
+  if (!recipientUserId) {
+    return {
+      ...initialRecordCommentActionState,
+      message: "Choose who should respond.",
+      body,
+    };
+  }
+
+  if (!body) {
+    return {
+      ...initialRecordCommentActionState,
+      message: "Request body is required.",
+    };
+  }
+
+  if (body.length > RECORD_COMMENT_BODY_MAX_LENGTH) {
+    return {
+      success: false,
+      message: `Request body must be ${RECORD_COMMENT_BODY_MAX_LENGTH} characters or fewer.`,
+      body,
+    };
+  }
+
+  let requestId: string;
+
+  try {
+    requestId = await createRecordInputRequestInRepository({
+      workspaceId: context.workspaceId,
+      entityTypeId: context.entityTypeId,
+      recordId: context.recordId,
+      recipientUserId,
+      body,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to request input. Please try again.",
+      body,
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
+
+  return {
+    success: true,
+    message: "Input requested.",
+    body: "",
+    resetKey: requestId,
+  };
+}
+
+export async function respondRecordInputRequest(
+  context: RecordInputRequestContext,
+  _previousState: RecordCommentActionState,
+  formData: FormData,
+): Promise<RecordCommentActionState> {
+  const requestId = context.requestId ?? String(formData.get("requestId") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!requestId) {
+    return {
+      success: false,
+      message: "Unable to respond to request. Please try again.",
+      body,
+    };
+  }
+
+  if (!body) {
+    return {
+      ...initialRecordCommentActionState,
+      message: "Response body is required.",
+    };
+  }
+
+  if (body.length > RECORD_COMMENT_BODY_MAX_LENGTH) {
+    return {
+      success: false,
+      message: `Response body must be ${RECORD_COMMENT_BODY_MAX_LENGTH} characters or fewer.`,
+      body,
+    };
+  }
+
+  let commentId: string;
+
+  try {
+    commentId = await respondRecordInputRequestInRepository({
+      workspaceId: context.workspaceId,
+      requestId,
+      body,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to respond to request. Please try again.",
+      body,
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
+
+  return {
+    success: true,
+    message: "Response added.",
+    body: "",
+    resetKey: commentId,
+  };
+}
+
+export async function cancelRecordInputRequest(
+  context: RecordInputRequestContext,
+  _previousState: RecordCommentActionState,
+  formData: FormData,
+): Promise<RecordCommentActionState> {
+  const requestId = context.requestId ?? String(formData.get("requestId") ?? "");
+
+  if (!requestId) {
+    return {
+      success: false,
+      message: "Unable to cancel request. Please try again.",
+    };
+  }
+
+  try {
+    await cancelRecordInputRequestInRepository({
+      workspaceId: context.workspaceId,
+      requestId,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to cancel request. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
+
+  return {
+    success: true,
+    message: "Input request cancelled.",
   };
 }
 

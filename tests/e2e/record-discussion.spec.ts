@@ -189,6 +189,8 @@ test.afterAll(async () => {
   if (fixture?.workspaceId) {
     const { error: notificationError } = await admin.from("notifications").delete().eq("workspace_id", fixture.workspaceId);
     if (notificationError) failures.push(notificationError.message);
+    const { error: requestError } = await admin.from("record_input_requests").delete().eq("workspace_id", fixture.workspaceId);
+    if (requestError) failures.push(requestError.message);
     const { error: commentError } = await admin.from("record_comments").delete().eq("workspace_id", fixture.workspaceId);
     if (commentError) failures.push(commentError.message);
     const { error: workspaceError } = await admin.from("workspaces").delete().eq("id", fixture.workspaceId);
@@ -299,6 +301,18 @@ test("Discussion mentions active members and creates navigable notifications", a
   await discussion(page).getByRole("button", { name: "Add comment" }).click();
   await expect(discussion(page).getByText("No durable mention after removing visible text")).toBeVisible();
 
+  await expect
+    .poll(async () => {
+      const result = await admin
+        .from("record_comments")
+        .select("id")
+        .eq("workspace_id", fixture.workspaceId)
+        .eq("entity_record_id", fixture.recordId)
+        .eq("body", "No durable mention after removing visible text");
+      if (result.error) throw new Error(result.error.message);
+      return result.data.length;
+    })
+    .toBe(1);
   const removedSelectionStorage = await admin
     .from("record_comments")
     .select("id")
@@ -393,4 +407,125 @@ test("impersonated comments show effective author and real actor attribution", a
   await discussion(page).getByRole("button", { name: "Add comment" }).click();
   await expect(discussion(page).getByText("Impersonated UI comment")).toBeVisible();
   await expect(discussion(page).getByText(`${fixture.worker.email} via ${fixture.administrator.email}`)).toBeVisible();
+
+  await page.getByRole("button", { name: "Exit impersonation" }).click();
+  await expect(page.getByText("Exit impersonation")).toHaveCount(0);
+});
+
+test("Request input creates one discussion item, deep-links recipient response, and keeps ordinary comments inert", async ({
+  browser,
+}) => {
+  const requesterContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const requesterPage = await requesterContext.newPage();
+  await signIn(requesterPage, fixture.worker);
+  await requesterPage.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
+
+  await expect(discussion(requesterPage).getByText("Request input")).toBeVisible();
+  await discussion(requesterPage).getByText("Request input").click();
+  const recipientSelect = discussion(requesterPage).getByLabel("Recipient");
+  await expect(recipientSelect.locator("option", { hasText: fixture.secondWorker.email })).toHaveCount(1);
+  await expect(recipientSelect.locator("option", { hasText: fixture.administrator.email })).toHaveCount(1);
+  await expect(recipientSelect.locator("option", { hasText: fixture.readOnly.email })).toHaveCount(0);
+
+  const requestBody = `Need explicit input ${randomUUID()}`;
+  await recipientSelect.selectOption(fixture.secondWorker.id);
+  await discussion(requesterPage).getByLabel("Request body").fill(requestBody);
+  await discussion(requesterPage).getByRole("button", { name: "Send request" }).click();
+  await expect(discussion(requesterPage).getByText("Input requested.")).toBeVisible();
+  await expect(discussion(requesterPage).getByText(requestBody)).toHaveCount(1);
+  const requestItem = discussion(requesterPage).locator("li").filter({ hasText: requestBody });
+  await expect(requestItem.getByText(`Input requested from ${fixture.secondWorker.email}`)).toBeVisible();
+  await expect(requestItem.getByText("Open")).toBeVisible();
+  await expect(requestItem.getByRole("button", { name: "Cancel request" })).toBeVisible();
+
+  const requestTreatmentId = await requestItem.locator("[id^='input-request-']").getAttribute("id");
+  expect(requestTreatmentId).toBeTruthy();
+  const requestId = requestTreatmentId!.replace("input-request-", "");
+
+  const recipientContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const recipientPage = await recipientContext.newPage();
+  await signIn(recipientPage, fixture.secondWorker);
+  await recipientPage.goto("/notifications");
+  await expect(recipientPage.getByText(/\d+ unread/)).toBeVisible();
+  await recipientPage.getByRole("link", { name: new RegExp(`${fixture.worker.email} requested your input`) }).click();
+  await recipientPage.waitForURL(`**/entities/${fixture.entityTypeId}/records/${fixture.recordId}#input-request-${requestId}`);
+  await expect(discussion(recipientPage).locator(`#input-request-${requestId}`)).toBeVisible();
+  await expect(discussion(recipientPage).locator(`#input-request-${requestId}`).getByRole("button", { name: "Respond" })).toBeVisible();
+
+  await discussion(recipientPage).getByLabel("Add a comment").fill("Ordinary comment should not close request");
+  await discussion(recipientPage).getByRole("button", { name: "Add comment" }).click();
+  await expect(discussion(recipientPage).getByText("Ordinary comment should not close request")).toBeVisible();
+  await expect(discussion(recipientPage).locator(`#input-request-${requestId}`).getByText("Open")).toBeVisible();
+
+  await discussion(recipientPage).locator(`#input-request-${requestId}`).getByLabel("Response").fill("Explicit response from recipient");
+  await discussion(recipientPage).locator(`#input-request-${requestId}`).getByRole("button", { name: "Respond" }).click();
+  await expect(discussion(recipientPage).getByText("Explicit response from recipient")).toBeVisible();
+  await expect(discussion(recipientPage).locator(`#input-request-${requestId}`).getByText("Responded")).toBeVisible();
+  await expect(discussion(recipientPage).locator(`#input-request-${requestId}`).getByRole("button", { name: "Respond" })).toHaveCount(0);
+  await expect(discussion(recipientPage).getByText("Response to input request")).toBeVisible();
+
+  await requesterPage.goto("/notifications");
+  await expect(requesterPage.getByRole("link", { name: new RegExp(`${fixture.secondWorker.email} responded to your request`) })).toBeVisible();
+
+  await requesterContext.close();
+  await recipientContext.close();
+});
+
+test("Request input cancellation and archived open-request UI expose only valid actions", async ({ page }) => {
+  const admin = createSupabaseTestClient();
+  await signIn(page, fixture.worker);
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
+  await discussion(page).getByText("Request input").click();
+  await discussion(page).getByLabel("Recipient").selectOption(fixture.secondWorker.id);
+  await discussion(page).getByLabel("Request body").fill("Open request for cancellation UI");
+  await discussion(page).getByRole("button", { name: "Send request" }).click();
+  const requestItem = discussion(page).locator("li").filter({ hasText: "Open request for cancellation UI" });
+  const requestTreatmentId = await requestItem.locator("[id^='input-request-']").getAttribute("id");
+  expect(requestTreatmentId).toBeTruthy();
+  const requestId = requestTreatmentId!.replace("input-request-", "");
+
+  await signIn(page, fixture.secondWorker);
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}#input-request-${requestId}`);
+  await expect(discussion(page).locator(`#input-request-${requestId}`).getByRole("button", { name: "Respond" })).toBeVisible();
+  await expect(discussion(page).locator(`#input-request-${requestId}`).getByRole("button", { name: "Cancel request" })).toHaveCount(0);
+
+  await signIn(page, fixture.readOnly);
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}#input-request-${requestId}`);
+  await expect(discussion(page).locator(`#input-request-${requestId}`).getByRole("button", { name: "Respond" })).toHaveCount(0);
+  await expect(discussion(page).locator(`#input-request-${requestId}`).getByRole("button", { name: "Cancel request" })).toHaveCount(0);
+
+  await signIn(page, fixture.administrator);
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}#input-request-${requestId}`);
+  await discussion(page).locator(`#input-request-${requestId}`).getByRole("button", { name: "Cancel request" }).click();
+  await expect(discussion(page).locator(`#input-request-${requestId}`).getByText("Cancelled")).toBeVisible();
+  await expect(discussion(page).locator(`#input-request-${requestId}`).getByRole("button", { name: "Cancel request" })).toHaveCount(0);
+
+  await signIn(page, fixture.worker);
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
+  await discussion(page).getByText("Request input").click();
+  await discussion(page).getByLabel("Recipient").selectOption(fixture.secondWorker.id);
+  await discussion(page).getByLabel("Request body").fill("Archive request stays historical");
+  await discussion(page).getByRole("button", { name: "Send request" }).click();
+  const archivedRequestItem = discussion(page).locator("li").filter({ hasText: "Archive request stays historical" });
+  const archivedRequestTreatmentId = await archivedRequestItem.locator("[id^='input-request-']").getAttribute("id");
+  expect(archivedRequestTreatmentId).toBeTruthy();
+  const archivedRequestId = archivedRequestTreatmentId!.replace("input-request-", "");
+  const archive = await admin.rpc("set_entity_records_archived_authorized", {
+    p_workspace_id: fixture.workspaceId,
+    p_entity_type_id: fixture.entityTypeId,
+    p_record_ids: [fixture.recordId],
+    p_archived: true,
+  });
+  expect(archive.error).toBeNull();
+
+  await signIn(page, fixture.secondWorker);
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}#input-request-${archivedRequestId}`);
+  await expect(discussion(page).locator(`#input-request-${archivedRequestId}`).getByText("Open")).toBeVisible();
+  await expect(discussion(page).locator(`#input-request-${archivedRequestId}`).getByRole("button", { name: "Respond" })).toHaveCount(0);
+  await expect(discussion(page).locator(`#input-request-${archivedRequestId}`).getByText("Archived records can no longer receive responses.")).toBeVisible();
+
+  await signIn(page, fixture.administrator);
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}#input-request-${archivedRequestId}`);
+  await discussion(page).locator(`#input-request-${archivedRequestId}`).getByRole("button", { name: "Cancel request" }).click();
+  await expect(discussion(page).locator(`#input-request-${archivedRequestId}`).getByText("Cancelled")).toBeVisible();
 });
