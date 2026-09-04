@@ -3,7 +3,7 @@ import type { RecordFieldFormState } from "@/app/actions";
 import { ChoicePill } from "@/app/components/choice-pill";
 import { EditableTableCell } from "@/app/components/editable-table-cell";
 import { RecordDetailActions } from "@/app/components/record-detail-actions";
-import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
+import { CollapsibleSection, PageHeader } from "@/app/components/page-primitives";
 import { ProcessSection, type ProcessSectionEntry } from "@/app/components/process-section";
 import { RecordActivity } from "@/app/components/record-activity";
 import { RecordDiscussion } from "@/app/components/record-discussion";
@@ -255,8 +255,7 @@ export function RecordDetailView({
         </>}
       />
 
-      <section className="border border-grit bg-white p-5">
-        <SectionHeader title="Overview" />
+      <CollapsibleSection title="Overview">
         {overviewCandidateFields.length === 0 ? (
           <p className="mt-5 text-sm text-stone">This object has no additional fields.</p>
         ) : (
@@ -296,11 +295,10 @@ export function RecordDetailView({
             ) : null}
           </>
         )}
-      </section>
+      </CollapsibleSection>
 
       {incomingRelationGroups.length > 0 ? (
-        <section className="border border-grit bg-white p-5">
-          <SectionHeader title="Related" />
+        <CollapsibleSection title="Related">
           <div className="mt-5 grid gap-4">
             {incomingRelationGroups.map((group) => {
               const previewRecords = group.records.slice(0, RELATED_PREVIEW_CAP);
@@ -374,7 +372,7 @@ export function RecordDetailView({
               );
             })}
           </div>
-        </section>
+        </CollapsibleSection>
       ) : null}
 
       <ProcessSection entries={processSectionEntries} />

@@ -73,14 +73,17 @@ async function signIn(page: Page, user: User) {
   await page.waitForURL("/");
 }
 
+// Discussion and Activity render as a native <details> now (record-detail
+// polish slice: all five record-detail sections are collapsible), not a
+// plain <section> -- the heading itself and its text are unchanged.
 function discussion(page: Page) {
-  return page.locator("section").filter({
+  return page.locator("details").filter({
     has: page.getByRole("heading", { name: "Discussion", exact: true }),
   });
 }
 
 function activity(page: Page) {
-  return page.locator("section").filter({
+  return page.locator("details").filter({
     has: page.getByRole("heading", { name: "Activity", exact: true }),
   });
 }
@@ -236,9 +239,13 @@ test("Discussion supports create, ordering, validation, tombstone, and remains d
   await discussion(page).getByRole("button", { name: "Add comment" }).click();
   await expect(discussion(page).getByText("First visible comment")).toBeVisible();
 
+  // "Second visible comment" was posted first, "First visible comment"
+  // second -- deliberately, so this asserts genuine newest-first display
+  // order (record-detail polish slice) rather than merely matching
+  // creation order by coincidence.
   const bodies = discussion(page).locator("li").filter({ hasText: "visible comment" });
-  await expect(bodies.nth(0)).toContainText("Second visible comment");
-  await expect(bodies.nth(1)).toContainText("First visible comment");
+  await expect(bodies.nth(0)).toContainText("First visible comment");
+  await expect(bodies.nth(1)).toContainText("Second visible comment");
   await expect(bodies.first().getByText(fixture.worker.email)).toBeVisible();
   await expect(discussion(page).locator("time").first()).toBeVisible();
 
@@ -364,15 +371,24 @@ test("archived records keep discussion readable but remove the composer", async 
 
 test("records.operate and administrator boundaries are enforced from record detail", async ({ page }) => {
   const admin = createSupabaseTestClient();
-  const { error } = await admin.from("record_comments").insert({
-    workspace_id: fixture.workspaceId,
-    entity_type_id: fixture.entityTypeId,
-    entity_record_id: fixture.recordId,
-    body: "Administrator tombstone target",
-    author_user_id: fixture.worker.id,
-    author_label: fixture.worker.email,
-  });
+  const { data: inserted, error } = await admin
+    .from("record_comments")
+    .insert({
+      workspace_id: fixture.workspaceId,
+      entity_type_id: fixture.entityTypeId,
+      entity_record_id: fixture.recordId,
+      body: "Administrator tombstone target",
+      author_user_id: fixture.worker.id,
+      author_label: fixture.worker.email,
+    })
+    .select("id")
+    .single();
   expect(error).toBeNull();
+  // Scoped by the comment's own stable anchor id, not its body text -- once
+  // tombstoned, "Administrator tombstone target" no longer appears in the
+  // DOM at all (replaced by "Comment removed"), so a text-based filter
+  // would stop matching the very element being asserted on.
+  const targetComment = page.locator(`#comment-${inserted!.id}`);
 
   await signIn(page, fixture.readOnly);
   await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
@@ -382,14 +398,13 @@ test("records.operate and administrator boundaries are enforced from record deta
 
   await signIn(page, fixture.secondWorker);
   await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
-  const otherComment = discussion(page).locator("li").filter({ hasText: "Administrator tombstone target" });
-  await otherComment.getByRole("button", { name: "Remove" }).click();
-  await expect(otherComment.getByRole("alert")).toContainText("only remove your own comments");
+  await targetComment.getByRole("button", { name: "Remove" }).click();
+  await expect(targetComment.getByRole("alert")).toContainText("only remove your own comments");
 
   await signIn(page, fixture.administrator);
   await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
-  await discussion(page).locator("li").filter({ hasText: "Administrator tombstone target" }).getByRole("button", { name: "Remove" }).click();
-  await expect(discussion(page).getByText("Comment removed")).toBeVisible();
+  await targetComment.getByRole("button", { name: "Remove" }).click();
+  await expect(targetComment.getByText("Comment removed")).toBeVisible();
   await expect(discussion(page).getByText("Administrator tombstone target")).toHaveCount(0);
 });
 

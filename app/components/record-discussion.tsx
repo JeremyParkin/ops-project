@@ -82,6 +82,7 @@ export function RecordDiscussion({
       respondInputRequestAction={respondInputRequestAction}
       cancelInputRequestAction={cancelInputRequestAction}
       inputIdPrefix="record"
+      collapsible
     />
   );
 }

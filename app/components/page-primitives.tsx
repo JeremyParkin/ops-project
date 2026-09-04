@@ -69,3 +69,40 @@ export function SectionHeader({ title, description, actions }: SectionHeaderProp
     </div>
   );
 }
+
+type CollapsibleSectionProps = {
+  title: string;
+  description?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+};
+
+// Native <details>/<summary> -- no React accordion state, no client-only
+// dependency, so this works identically inside a Server Component (record
+// detail's own top-level composition is one). No `actions` slot: nested
+// interactive controls inside a native <summary> behave unreliably across
+// browsers, and nothing today needs one -- deferred, not solved here.
+export function CollapsibleSection({
+  title,
+  description,
+  defaultOpen = true,
+  children,
+}: CollapsibleSectionProps) {
+  return (
+    <details className="group border border-grit bg-white" open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-5 [&::-webkit-details-marker]:hidden">
+        <div>
+          <h2 className="text-lg font-semibold text-graphite">{title}</h2>
+          {description ? <p className="mt-1 text-sm text-stone">{description}</p> : null}
+        </div>
+        <span
+          aria-hidden="true"
+          className="mt-1 shrink-0 text-sm text-stone transition-transform group-open:rotate-90"
+        >
+          ▸
+        </span>
+      </summary>
+      <div className="px-5 pb-5">{children}</div>
+    </details>
+  );
+}

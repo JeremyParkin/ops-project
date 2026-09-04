@@ -10,7 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { SectionHeader } from "@/app/components/page-primitives";
+import { CollapsibleSection, SectionHeader } from "@/app/components/page-primitives";
 import { RECORD_COMMENT_BODY_MAX_LENGTH } from "@/lib/domain/record-comment-validation";
 
 export type DiscussionActionState = {
@@ -74,6 +74,11 @@ type DiscussionSectionProps = {
   commentAnchorPrefix?: string;
   inputRequestAnchorPrefix?: string;
   inputIdPrefix: string;
+  // Opt-in outer CollapsibleSection wrapper. Defaults to a plain <section>
+  // (today's behavior) so Process Step Discussion -- which renders one of
+  // these per step card -- is unaffected; only record-level Discussion
+  // opts in. See record-discussion.tsx.
+  collapsible?: boolean;
 };
 
 const initialCommentState: DiscussionActionState = {
@@ -602,6 +607,11 @@ function InputRequestTreatment({
   );
 }
 
+// Comments visible without expanding anything. Kept small and fixed --
+// see the "open older request" carve-out below for why this never grows
+// on its own.
+const DEFAULT_VISIBLE_COMMENT_COUNT = 4;
+
 export function DiscussionSection({
   title = "Discussion",
   comments,
@@ -619,6 +629,7 @@ export function DiscussionSection({
   cancelInputRequestAction,
   commentAnchorPrefix = "comment",
   inputRequestAnchorPrefix = "input-request",
+  collapsible = false,
   inputIdPrefix,
 }: DiscussionSectionProps) {
   const inputRequestByOriginCommentId = new Map(
@@ -630,79 +641,122 @@ export function DiscussionSection({
       .map((request) => [request.responseCommentId as string, request]),
   );
 
-  return (
-    <section className="border border-grit bg-white p-5">
-      <SectionHeader title={title} />
+  // Durable storage/query order is oldest-first (created_at asc, id asc,
+  // per the create/list RPCs) -- reversed here for presentation only. The
+  // query itself is untouched.
+  const newestFirstComments = [...comments].reverse();
+  const latestComments = newestFirstComments.slice(0, DEFAULT_VISIBLE_COMMENT_COUNT);
+  const olderComments = newestFirstComments.slice(DEFAULT_VISIBLE_COMMENT_COUNT);
+  // An OPEN request must never silently disappear just because its origin
+  // comment is older than the default window. Surfaced in their own small
+  // group instead of expanding the window itself -- one old open request
+  // would otherwise drag every ordinary comment between it and the window
+  // into view too. Responded/cancelled requests get no such protection;
+  // their origin comment follows normal truncation like any other comment.
+  const openOlderRequestComments = olderComments.filter(
+    (comment) => inputRequestByOriginCommentId.get(comment.id)?.state === "open",
+  );
+  const openOlderRequestCommentIds = new Set(openOlderRequestComments.map((comment) => comment.id));
+  const remainingOlderComments = olderComments.filter(
+    (comment) => !openOlderRequestCommentIds.has(comment.id),
+  );
 
+  function renderCommentItem(comment: DiscussionComment) {
+    const isRemoved = Boolean(comment.tombstonedAt);
+    const inputRequest = inputRequestByOriginCommentId.get(comment.id);
+    const responseRequest = responseRequestByCommentId.get(comment.id);
+
+    return (
+      <li key={comment.id} id={`${commentAnchorPrefix}-${comment.id}`} className="scroll-mt-24 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-graphite">
+              {actorLine(comment.authorLabel, comment.realActorLabel)}
+            </p>
+            <p className="mt-0.5 text-xs text-stone">
+              <LocalTimestamp value={comment.createdAt} />
+            </p>
+          </div>
+          {!isRemoved ? (
+            <TombstoneCommentForm
+              action={tombstoneCommentAction}
+              commentId={comment.id}
+            />
+          ) : null}
+        </div>
+        {isRemoved ? (
+          <p className="mt-2 border border-dashed border-grit bg-chalk px-3 py-2 text-sm text-stone">
+            Comment removed
+            {comment.tombstonedAt ? (
+              <span className="block text-xs">
+                <LocalTimestamp value={comment.tombstonedAt} />
+                {comment.tombstonedByLabel
+                  ? ` by ${actorLine(
+                      comment.tombstonedByLabel,
+                      comment.tombstonedByRealActorLabel,
+                    )}`
+                  : ""}
+              </span>
+            ) : null}
+          </p>
+        ) : (
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-graphite">
+            {renderPlainTextWithMentions(comment.body ?? "")}
+          </p>
+        )}
+        {inputRequest ? (
+          <InputRequestTreatment
+            request={inputRequest}
+            currentUserId={currentUserId}
+            canCancelAnyInputRequest={canCancelAnyInputRequest}
+            isArchived={Boolean(composerUnavailableMessage)}
+            respondAction={respondInputRequestAction}
+            cancelAction={cancelInputRequestAction}
+            inputIdPrefix={inputIdPrefix}
+            inputRequestAnchorPrefix={inputRequestAnchorPrefix}
+            commentAnchorPrefix={commentAnchorPrefix}
+          />
+        ) : null}
+        {responseRequest ? (
+          <p className="mt-2 text-xs font-medium text-stone">
+            Response to input request
+          </p>
+        ) : null}
+      </li>
+    );
+  }
+
+  const body = (
+    <>
       {comments.length === 0 ? (
         <p className="mt-4 text-sm text-stone">No comments yet.</p>
       ) : (
-        <ul className="mt-4 divide-y divide-chalk">
-          {comments.map((comment) => {
-            const isRemoved = Boolean(comment.tombstonedAt);
-            const inputRequest = inputRequestByOriginCommentId.get(comment.id);
-            const responseRequest = responseRequestByCommentId.get(comment.id);
-
-            return (
-              <li key={comment.id} id={`${commentAnchorPrefix}-${comment.id}`} className="scroll-mt-24 py-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-graphite">
-                      {actorLine(comment.authorLabel, comment.realActorLabel)}
-                    </p>
-                    <p className="mt-0.5 text-xs text-stone">
-                      <LocalTimestamp value={comment.createdAt} />
-                    </p>
-                  </div>
-                  {!isRemoved ? (
-                    <TombstoneCommentForm
-                      action={tombstoneCommentAction}
-                      commentId={comment.id}
-                    />
-                  ) : null}
-                </div>
-                {isRemoved ? (
-                  <p className="mt-2 border border-dashed border-grit bg-chalk px-3 py-2 text-sm text-stone">
-                    Comment removed
-                    {comment.tombstonedAt ? (
-                      <span className="block text-xs">
-                        <LocalTimestamp value={comment.tombstonedAt} />
-                        {comment.tombstonedByLabel
-                          ? ` by ${actorLine(
-                              comment.tombstonedByLabel,
-                              comment.tombstonedByRealActorLabel,
-                            )}`
-                          : ""}
-                      </span>
-                    ) : null}
-                  </p>
-                ) : (
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-graphite">
-                    {renderPlainTextWithMentions(comment.body ?? "")}
-                  </p>
-                )}
-                {inputRequest ? (
-                  <InputRequestTreatment
-                    request={inputRequest}
-                    currentUserId={currentUserId}
-                    canCancelAnyInputRequest={canCancelAnyInputRequest}
-                    isArchived={Boolean(composerUnavailableMessage)}
-                    respondAction={respondInputRequestAction}
-                    cancelAction={cancelInputRequestAction}
-                    inputIdPrefix={inputIdPrefix}
-                    inputRequestAnchorPrefix={inputRequestAnchorPrefix}
-                    commentAnchorPrefix={commentAnchorPrefix}
-                  />
-                ) : null}
-                {responseRequest ? (
-                  <p className="mt-2 text-xs font-medium text-stone">
-                    Response to input request
-                  </p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <ul className="mt-4 divide-y divide-chalk">
+            {latestComments.map(renderCommentItem)}
+          </ul>
+          {openOlderRequestComments.length > 0 ? (
+            <div className="mt-4 border-t border-chalk pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-stone">
+                Open requests from earlier discussion
+              </p>
+              <ul className="mt-2 divide-y divide-chalk">
+                {openOlderRequestComments.map(renderCommentItem)}
+              </ul>
+            </div>
+          ) : null}
+          {remainingOlderComments.length > 0 ? (
+            <details className="mt-4 border-t border-chalk pt-4">
+              <summary className="cursor-pointer text-sm font-medium text-stone underline-offset-4 hover:underline">
+                Show {remainingOlderComments.length} older comment
+                {remainingOlderComments.length === 1 ? "" : "s"}
+              </summary>
+              <ul className="mt-2 divide-y divide-chalk">
+                {remainingOlderComments.map(renderCommentItem)}
+              </ul>
+            </details>
+          ) : null}
+        </>
       )}
 
       {!composerUnavailableMessage && createInputRequestAction ? (
@@ -721,6 +775,17 @@ export function DiscussionSection({
         mentionCandidates={mentionCandidates}
         inputIdPrefix={inputIdPrefix}
       />
+    </>
+  );
+
+  if (collapsible) {
+    return <CollapsibleSection title={title}>{body}</CollapsibleSection>;
+  }
+
+  return (
+    <section className="border border-grit bg-white p-5">
+      <SectionHeader title={title} />
+      {body}
     </section>
   );
 }

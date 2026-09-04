@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { SectionHeader } from "@/app/components/page-primitives";
+import { CollapsibleSection } from "@/app/components/page-primitives";
 import { ProcessDueAt } from "@/app/components/process-due-at";
 import { ProcessRecurrencePanel } from "@/app/components/process-recurrence-panel";
 import { StartProcessButton } from "@/app/components/start-process-button";
@@ -46,8 +46,7 @@ export function ProcessSection({ entries }: ProcessSectionProps) {
   }
 
   return (
-    <section className="border border-grit bg-white p-5">
-      <SectionHeader title="Processes" />
+    <CollapsibleSection title="Processes">
       <div className="mt-5 flex flex-col gap-4">
         {entries.map((entry) => {
           const { template, latestRun, stepSummary } = entry;
@@ -133,6 +132,6 @@ export function ProcessSection({ entries }: ProcessSectionProps) {
           );
         })}
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
-import { SectionHeader } from "@/app/components/page-primitives";
+import { CollapsibleSection } from "@/app/components/page-primitives";
 import { formatActivityEvent } from "@/lib/domain/activity-copy";
 import type { RecordActivityEvent } from "@/lib/domain/activity-types";
 
@@ -34,8 +34,7 @@ function ActivityTimestamp({ value }: { value: string }) {
 // timeline, never a fabricated one.
 export function RecordActivity({ events }: { events: RecordActivityEvent[] }) {
   return (
-    <section className="border border-grit bg-white p-5">
-      <SectionHeader title="Activity" />
+    <CollapsibleSection title="Activity">
       {events.length === 0 ? (
         <p className="mt-4 text-sm text-stone">No activity yet.</p>
       ) : (
@@ -72,6 +71,6 @@ export function RecordActivity({ events }: { events: RecordActivityEvent[] }) {
           })}
         </ul>
       )}
-    </section>
+    </CollapsibleSection>
   );
 }
