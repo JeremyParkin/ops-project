@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ApprovalDecisionButtons } from "@/app/components/approval-decision-buttons";
+import { CancelProcessRunButton } from "@/app/components/cancel-process-run-button";
 import { CompleteStepButton } from "@/app/components/complete-step-button";
 import {
   DiscussionSection,
@@ -12,6 +13,7 @@ import {
 import { PageHeader, SectionHeader } from "@/app/components/page-primitives";
 import { ProcessDueAt } from "@/app/components/process-due-at";
 import { ProcessRunGraphView } from "@/app/components/process-run-graph-view";
+import { ReassignStepButton } from "@/app/components/reassign-step-button";
 import { RetryActionStepButton } from "@/app/components/retry-action-step-button";
 import {
   isActionableForViewer,
@@ -31,7 +33,7 @@ import type {
   ProcessStepRunInputRequest,
   ProcessStepRunInputRequestRecipientCandidate,
 } from "@/lib/domain/process-step-run-input-request-repository";
-import type { ProcessRunWithSteps } from "@/lib/domain/process-types";
+import type { ProcessRunWithSteps, WorkspaceMemberIdentity } from "@/lib/domain/process-types";
 
 type CommentAction = (
   state: DiscussionActionState,
@@ -50,7 +52,17 @@ type ProcessRunDetailViewProps = {
   stepInputRequestsByStepRunId: Record<string, ProcessStepRunInputRequest[]>;
   inputRequestRecipientCandidates: ProcessStepRunInputRequestRecipientCandidate[];
   canCancelAnyInputRequest: boolean;
+  canCancelProcessRun: boolean;
   isOriginRecordArchived: boolean;
+  reassignCandidates: WorkspaceMemberIdentity[];
+  cancelProcessRunAction: (
+    state: ProcessActionState,
+    formData: FormData,
+  ) => Promise<ProcessActionState>;
+  reassignProcessStepRunAction: (
+    state: ProcessActionState,
+    formData: FormData,
+  ) => Promise<ProcessActionState>;
   createProcessStepRunCommentAction: CommentAction;
   tombstoneProcessStepRunCommentAction: CommentAction;
   createProcessStepRunInputRequestAction: CommentAction;
@@ -82,7 +94,11 @@ export function ProcessRunDetailView({
   stepInputRequestsByStepRunId,
   inputRequestRecipientCandidates,
   canCancelAnyInputRequest,
+  canCancelProcessRun,
   isOriginRecordArchived,
+  reassignCandidates,
+  cancelProcessRunAction,
+  reassignProcessStepRunAction,
   createProcessStepRunCommentAction,
   tombstoneProcessStepRunCommentAction,
   createProcessStepRunInputRequestAction,
@@ -95,8 +111,14 @@ export function ProcessRunDetailView({
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const completedCount = run.steps.filter((step) => step.status === "completed").length;
   const skippedCount = run.steps.filter((step) => step.status === "skipped").length;
+  const cancelledStepCount = run.steps.filter((step) => step.status === "cancelled").length;
   const stepById = new Map(run.steps.map((step) => [step.id, step]));
   const obligationsByJoinId = joinObligationsByJoinId(run.joinObligations);
+  // 11.2 is self-reassignment only, so this list never includes the caller
+  // -- selecting yourself would only ever hit the RPC's own rejection.
+  const reassignCandidatesExcludingSelf = reassignCandidates.filter(
+    (candidate) => candidate.userId !== currentUserId,
+  );
   const callbackBase = publicAppUrl.replace(/\/$/, "");
   const discussionEligibleStepTypes = new Set(["human_task", "approval"]);
   const archivedComposerUnavailableMessage = isOriginRecordArchived
@@ -113,15 +135,25 @@ export function ProcessRunDetailView({
         title={run.processTemplateName}
         description={run.processTemplateDescription}
         actions={
-          <span
-            className={`border px-2 py-1 text-xs font-medium uppercase tracking-wide ${
-              run.status === "completed"
-                ? "border-status-sage/40 bg-status-sage/10 text-status-sage"
-                : "border-status-slate/40 bg-status-slate/10 text-status-slate"
-            }`}
-          >
-            {run.status === "completed" ? "Complete" : "Active"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`border px-2 py-1 text-xs font-medium uppercase tracking-wide ${
+                run.status === "completed"
+                  ? "border-status-sage/40 bg-status-sage/10 text-status-sage"
+                  : run.status === "cancelled"
+                    ? "border-status-ochre/40 bg-status-ochre/10 text-status-ochre"
+                    : "border-status-slate/40 bg-status-slate/10 text-status-slate"
+              }`}
+            >
+              {run.status === "completed" ? "Complete" : run.status === "cancelled" ? "Cancelled" : "Active"}
+            </span>
+            {run.status === "active" && canCancelProcessRun ? (
+              <CancelProcessRunButton
+                processRunId={run.id}
+                cancelProcessRunAction={cancelProcessRunAction}
+              />
+            ) : null}
+          </div>
         }
       />
 
@@ -130,7 +162,7 @@ export function ProcessRunDetailView({
           title="Overview"
           description={`${completedCount} of ${run.steps.length} steps complete${
             skippedCount > 0 ? `, ${skippedCount} skipped` : ""
-          }`}
+          }${cancelledStepCount > 0 ? `, ${cancelledStepCount} cancelled` : ""}`}
         />
         <p className="mt-4 text-sm text-stone">
           Started from{" "}
@@ -138,6 +170,12 @@ export function ProcessRunDetailView({
             {originLabel}
           </Link>
         </p>
+        {run.status === "cancelled" ? (
+          <p className="mt-2 text-sm text-stone">
+            Cancelled{run.cancelledByLabel ? ` by ${run.cancelledByLabel}` : ""}
+            {run.cancellationReason ? `: ${run.cancellationReason}` : ""}
+          </p>
+        ) : null}
       </section>
 
       <section className="border border-grit bg-white p-5">
@@ -205,7 +243,13 @@ export function ProcessRunDetailView({
                             {" · "}
                             <ProcessDueAt
                               dueAt={step.resumeAt}
-                              prefix={step.status === "active" ? "Waiting until" : "Scheduled for"}
+                              prefix={
+                                step.status === "active"
+                                  ? "Waiting until"
+                                  : step.status === "cancelled"
+                                    ? "Was scheduled for"
+                                    : "Scheduled for"
+                              }
                             />
                           </>
                         ) : null}
@@ -236,37 +280,48 @@ export function ProcessRunDetailView({
                       </p>
                     ) : null}
                   </div>
-                  {isRetryableActionStep(step) ? (
-                    <RetryActionStepButton
-                      stepRunId={step.id}
-                      retryProcessActionStepAction={retryProcessActionStepAction}
-                    />
-                  ) : isActionableForViewer(step, currentUserId) ? (
-                    step.nodeType === "human_task" ? (
-                      <CompleteStepButton
+                  <div className="flex flex-col items-end gap-2">
+                    {isRetryableActionStep(step) ? (
+                      <RetryActionStepButton
                         stepRunId={step.id}
-                        completeProcessStepRunAction={completeProcessStepRunAction}
+                        retryProcessActionStepAction={retryProcessActionStepAction}
                       />
-                    ) : (
-                      <ApprovalDecisionButtons
+                    ) : isActionableForViewer(step, currentUserId) ? (
+                      step.nodeType === "human_task" ? (
+                        <CompleteStepButton
+                          stepRunId={step.id}
+                          completeProcessStepRunAction={completeProcessStepRunAction}
+                        />
+                      ) : (
+                        <ApprovalDecisionButtons
+                          stepRunId={step.id}
+                          outcomes={run.routes
+                            .filter(
+                              (route) =>
+                                route.sourceStepRunId === step.id &&
+                                route.approvalOutcomeId &&
+                                route.approvalOutcomeLabel,
+                            )
+                            .map((route) => ({
+                              id: route.approvalOutcomeId!,
+                              label: route.approvalOutcomeLabel!,
+                            }))}
+                          decideProcessApprovalAction={decideProcessApprovalAction}
+                        />
+                      )
+                    ) : step.nodeType === "approval" && step.status === "active" && step.assigneeUserId ? (
+                      <p className="text-xs text-stone">Only the assigned member can decide.</p>
+                    ) : null}
+                    {(step.nodeType === "human_task" || step.nodeType === "approval") &&
+                    step.status === "active" &&
+                    step.assigneeUserId === currentUserId ? (
+                      <ReassignStepButton
                         stepRunId={step.id}
-                        outcomes={run.routes
-                          .filter(
-                            (route) =>
-                              route.sourceStepRunId === step.id &&
-                              route.approvalOutcomeId &&
-                              route.approvalOutcomeLabel,
-                          )
-                          .map((route) => ({
-                            id: route.approvalOutcomeId!,
-                            label: route.approvalOutcomeLabel!,
-                          }))}
-                        decideProcessApprovalAction={decideProcessApprovalAction}
+                        candidates={reassignCandidatesExcludingSelf}
+                        reassignProcessStepRunAction={reassignProcessStepRunAction}
                       />
-                    )
-                  ) : step.nodeType === "approval" && step.status === "active" && step.assigneeUserId ? (
-                    <p className="text-xs text-stone">Only the assigned member can decide.</p>
-                  ) : null}
+                    ) : null}
+                  </div>
                 </div>
                 {discussionEligibleStepTypes.has(step.nodeType) &&
                 (step.status === "active" ||
@@ -317,9 +372,11 @@ export function ProcessRunDetailView({
           <ProcessRunGraphView
             run={run}
             currentUserId={currentUserId}
+            reassignCandidates={reassignCandidates}
             completeProcessStepRunAction={completeProcessStepRunAction}
             decideProcessApprovalAction={decideProcessApprovalAction}
             retryProcessActionStepAction={retryProcessActionStepAction}
+            reassignProcessStepRunAction={reassignProcessStepRunAction}
           />
         )}
       </section>

@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import type { ProcessActionState } from "@/app/process-actions";
-import type { ProcessRunWithSteps, ProcessStepRun } from "@/lib/domain/process-types";
+import type { ProcessRunWithSteps, ProcessStepRun, WorkspaceMemberIdentity } from "@/lib/domain/process-types";
 import { ApprovalDecisionButtons } from "./approval-decision-buttons";
 import { CompleteStepButton } from "./complete-step-button";
+import { ReassignStepButton } from "./reassign-step-button";
 import { RetryActionStepButton } from "./retry-action-step-button";
 import { toGraphLayoutSteps } from "./process-run-graph-adapter";
 import { computeProcessGraphLayout } from "./process-graph-layout";
@@ -28,11 +29,13 @@ const STATUS_BORDER: Record<ProcessStepRun["status"], string> = {
   active: "border-brass-deep",
   pending: "border-grit",
   skipped: "border-grit",
+  cancelled: "border-grit",
 };
 
 type ProcessRunGraphViewProps = {
   run: ProcessRunWithSteps;
   currentUserId: string;
+  reassignCandidates: WorkspaceMemberIdentity[];
   completeProcessStepRunAction: (
     state: ProcessActionState,
     formData: FormData,
@@ -45,16 +48,25 @@ type ProcessRunGraphViewProps = {
     state: ProcessActionState,
     formData: FormData,
   ) => Promise<ProcessActionState>;
+  reassignProcessStepRunAction: (
+    state: ProcessActionState,
+    formData: FormData,
+  ) => Promise<ProcessActionState>;
 };
 
 export function ProcessRunGraphView({
   run,
   currentUserId,
+  reassignCandidates,
   completeProcessStepRunAction,
   decideProcessApprovalAction,
   retryProcessActionStepAction,
+  reassignProcessStepRunAction,
 }: ProcessRunGraphViewProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const reassignCandidatesExcludingSelf = reassignCandidates.filter(
+    (candidate) => candidate.userId !== currentUserId,
+  );
 
   const layout = useMemo(
     () =>
@@ -146,6 +158,7 @@ export function ProcessRunGraphView({
 
             const isSelected = selectedKey === step.id;
             const isSkipped = step.status === "skipped";
+            const isCancelled = step.status === "cancelled";
 
             return (
               <button
@@ -161,7 +174,7 @@ export function ProcessRunGraphView({
                 aria-label={`${NODE_TYPE_LABELS[step.nodeType]}: ${step.name} (${step.status})`}
                 className={`absolute flex flex-col items-start gap-1 overflow-hidden border-2 bg-white p-3 text-left shadow-sm ${
                   isSelected ? "border-brass-deep" : STATUS_BORDER[step.status]
-                } ${isSkipped ? "bg-chalk opacity-60" : ""}`}
+                } ${isSkipped || isCancelled ? "bg-chalk opacity-60" : ""}`}
                 style={{ left: node.x, top: node.y, width: RUN_NODE_WIDTH, height: RUN_NODE_HEIGHT }}
               >
                 <div className="flex w-full items-center justify-between gap-2">
@@ -175,7 +188,13 @@ export function ProcessRunGraphView({
                         : statusBadgeClass(step.status)
                     }`}
                   >
-                    {isRetryableActionStep(step) ? "Failed" : isSkipped ? "Skipped" : step.status}
+                    {isRetryableActionStep(step)
+                      ? "Failed"
+                      : isSkipped
+                        ? "Skipped"
+                        : isCancelled
+                          ? "Cancelled"
+                          : step.status}
                   </span>
                 </div>
                 <span className="line-clamp-1 text-sm font-semibold text-graphite">{step.name}</span>
@@ -214,7 +233,9 @@ export function ProcessRunGraphView({
                   ? "Failed"
                   : selectedStep.status === "skipped"
                     ? "Skipped"
-                    : selectedStep.status}
+                    : selectedStep.status === "cancelled"
+                      ? "Cancelled"
+                      : selectedStep.status}
               </span>
               <p className="mt-2 text-xs font-medium uppercase tracking-wide text-stone">
                 {NODE_TYPE_LABELS[selectedStep.nodeType]}
@@ -242,7 +263,13 @@ export function ProcessRunGraphView({
                     {" · "}
                     <ProcessDueAt
                       dueAt={selectedStep.resumeAt}
-                      prefix={selectedStep.status === "active" ? "Waiting until" : "Scheduled for"}
+                      prefix={
+                        selectedStep.status === "active"
+                          ? "Waiting until"
+                          : selectedStep.status === "cancelled"
+                            ? "Was scheduled for"
+                            : "Scheduled for"
+                      }
                     />
                   </>
                 ) : null}
@@ -305,6 +332,18 @@ export function ProcessRunGraphView({
               <p className="border-t border-grit pt-3 text-xs text-stone">
                 Only the assigned member can {selectedStep.nodeType === "approval" ? "decide" : "complete this"}.
               </p>
+            ) : null}
+
+            {(selectedStep.nodeType === "human_task" || selectedStep.nodeType === "approval") &&
+            selectedStep.status === "active" &&
+            selectedStep.assigneeUserId === currentUserId ? (
+              <div className="border-t border-grit pt-3">
+                <ReassignStepButton
+                  stepRunId={selectedStep.id}
+                  candidates={reassignCandidatesExcludingSelf}
+                  reassignProcessStepRunAction={reassignProcessStepRunAction}
+                />
+              </div>
             ) : null}
           </div>
         )}

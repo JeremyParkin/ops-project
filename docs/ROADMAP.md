@@ -116,6 +116,35 @@ Design constraints:
 - Separate notification infrastructure from collaboration semantics. Phase 8F may provide email/provider capability; Phase 10 decides how comments and mentions use it.
 - Preserve workspace boundaries, actor history, impersonation semantics, and future audit expectations.
 
+## Phase 11 - Process Runtime Administration
+
+**Status:** In progress. 11.1 (Cancel Process Run) and 11.2 (Reassign Active Human Work) are both complete -- migrations `0092`/`0093`/`0094`, implementation and verification detail live in `PROJECT_CONTEXT.md`. 11.3 (Runtime Intervention Authorization) is the active next roadmap focus and the only remaining slice of this phase.
+
+**Goal:** Let authorized users safely handle two common real-world exceptions in an active Process Run -- abandoning a run and changing who owns active human work -- without mutating the Process Template, reversing completed history, or weakening deterministic runtime guarantees.
+
+This phase followed a dedicated investigation (current-state findings, runtime invariants, and a capability-by-capability assessment covering reassignment, cancellation, skip, reopen, send-back/rework, delegation, escalation, and manager/team intervention) that recommended a small, contained slice sequence over either a full workflow-engine expansion or deferring the whole area. Reopen and arbitrary send-back/rework were explicitly rejected during that investigation, not merely deferred: every completion path in the Process runtime is provably forward-only and write-once, with no reverse-transition precedent anywhere in the codebase's migration history, and reopening/reworking would require reversing already-cascaded routing/join/side-effect state that has no existing mechanism to undo.
+
+Delivered scope (11.1, 11.2):
+
+- Cancel Process Run (11.1): a `cancelled` status on both `ProcessRun` and `ProcessStepRun`, distinct from `completed`/`skipped` (cancellation is a different historical fact from routing determining a step was not taken, and is never represented as `skipped`). Every active/pending StepRun transitions to `cancelled`; every already-completed/skipped StepRun and its routing/approval/comment/input-request history is preserved exactly. Requires a reason (enforced at both the RPC and the database layer), records impersonation-aware actor/effective-actor attribution, emits a best-effort Activity event, and frees the origin record for an immediate new run. Gated on the existing `processes.operate` capability only -- no new capability was added.
+- Reassign Active Human Work (11.2): the current assignee of an active `human_task`/`approval` StepRun can hand it to another current workspace member -- self-service only; administrative reassignment of someone else's step is deferred to 11.3. A new `assignment_generation` counter gives every handoff its own distinct episode, so notification dedup keys can tell a fresh episode apart from a prior one: generation 1 keeps the exact pre-existing unsuffixed keys (preserving already-delivered notification history untouched), generation 2 and beyond use generation-suffixed keys, guaranteeing a reassigned user reliably gets correct assignment/due-soon/overdue notifications rather than silently receiving none. `due_at` is preserved exactly, never recalculated. A `step_reassigned` Activity event records each transition with frozen from/to labels and actor/effective-actor attribution. Gated on the existing `processes.operate` capability only -- no new capability was added.
+
+Planned scope (11.3 -- not yet built):
+
+- Runtime Intervention Authorization: resolve self-reassignment vs. administrative reassignment vs. cancellation authority using the existing `processes.operate` capability and impersonation semantics -- no new capability unless the existing vocabulary genuinely cannot express the needed boundary.
+
+Explicitly out of scope for this phase (rejected or deferred, not simply unstarted):
+
+- Manual Skip, Reopen, and arbitrary send-back/rework -- see the rejection reasoning above.
+- Runtime graph rewiring, dynamic assignment, timed delegation, and escalation/reminder policy beyond what 11.2 already needed to keep reassignment notifications correct.
+- Deadline reset on reassignment -- 11.2 preserves `due_at` unconditionally; no option to recalculate it was added or is planned.
+
+Design constraints:
+
+- Preserve deterministic execution and immutable routing history -- a runtime intervention may only affect currently active/pending state, never a step that has already completed or was already routed around.
+- Prefer new durable events over reinterpreting or rewriting historical rows, matching this project's established pattern for `routing_result`, `decided_by_*`, and now `cancelled_at`/`cancellation_reason`.
+- Do not silently turn manager/team visibility scope (`private.managed_user_ids`) into mutation authority.
+
 ## Later Strategic Capabilities
 
 These areas are important, but should be sequenced after Phases 8F-10 unless a concrete product need pulls a smaller slice forward.
@@ -143,9 +172,9 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 
 ### Process, Automation & Notifications
 
-- Process reminders, escalations, delegation, reassignment, and manager/team alerts.
+- Process reminders, escalations, delegation, and manager/team alerts. (Self-reassignment shipped in Phase 11.2; administrative reassignment is active Phase 11.3 -- see above.)
 - Dynamic assignment from origin fields, roles, teams, expressions, round-robin, groups, or workload rules.
-- Process skip, reopen, cancel, rework, and stronger runtime change management.
+- Process skip, reopen, and rework -- Reopen and rework are explicitly rejected, not merely deferred (see Phase 11's investigation, above); Cancel shipped in Phase 11.1.
 - Richer Process graph manipulation where usage justifies it: drag-to-position, drag-to-connect, layout persistence, and safer branch/region movement.
 - Additional Process node types such as subprocesses or carefully bounded external/action nodes.
 - Better workflow observability, durable background execution, more actions/conditions, and an explicit `unset` sentinel for transition conditions.

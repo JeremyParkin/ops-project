@@ -78,6 +78,11 @@ type ProcessRunRow = {
   status: ProcessRunStatus;
   started_at: string;
   completed_at: string | null;
+  cancelled_at: string | null;
+  cancelled_by_user_id: string | null;
+  cancelled_by_real_actor_user_id: string | null;
+  cancelled_by_label: string | null;
+  cancellation_reason: string | null;
 };
 
 type ProcessStepRunRow = {
@@ -100,6 +105,7 @@ type ProcessStepRunRow = {
   completed_at: string | null;
   assignee_user_id: string | null;
   assignee_label: string | null;
+  assignment_generation: number;
   approval_outcome_id: string | null;
   approval_outcome_label: string | null;
   decided_at: string | null;
@@ -446,6 +452,11 @@ function mapProcessRun(row: ProcessRunRow): ProcessRun {
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at ?? undefined,
+    cancelledAt: row.cancelled_at ?? undefined,
+    cancelledByUserId: row.cancelled_by_user_id ?? undefined,
+    cancelledByRealActorUserId: row.cancelled_by_real_actor_user_id ?? undefined,
+    cancelledByLabel: row.cancelled_by_label ?? undefined,
+    cancellationReason: row.cancellation_reason ?? undefined,
   };
 }
 
@@ -470,6 +481,7 @@ function mapProcessStepRun(row: ProcessStepRunRow): ProcessStepRun {
     completedAt: row.completed_at ?? undefined,
     assigneeUserId: row.assignee_user_id ?? undefined,
     assigneeLabel: row.assignee_label ?? undefined,
+    assignmentGeneration: row.assignment_generation,
     approvalOutcomeId: row.approval_outcome_id ?? undefined,
     approvalOutcomeLabel: row.approval_outcome_label ?? undefined,
     decidedAt: row.decided_at ?? undefined,
@@ -839,6 +851,54 @@ export async function completeProcessStepRun({
   }
 
   await executeActiveProcessActionSteps({ workspaceId, processRunId, supabase });
+}
+
+export async function cancelProcessRun({
+  workspaceId,
+  processRunId,
+  reason,
+}: {
+  workspaceId: string;
+  processRunId: string;
+  reason: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("cancel_process_run_authorized", {
+    p_workspace_id: workspaceId,
+    p_process_run_id: processRunId,
+    p_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(`Unable to cancel process run: ${error.message}`);
+  }
+}
+
+export async function reassignProcessStepRun({
+  workspaceId,
+  processRunId,
+  stepRunId,
+  newAssigneeUserId,
+  reason,
+}: {
+  workspaceId: string;
+  processRunId: string;
+  stepRunId: string;
+  newAssigneeUserId: string;
+  reason?: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("reassign_process_step_run_authorized", {
+    p_workspace_id: workspaceId,
+    p_process_run_id: processRunId,
+    p_step_run_id: stepRunId,
+    p_new_assignee_user_id: newAssigneeUserId,
+    p_reason: reason ?? null,
+  });
+
+  if (error) {
+    throw new Error(`Unable to reassign step: ${error.message}`);
+  }
 }
 
 type ReceiveExternalProcessWaitEventRow = {

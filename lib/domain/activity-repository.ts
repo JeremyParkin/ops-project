@@ -16,6 +16,9 @@ type RecordActivityRow = {
   assignee_label: string | null;
   approval_outcome_label: string | null;
   is_recurrence_started: boolean;
+  cancellation_reason: string | null;
+  from_assignee_label: string | null;
+  to_assignee_label: string | null;
 };
 
 // Events created within the same canonical transaction share the exact same
@@ -35,6 +38,14 @@ const EVENT_CAUSAL_TIER: Record<ActivityEventType, number> = {
   approval_decided: 0,
   step_assigned: 1,
   process_completed: 1,
+  // cancel_process_run_authorized emits exactly one workspace_events row per
+  // transaction -- there is no same-timestamp "consequence" event it could
+  // ever tie against, so its tier value is arbitrary; 0 groups it with the
+  // other standalone/trigger-shaped events for consistency.
+  process_cancelled: 0,
+  // reassign_process_step_run_authorized emits exactly one workspace_events
+  // row per transaction, same reasoning as process_cancelled above.
+  step_reassigned: 0,
 };
 
 export function compareNewestFirstWithStableTies(a: RecordActivityEvent, b: RecordActivityEvent): number {
@@ -57,6 +68,9 @@ function mapRow(row: RecordActivityRow): RecordActivityEvent {
     assigneeLabel: row.assignee_label ?? undefined,
     approvalOutcomeLabel: row.approval_outcome_label ?? undefined,
     isRecurrenceStarted: row.is_recurrence_started,
+    cancellationReason: row.cancellation_reason ?? undefined,
+    fromAssigneeLabel: row.from_assignee_label ?? undefined,
+    toAssigneeLabel: row.to_assignee_label ?? undefined,
   };
 }
 

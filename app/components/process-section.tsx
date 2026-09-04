@@ -103,7 +103,7 @@ export function ProcessSection({ entries }: ProcessSectionProps) {
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm text-stone">
-                      Completed
+                      {latestRun.status === "cancelled" ? "Cancelled" : "Completed"}
                       {stepSummary ? ` · ${stepSummary.completed} of ${stepSummary.total} steps` : ""}
                     </p>
                     <Link

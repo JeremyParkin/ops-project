@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   archiveProcessTemplate as archiveProcessTemplateInRepository,
+  cancelProcessRun as cancelProcessRunInRepository,
   completeProcessStepRun as completeProcessStepRunInRepository,
   decideProcessApproval as decideProcessApprovalInRepository,
   deleteProcessTemplateIfSafe,
+  reassignProcessStepRun as reassignProcessStepRunInRepository,
   restoreProcessTemplate as restoreProcessTemplateInRepository,
   retryProcessActionStep as retryProcessActionStepInRepository,
   saveProcessTemplate as saveProcessTemplateInRepository,
@@ -85,6 +87,16 @@ type RecurrenceRuleLifecycleContext = {
 };
 
 type CompleteProcessStepRunContext = {
+  workspaceId: string;
+  processRunId: string;
+};
+
+type CancelProcessRunContext = {
+  workspaceId: string;
+  processRunId: string;
+};
+
+type ReassignProcessStepRunContext = {
   workspaceId: string;
   processRunId: string;
 };
@@ -350,6 +362,71 @@ export async function completeProcessStepRunAction(
   revalidatePath(`/process-runs/${context.processRunId}`);
 
   return { success: true, message: "Step completed." };
+}
+
+export async function cancelProcessRunAction(
+  context: CancelProcessRunContext,
+  _previousState: ProcessActionState,
+  formData: FormData,
+): Promise<ProcessActionState> {
+  const reason = formData.get("reason");
+
+  if (typeof reason !== "string" || !reason.trim()) {
+    return { success: false, message: "Cancellation requires a reason." };
+  }
+
+  try {
+    await cancelProcessRunInRepository({
+      workspaceId: context.workspaceId,
+      processRunId: context.processRunId,
+      reason,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: extractRpcErrorMessage(error, "Unable to cancel this process run."),
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return { success: true, message: "Process run cancelled." };
+}
+
+export async function reassignProcessStepRunAction(
+  context: ReassignProcessStepRunContext,
+  _previousState: ProcessActionState,
+  formData: FormData,
+): Promise<ProcessActionState> {
+  const stepRunId = formData.get("stepRunId");
+  const newAssigneeUserId = formData.get("newAssigneeUserId");
+  const reason = formData.get("reason");
+
+  if (typeof stepRunId !== "string" || !stepRunId) {
+    return { success: false, message: "Invalid step." };
+  }
+  if (typeof newAssigneeUserId !== "string" || !newAssigneeUserId) {
+    return { success: false, message: "Choose who to reassign this to." };
+  }
+
+  try {
+    await reassignProcessStepRunInRepository({
+      workspaceId: context.workspaceId,
+      processRunId: context.processRunId,
+      stepRunId,
+      newAssigneeUserId,
+      reason: typeof reason === "string" && reason.trim() ? reason : undefined,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: extractRpcErrorMessage(error, "Unable to reassign this step."),
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return { success: true, message: "Step reassigned." };
 }
 
 export async function retryProcessActionStepAction(

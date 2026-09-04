@@ -51,6 +51,23 @@ export function formatActivityEvent(event: RecordActivityEvent): ActivityCopy {
         href: processRunHref(event.processRunId),
       };
     }
+    case "process_cancelled": {
+      const cancelledBy = event.actorLabel ? ` by ${event.actorLabel}` : "";
+      return {
+        title: `${runName} cancelled${cancelledBy}`,
+        meta: event.cancellationReason,
+        href: processRunHref(event.processRunId),
+      };
+    }
+    case "step_reassigned": {
+      const stepName = event.stepName ?? "a step";
+      const from = event.fromAssigneeLabel;
+      const to = event.toAssigneeLabel ?? "someone else";
+      return {
+        title: from ? `${stepName} reassigned from ${from} to ${to}` : `${stepName} reassigned to ${to}`,
+        href: processRunHref(event.processRunId),
+      };
+    }
     default:
       return { title: "Activity", href: processRunHref(event.processRunId) };
   }

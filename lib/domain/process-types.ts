@@ -10,8 +10,8 @@ export type ProcessNodeType =
   | "action"
   | "parallel_split"
   | "parallel_join";
-export type ProcessRunStatus = "active" | "completed";
-export type ProcessStepRunStatus = "pending" | "active" | "completed" | "skipped";
+export type ProcessRunStatus = "active" | "completed" | "cancelled";
+export type ProcessStepRunStatus = "pending" | "active" | "completed" | "skipped" | "cancelled";
 
 export type ProcessDueRule = {
   amount: number;
@@ -176,6 +176,11 @@ export type ProcessRun = {
   status: ProcessRunStatus;
   startedAt: IsoUtcTimestamp;
   completedAt?: IsoUtcTimestamp;
+  cancelledAt?: IsoUtcTimestamp;
+  cancelledByUserId?: string;
+  cancelledByRealActorUserId?: string;
+  cancelledByLabel?: string;
+  cancellationReason?: string;
 };
 
 export type ProcessStepRun = {
@@ -202,12 +207,20 @@ export type ProcessStepRun = {
     message?: string;
   };
   completedAt?: IsoUtcTimestamp;
-  // Snapshotted at run start: assigneeUserId is used for completion
-  // authorization (compared against the acting user), assigneeLabel (the
-  // assignee's email at that moment) is what historical UI displays — it
-  // never depends on the membership row still existing.
+  // Current effective assignment -- snapshotted from the template node at
+  // run start, but no longer write-once: Phase 11.2 reassignment updates
+  // both fields in place. assigneeUserId is used for completion
+  // authorization (compared against the acting user); assigneeLabel (the
+  // assignee's current email) never depends on the membership row still
+  // existing. Each transition is separately recorded as a durable
+  // `step_reassigned` Activity event, never by reinterpreting these fields.
   assigneeUserId?: string;
   assigneeLabel?: string;
+  // Distinct assignment-episode counter, starting at 1, incremented once
+  // per reassignment. Exists purely so notification dedup keys can tell
+  // "this episode" apart from "a prior episode" of the same step run -- see
+  // migration 0094.
+  assignmentGeneration: number;
   approvalOutcomeId?: string;
   approvalOutcomeLabel?: string;
   decidedAt?: IsoUtcTimestamp;

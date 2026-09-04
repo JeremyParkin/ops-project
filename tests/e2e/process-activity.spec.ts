@@ -100,7 +100,7 @@ test("record detail shows a manual process start and assignment in Activity, new
   await page.goto(`/entities/${entity.id}/records/${recordId}`);
   await page.waitForLoadState("networkidle");
 
-  const activitySection = page.locator("section", { has: page.getByRole("heading", { name: "Activity" }) });
+  const activitySection = page.locator("details", { has: page.getByRole("heading", { name: "Activity" }) });
   const items = activitySection.locator("li");
   await expect(items).toHaveCount(2);
   // Newest first: assignment (the second thing that happened) renders above
@@ -139,6 +139,6 @@ test("a system-triggered process start reads as automatic, with no human actor i
   await page.goto(`/entities/${entity.id}/records/${recordId}`);
   await page.waitForLoadState("networkidle");
 
-  const activitySection = page.locator("section", { has: page.getByRole("heading", { name: "Activity" }) });
+  const activitySection = page.locator("details", { has: page.getByRole("heading", { name: "Activity" }) });
   await expect(activitySection.getByText(`${run.label} Monthly Client Report started automatically`)).toBeVisible();
 });

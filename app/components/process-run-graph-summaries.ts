@@ -101,9 +101,15 @@ export function stepSummaryLine(
     return "Parallel join advances automatically.";
   }
 
-  return step.status === "completed"
-    ? `${arrived} of ${obligations.length} branches joined.`
-    : `Waiting for ${arrived} of ${obligations.length} branches.`;
+  if (step.status === "completed") {
+    return `${arrived} of ${obligations.length} branches joined.`;
+  }
+
+  if (step.status === "cancelled") {
+    return `Cancelled with ${arrived} of ${obligations.length} branches joined.`;
+  }
+
+  return `Waiting for ${arrived} of ${obligations.length} branches.`;
 }
 
 // Mirrors the routing-outcome prose that used to live inline in the List

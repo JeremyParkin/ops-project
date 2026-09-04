@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import {
+  cancelProcessRunAction,
   cancelProcessStepRunInputRequestAction,
   completeProcessStepRunAction,
   createProcessStepRunCommentAction,
   createProcessStepRunInputRequestAction,
   decideProcessApprovalAction,
+  reassignProcessStepRunAction,
   respondProcessStepRunInputRequestAction,
   retryProcessActionStepAction,
   tombstoneProcessStepRunCommentAction,
@@ -14,7 +16,7 @@ import { ProcessRunDetailView } from "@/app/components/process-run-detail-view";
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import { resolveImpersonationContext } from "@/lib/auth/impersonation";
 import { getEntityContext } from "@/lib/domain/metadata-repository";
-import { getProcessRunWithSteps } from "@/lib/domain/process-repository";
+import { getProcessRunWithSteps, listWorkspaceMemberIdentities } from "@/lib/domain/process-repository";
 import {
   listProcessStepRunCommentMentionCandidates,
   listProcessStepRunComments,
@@ -91,10 +93,11 @@ export default async function ProcessRunPage({
 }) {
   const { processRunId } = await params;
   const { workspaceId, user } = await getActiveWorkspaceId();
-  const [pageData, permissions, impersonation] = await Promise.all([
+  const [pageData, permissions, impersonation, reassignCandidates] = await Promise.all([
     loadProcessRunPageData(workspaceId, processRunId),
     getWorkspacePermissionContext(workspaceId),
     resolveImpersonationContext(workspaceId),
+    listWorkspaceMemberIdentities({ workspaceId }).catch(() => []),
   ]);
 
   if (!pageData) {
@@ -123,6 +126,12 @@ export default async function ProcessRunPage({
         permissions.capabilities.has("workspace.manage_roles"),
     );
 
+  // Same pattern as canManageIntegrations/canCancelAnyInputRequest above:
+  // capability-gated administrative controls stay suppressed entirely while
+  // impersonating, regardless of the real actor's own capabilities.
+  const canCancelProcessRun =
+    !impersonation.isImpersonating && Boolean(permissions?.capabilities.has("processes.operate"));
+
   return (
     <WorkspacePageLayout>
       <ProcessRunDetailView
@@ -139,7 +148,17 @@ export default async function ProcessRunPage({
         stepInputRequestsByStepRunId={stepInputRequestsByStepRunId}
         inputRequestRecipientCandidates={inputRequestRecipientCandidates}
         canCancelAnyInputRequest={canCancelAnyInputRequest}
+        canCancelProcessRun={canCancelProcessRun}
         isOriginRecordArchived={isOriginRecordArchived}
+        reassignCandidates={reassignCandidates}
+        cancelProcessRunAction={cancelProcessRunAction.bind(null, {
+          workspaceId,
+          processRunId,
+        })}
+        reassignProcessStepRunAction={reassignProcessStepRunAction.bind(null, {
+          workspaceId,
+          processRunId,
+        })}
         createProcessStepRunCommentAction={createProcessStepRunCommentAction.bind(null, {
           workspaceId,
           processRunId,
