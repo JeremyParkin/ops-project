@@ -9,6 +9,7 @@ import {
   decideProcessApproval as decideProcessApprovalInRepository,
   deleteProcessTemplateIfSafe,
   reassignProcessStepRun as reassignProcessStepRunInRepository,
+  reassignProcessStepRunAdministratively as reassignProcessStepRunAdministrativelyInRepository,
   restoreProcessTemplate as restoreProcessTemplateInRepository,
   retryProcessActionStep as retryProcessActionStepInRepository,
   saveProcessTemplate as saveProcessTemplateInRepository,
@@ -100,6 +101,8 @@ type ReassignProcessStepRunContext = {
   workspaceId: string;
   processRunId: string;
 };
+
+type ReassignProcessStepRunAdministrativelyContext = ReassignProcessStepRunContext;
 
 type DecideProcessApprovalContext = CompleteProcessStepRunContext;
 
@@ -416,6 +419,48 @@ export async function reassignProcessStepRunAction(
       stepRunId,
       newAssigneeUserId,
       reason: typeof reason === "string" && reason.trim() ? reason : undefined,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: extractRpcErrorMessage(error, "Unable to reassign this step."),
+    };
+  }
+
+  revalidatePath(`/process-runs/${context.processRunId}`);
+
+  return { success: true, message: "Step reassigned." };
+}
+
+// Phase 11.3: administrative reassignment of someone else's active human
+// work. A reason is mandatory here -- unlike self-reassignment above -- and
+// is enforced both here and, authoritatively, by the RPC itself.
+export async function reassignProcessStepRunAdministrativelyAction(
+  context: ReassignProcessStepRunAdministrativelyContext,
+  _previousState: ProcessActionState,
+  formData: FormData,
+): Promise<ProcessActionState> {
+  const stepRunId = formData.get("stepRunId");
+  const newAssigneeUserId = formData.get("newAssigneeUserId");
+  const reason = formData.get("reason");
+
+  if (typeof stepRunId !== "string" || !stepRunId) {
+    return { success: false, message: "Invalid step." };
+  }
+  if (typeof newAssigneeUserId !== "string" || !newAssigneeUserId) {
+    return { success: false, message: "Choose who to reassign this to." };
+  }
+  if (typeof reason !== "string" || !reason.trim()) {
+    return { success: false, message: "Administrative reassignment requires a reason." };
+  }
+
+  try {
+    await reassignProcessStepRunAdministrativelyInRepository({
+      workspaceId: context.workspaceId,
+      processRunId: context.processRunId,
+      stepRunId,
+      newAssigneeUserId,
+      reason,
     });
   } catch (error) {
     return {

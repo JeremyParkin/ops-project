@@ -190,7 +190,7 @@ test.describe("process step run reassignment", () => {
 
     await startProcess(page, entity, recordId, template.name);
 
-    const reassignButton = stepRow(page, "Handoff Task").getByRole("button", { name: "Reassign" });
+    const reassignButton = stepRow(page, "Handoff Task").getByRole("button", { name: "Reassign", exact: true });
     await expect(reassignButton).toBeVisible();
     await reassignButton.click();
 
@@ -204,10 +204,13 @@ test.describe("process step run reassignment", () => {
     await stepRow(page, "Handoff Task").getByRole("button", { name: "Confirm reassignment" }).click();
 
     await expect(stepRow(page, "Handoff Task")).toContainText(`Assigned to ${target.email}`);
-    // No longer the assignee -- Reassign (and Complete) disappear for the
-    // current viewer, proving visibility is genuinely assignee-scoped, not
-    // just a static "processes.operate holder" control.
-    await expect(stepRow(page, "Handoff Task").getByRole("button", { name: "Reassign" })).toHaveCount(0);
+    // No longer the assignee -- the self-service Reassign (and Complete)
+    // disappear for the current viewer, proving visibility is genuinely
+    // assignee-scoped, not just a static "processes.operate holder"
+    // control. exact:true excludes the runner's own administrative
+    // "Reassign on their behalf" button (Phase 11.3), which legitimately
+    // renders here now that the runner is no longer the assignee.
+    await expect(stepRow(page, "Handoff Task").getByRole("button", { name: "Reassign", exact: true })).toHaveCount(0);
     await expect(stepRow(page, "Handoff Task").getByRole("button", { name: "Complete" })).toHaveCount(0);
   });
 
@@ -230,7 +233,7 @@ test.describe("process step run reassignment", () => {
     await page.goto(`/entities/${entity.id}/records/${recordId}`);
     await page.getByRole("link", { name: "Open process" }).click();
     await page.waitForURL(/\/process-runs\//);
-    await stepRow(page, "My Work Handoff").getByRole("button", { name: "Reassign" }).click();
+    await stepRow(page, "My Work Handoff").getByRole("button", { name: "Reassign", exact: true }).click();
     await stepRow(page, "My Work Handoff").getByLabel("Reassign to").selectOption({ label: target.email });
     await stepRow(page, "My Work Handoff").getByRole("button", { name: "Confirm reassignment" }).click();
     await expect(stepRow(page, "My Work Handoff")).toContainText(`Assigned to ${target.email}`);
@@ -270,7 +273,7 @@ test.describe("process step run reassignment", () => {
     const recordId = await createEntityRecord({ entity, valuesBySlug: { name: "Reassign Activity Record" } });
 
     await startProcess(page, entity, recordId, template.name);
-    await stepRow(page, "Activity Handoff").getByRole("button", { name: "Reassign" }).click();
+    await stepRow(page, "Activity Handoff").getByRole("button", { name: "Reassign", exact: true }).click();
     await stepRow(page, "Activity Handoff").getByLabel("Reassign to").selectOption({ label: target.email });
     await stepRow(page, "Activity Handoff").getByRole("button", { name: "Confirm reassignment" }).click();
     await expect(stepRow(page, "Activity Handoff")).toContainText(`Assigned to ${target.email}`);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { AdministrativeReassignStepButton } from "@/app/components/administrative-reassign-step-button";
 import { ApprovalDecisionButtons } from "@/app/components/approval-decision-buttons";
 import { CancelProcessRunButton } from "@/app/components/cancel-process-run-button";
 import { CompleteStepButton } from "@/app/components/complete-step-button";
@@ -53,6 +54,7 @@ type ProcessRunDetailViewProps = {
   inputRequestRecipientCandidates: ProcessStepRunInputRequestRecipientCandidate[];
   canCancelAnyInputRequest: boolean;
   canCancelProcessRun: boolean;
+  canAdministrativelyReassign: boolean;
   isOriginRecordArchived: boolean;
   reassignCandidates: WorkspaceMemberIdentity[];
   cancelProcessRunAction: (
@@ -60,6 +62,10 @@ type ProcessRunDetailViewProps = {
     formData: FormData,
   ) => Promise<ProcessActionState>;
   reassignProcessStepRunAction: (
+    state: ProcessActionState,
+    formData: FormData,
+  ) => Promise<ProcessActionState>;
+  reassignProcessStepRunAdministrativelyAction: (
     state: ProcessActionState,
     formData: FormData,
   ) => Promise<ProcessActionState>;
@@ -95,10 +101,12 @@ export function ProcessRunDetailView({
   inputRequestRecipientCandidates,
   canCancelAnyInputRequest,
   canCancelProcessRun,
+  canAdministrativelyReassign,
   isOriginRecordArchived,
   reassignCandidates,
   cancelProcessRunAction,
   reassignProcessStepRunAction,
+  reassignProcessStepRunAdministrativelyAction,
   createProcessStepRunCommentAction,
   tombstoneProcessStepRunCommentAction,
   createProcessStepRunInputRequestAction,
@@ -321,6 +329,21 @@ export function ProcessRunDetailView({
                         reassignProcessStepRunAction={reassignProcessStepRunAction}
                       />
                     ) : null}
+                    {(step.nodeType === "human_task" || step.nodeType === "approval") &&
+                    step.status === "active" &&
+                    step.assigneeUserId !== currentUserId &&
+                    canAdministrativelyReassign ? (
+                      <AdministrativeReassignStepButton
+                        stepRunId={step.id}
+                        currentAssigneeLabel={step.assigneeLabel ?? undefined}
+                        candidates={reassignCandidates.filter(
+                          (candidate) => candidate.userId !== step.assigneeUserId,
+                        )}
+                        reassignProcessStepRunAdministrativelyAction={
+                          reassignProcessStepRunAdministrativelyAction
+                        }
+                      />
+                    ) : null}
                   </div>
                 </div>
                 {discussionEligibleStepTypes.has(step.nodeType) &&
@@ -372,11 +395,13 @@ export function ProcessRunDetailView({
           <ProcessRunGraphView
             run={run}
             currentUserId={currentUserId}
+            canAdministrativelyReassign={canAdministrativelyReassign}
             reassignCandidates={reassignCandidates}
             completeProcessStepRunAction={completeProcessStepRunAction}
             decideProcessApprovalAction={decideProcessApprovalAction}
             retryProcessActionStepAction={retryProcessActionStepAction}
             reassignProcessStepRunAction={reassignProcessStepRunAction}
+            reassignProcessStepRunAdministrativelyAction={reassignProcessStepRunAdministrativelyAction}
           />
         )}
       </section>

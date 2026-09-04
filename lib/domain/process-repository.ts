@@ -901,6 +901,37 @@ export async function reassignProcessStepRun({
   }
 }
 
+// Phase 11.3: administrative reassignment of someone else's active human
+// work. A distinct RPC from self-reassignment above -- see
+// reassign_process_step_run_administrative_authorized (0095) -- with its
+// own workspace-governance authorization boundary and a mandatory reason.
+export async function reassignProcessStepRunAdministratively({
+  workspaceId,
+  processRunId,
+  stepRunId,
+  newAssigneeUserId,
+  reason,
+}: {
+  workspaceId: string;
+  processRunId: string;
+  stepRunId: string;
+  newAssigneeUserId: string;
+  reason: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("reassign_process_step_run_administrative_authorized", {
+    p_workspace_id: workspaceId,
+    p_process_run_id: processRunId,
+    p_step_run_id: stepRunId,
+    p_new_assignee_user_id: newAssigneeUserId,
+    p_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(`Unable to reassign step: ${error.message}`);
+  }
+}
+
 type ReceiveExternalProcessWaitEventRow = {
   status: "accepted";
   workspace_id: string;

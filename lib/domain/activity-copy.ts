@@ -63,8 +63,19 @@ export function formatActivityEvent(event: RecordActivityEvent): ActivityCopy {
       const stepName = event.stepName ?? "a step";
       const from = event.fromAssigneeLabel;
       const to = event.toAssigneeLabel ?? "someone else";
+      // 11.3: an administrative reassignment has a third-party actor --
+      // someone other than the outgoing assignee performed it. Comparing
+      // by label (not a from_assignee_user_id ID, which this read model
+      // doesn't carry -- see the Phase 11.3 plan) is the established
+      // stable-enough identity this app already uses for member display
+      // everywhere else. Self-reassignment (actor === from) says nothing
+      // extra, exactly as before this phase.
+      const isAdministrative = Boolean(event.actorLabel && from && event.actorLabel !== from);
+      const by = isAdministrative ? ` by ${event.actorLabel}` : "";
       return {
-        title: from ? `${stepName} reassigned from ${from} to ${to}` : `${stepName} reassigned to ${to}`,
+        title: from
+          ? `${stepName} reassigned from ${from} to ${to}${by}`
+          : `${stepName} reassigned to ${to}${by}`,
         href: processRunHref(event.processRunId),
       };
     }

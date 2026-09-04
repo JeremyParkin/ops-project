@@ -7,6 +7,7 @@ import {
   createProcessStepRunInputRequestAction,
   decideProcessApprovalAction,
   reassignProcessStepRunAction,
+  reassignProcessStepRunAdministrativelyAction,
   respondProcessStepRunInputRequestAction,
   retryProcessActionStepAction,
   tombstoneProcessStepRunCommentAction,
@@ -132,6 +133,21 @@ export default async function ProcessRunPage({
   const canCancelProcessRun =
     !impersonation.isImpersonating && Boolean(permissions?.capabilities.has("processes.operate"));
 
+  // Phase 11.3: administrative reassignment authority is deliberately the
+  // exact same conjunction as canCancelAnyInputRequest above, plus
+  // processes.operate (an administrator who somehow lacks it is still
+  // rejected server-side, since this is fundamentally a process action).
+  // UI suppression under impersonation mirrors the two controls above; the
+  // administrative RPC itself independently rejects impersonation too, so
+  // this gate is a courtesy, not the enforcement boundary.
+  const canAdministrativelyReassign =
+    !impersonation.isImpersonating &&
+    Boolean(
+      permissions?.capabilities.has("processes.operate") &&
+        permissions.capabilities.has("workspace.manage_members") &&
+        permissions.capabilities.has("workspace.manage_roles"),
+    );
+
   return (
     <WorkspacePageLayout>
       <ProcessRunDetailView
@@ -149,6 +165,7 @@ export default async function ProcessRunPage({
         inputRequestRecipientCandidates={inputRequestRecipientCandidates}
         canCancelAnyInputRequest={canCancelAnyInputRequest}
         canCancelProcessRun={canCancelProcessRun}
+        canAdministrativelyReassign={canAdministrativelyReassign}
         isOriginRecordArchived={isOriginRecordArchived}
         reassignCandidates={reassignCandidates}
         cancelProcessRunAction={cancelProcessRunAction.bind(null, {
@@ -156,6 +173,10 @@ export default async function ProcessRunPage({
           processRunId,
         })}
         reassignProcessStepRunAction={reassignProcessStepRunAction.bind(null, {
+          workspaceId,
+          processRunId,
+        })}
+        reassignProcessStepRunAdministrativelyAction={reassignProcessStepRunAdministrativelyAction.bind(null, {
           workspaceId,
           processRunId,
         })}

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ProcessActionState } from "@/app/process-actions";
 import type { ProcessRunWithSteps, ProcessStepRun, WorkspaceMemberIdentity } from "@/lib/domain/process-types";
+import { AdministrativeReassignStepButton } from "./administrative-reassign-step-button";
 import { ApprovalDecisionButtons } from "./approval-decision-buttons";
 import { CompleteStepButton } from "./complete-step-button";
 import { ReassignStepButton } from "./reassign-step-button";
@@ -35,6 +36,7 @@ const STATUS_BORDER: Record<ProcessStepRun["status"], string> = {
 type ProcessRunGraphViewProps = {
   run: ProcessRunWithSteps;
   currentUserId: string;
+  canAdministrativelyReassign: boolean;
   reassignCandidates: WorkspaceMemberIdentity[];
   completeProcessStepRunAction: (
     state: ProcessActionState,
@@ -52,16 +54,22 @@ type ProcessRunGraphViewProps = {
     state: ProcessActionState,
     formData: FormData,
   ) => Promise<ProcessActionState>;
+  reassignProcessStepRunAdministrativelyAction: (
+    state: ProcessActionState,
+    formData: FormData,
+  ) => Promise<ProcessActionState>;
 };
 
 export function ProcessRunGraphView({
   run,
   currentUserId,
+  canAdministrativelyReassign,
   reassignCandidates,
   completeProcessStepRunAction,
   decideProcessApprovalAction,
   retryProcessActionStepAction,
   reassignProcessStepRunAction,
+  reassignProcessStepRunAdministrativelyAction,
 }: ProcessRunGraphViewProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const reassignCandidatesExcludingSelf = reassignCandidates.filter(
@@ -342,6 +350,21 @@ export function ProcessRunGraphView({
                   stepRunId={selectedStep.id}
                   candidates={reassignCandidatesExcludingSelf}
                   reassignProcessStepRunAction={reassignProcessStepRunAction}
+                />
+              </div>
+            ) : null}
+            {(selectedStep.nodeType === "human_task" || selectedStep.nodeType === "approval") &&
+            selectedStep.status === "active" &&
+            selectedStep.assigneeUserId !== currentUserId &&
+            canAdministrativelyReassign ? (
+              <div className="border-t border-grit pt-3">
+                <AdministrativeReassignStepButton
+                  stepRunId={selectedStep.id}
+                  currentAssigneeLabel={selectedStep.assigneeLabel ?? undefined}
+                  candidates={reassignCandidates.filter(
+                    (candidate) => candidate.userId !== selectedStep.assigneeUserId,
+                  )}
+                  reassignProcessStepRunAdministrativelyAction={reassignProcessStepRunAdministrativelyAction}
                 />
               </div>
             ) : null}
