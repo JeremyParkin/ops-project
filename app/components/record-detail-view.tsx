@@ -4,11 +4,13 @@ import { ChoicePill } from "@/app/components/choice-pill";
 import { EditableTableCell } from "@/app/components/editable-table-cell";
 import { RecordDetailActions } from "@/app/components/record-detail-actions";
 import { CollapsibleSection, PageHeader } from "@/app/components/page-primitives";
+import { PersonIdentitySection } from "@/app/components/person-identity-section";
 import { ProcessSection, type ProcessSectionEntry } from "@/app/components/process-section";
 import { RecordActivity } from "@/app/components/record-activity";
 import { RecordDiscussion } from "@/app/components/record-discussion";
 import type { RecordActivityEvent } from "@/lib/domain/activity-types";
 import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
+import type { WorkspaceMemberIdentity } from "@/lib/domain/process-types";
 import type {
   RecordComment,
   RecordCommentMentionCandidate,
@@ -62,6 +64,12 @@ type RecordDetailViewProps = {
   inputRequestRecipientCandidates: RecordInputRequestRecipientCandidate[];
   currentUserId?: string;
   canCancelAnyInputRequest?: boolean;
+  isPersonRecord?: boolean;
+  personLinkedEmail?: string;
+  canManagePersonLinks?: boolean;
+  personLinkCandidates?: WorkspaceMemberIdentity[];
+  linkPersonAction?: Parameters<typeof PersonIdentitySection>[0]["linkPersonAction"];
+  unlinkPersonAction?: Parameters<typeof PersonIdentitySection>[0]["unlinkPersonAction"];
   editHref?: string;
   updateFieldAction?: UpdateFieldAction;
   createCommentAction: CommentAction;
@@ -192,6 +200,12 @@ export function RecordDetailView({
   inputRequestRecipientCandidates,
   currentUserId,
   canCancelAnyInputRequest,
+  isPersonRecord,
+  personLinkedEmail,
+  canManagePersonLinks,
+  personLinkCandidates = [],
+  linkPersonAction,
+  unlinkPersonAction,
   editHref,
   updateFieldAction,
   createCommentAction,
@@ -373,6 +387,16 @@ export function RecordDetailView({
             })}
           </div>
         </CollapsibleSection>
+      ) : null}
+
+      {isPersonRecord && linkPersonAction && unlinkPersonAction ? (
+        <PersonIdentitySection
+          linkedEmail={personLinkedEmail}
+          canManageLinks={Boolean(canManagePersonLinks)}
+          candidates={personLinkCandidates}
+          linkPersonAction={linkPersonAction}
+          unlinkPersonAction={unlinkPersonAction}
+        />
       ) : null}
 
       <ProcessSection entries={processSectionEntries} />

@@ -10,6 +10,7 @@ export const workspaceCapabilities = [
   "operations.view",
   "workspace.impersonate_users",
   "workspace.manage_integrations",
+  "people_data.view_all",
 ] as const;
 
 export type WorkspaceCapability = (typeof workspaceCapabilities)[number];

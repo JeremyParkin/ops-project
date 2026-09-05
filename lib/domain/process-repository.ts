@@ -1405,10 +1405,12 @@ export async function getRecordProcessRunSummary({
 
 export async function listWorkspaceMemberIdentities({
   workspaceId,
+  supabase: injectedSupabase,
 }: {
   workspaceId: string;
+  supabase?: SupabaseServerClient;
 }): Promise<WorkspaceMemberIdentity[]> {
-  const supabase = await createServerSupabaseClient();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   const { data, error } = await supabase.rpc(
     "list_workspace_member_identities_authorized",
     { p_workspace_id: workspaceId },

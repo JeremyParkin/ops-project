@@ -1,0 +1,29 @@
+-- Phase 12.2 closure fix: service_role is missing USAGE on schema
+-- `private`.
+--
+-- 0101 added calls to private.can_view_people_sensitive_record and
+-- private.current_effective_user inside create_entity_record_with_relations,
+-- update_entity_record_with_relations, and delete_entity_record_if_
+-- unreferenced. All three are `security invoker` (unchanged from their
+-- pre-0101 definitions), so they run under the CALLING role's own
+-- privileges, not a function owner's. Referencing a schema-qualified
+-- object -- even one the caller already holds EXECUTE on -- requires the
+-- caller to hold USAGE on the containing schema, or Postgres refuses with
+-- "permission denied for schema private" before EXECUTE is ever checked.
+--
+-- 0021 and 0045 granted `usage on schema private` to `authenticated` only.
+-- `service_role` was never granted it, because no function reachable by
+-- service_role touched schema `private` before 0101. 0100 already granted
+-- service_role EXECUTE on private.can_view_people_sensitive_record (and
+-- current_effective_user has always been executable by any role, per
+-- Postgres's default PUBLIC execute grant, never revoked) -- confirming
+-- the intent was always for service_role to be able to call these paths.
+-- The schema-level USAGE grant was the one missing piece.
+--
+-- Interactive end users are unaffected (they call these RPCs as
+-- `authenticated`, which already has schema `private` USAGE). This gap
+-- only surfaces for a caller invoking these RPCs directly as
+-- `service_role` -- notably the shared E2E test helper
+-- `tests/e2e/helpers/supabase-test-data.ts`'s createEntityRecord, which
+-- is what surfaced this during Phase 12.2 closure verification.
+grant usage on schema private to service_role;

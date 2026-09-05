@@ -51,6 +51,7 @@ const capabilityLabels: Record<WorkspaceCapability, string> = {
   "operations.view": "View operational management information",
   "workspace.impersonate_users": "Log in as other members",
   "workspace.manage_integrations": "Manage webhooks and integrations",
+  "people_data.view_all": "View all sensitive people data",
 };
 
 function ActionMessage({ state }: { state: WorkspaceRoleActionState }) {

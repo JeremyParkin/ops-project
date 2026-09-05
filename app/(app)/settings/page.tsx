@@ -1,9 +1,12 @@
 import { WorkspaceRoleManagement } from "@/app/components/workspace-role-management";
 import { WorkspaceOrganizationManagement } from "@/app/components/workspace-organization-management";
 import { WorkspaceTimezoneSettings } from "@/app/components/workspace-timezone-settings";
+import { PersonEntityTypeSettings } from "@/app/components/person-entity-type-settings";
 import { PageHeader, WorkspacePageLayout } from "@/app/components/page-primitives";
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import { resolveImpersonationContext } from "@/lib/auth/impersonation";
+import { listEntityTypes } from "@/lib/domain/metadata-repository";
+import { getPersonEntityTypeId } from "@/lib/domain/person-link-repository";
 import { getWorkspaceTimezone } from "@/lib/domain/recurrence-repository";
 import { listWorkspaceMembersWithRoles, listWorkspaceRoles } from "@/lib/domain/workspace-role-repository";
 import { listWorkspaceInvitations } from "@/lib/domain/workspace-invitation-repository";
@@ -42,6 +45,7 @@ export default async function WorkspaceSettingsPage() {
   const canManageRoles = permissions?.capabilities.has("workspace.manage_roles") ?? false;
   const canManageOrganization = permissions?.capabilities.has("workspace.manage_organization") ?? false;
   const canManageSettings = permissions?.capabilities.has("workspace.manage_settings") ?? false;
+  const canManageSchema = permissions?.capabilities.has("schema.manage") ?? false;
   const canImpersonate = permissions?.capabilities.has("workspace.impersonate_users") ?? false;
   const roles = canManageMembers || canManageRoles
     ? await listWorkspaceRoles({ workspaceId })
@@ -58,6 +62,12 @@ export default async function WorkspaceSettingsPage() {
   const workspaceTimezone = canManageSettings
     ? await getWorkspaceTimezone({ workspaceId })
     : undefined;
+  const [personEntityTypes, personEntityTypeId] = canManageSchema
+    ? await Promise.all([
+        listEntityTypes({ workspaceId }),
+        getPersonEntityTypeId({ workspaceId }),
+      ])
+    : [undefined, undefined];
 
   return (
     <WorkspacePageLayout>
@@ -66,10 +76,17 @@ export default async function WorkspaceSettingsPage() {
         title="Workspace settings"
         description="Manage workspace responsibilities and organizational structure without changing who can read workspace records."
       />
-      {permissions && (canManageMembers || canManageRoles || canManageOrganization || canManageSettings) ? (
+      {permissions &&
+      (canManageMembers || canManageRoles || canManageOrganization || canManageSettings || canManageSchema) ? (
         <>
           {workspaceTimezone !== undefined ? (
             <WorkspaceTimezoneSettings currentTimezone={workspaceTimezone} />
+          ) : null}
+          {personEntityTypes !== undefined ? (
+            <PersonEntityTypeSettings
+              entityTypes={personEntityTypes}
+              currentEntityTypeId={personEntityTypeId ?? null}
+            />
           ) : null}
           {canManageMembers || canManageRoles ? (
             <WorkspaceRoleManagement

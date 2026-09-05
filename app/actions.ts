@@ -68,6 +68,7 @@ import {
   restoreFieldDefinition,
   restoreEntityType,
   setEntityDisplayField,
+  setEntityTypeSensitiveAccessConfig,
   swapFieldPositions,
   updateEntityTypeMetadata,
   updateFieldDefinition as updateFieldDefinitionInRepository,
@@ -122,6 +123,10 @@ import {
   respondRecordInputRequest as respondRecordInputRequestInRepository,
 } from "@/lib/domain/record-input-request-repository";
 import { RECORD_COMMENT_BODY_MAX_LENGTH } from "@/lib/domain/record-comment-validation";
+import {
+  removePersonLink as removePersonLinkInRepository,
+  setPersonLink as setPersonLinkInRepository,
+} from "@/lib/domain/person-link-repository";
 
 type CreateRecordContext = {
   workspaceId: string;
@@ -534,10 +539,27 @@ function formatReferenceSummary(
   }.`;
 }
 
+// Phase 12.2: deleteEntityRecord's reference count comes from the
+// SECURITY DEFINER delete RPC, which bypasses RLS and so counts every
+// referencing relation regardless of the caller's own visibility.
+// getIncomingReferenceSummary is an ordinary RLS-governed read and only
+// ever sees the subset the caller can see. Naming a visible type/count is
+// safe; falling back to the RPC's unfiltered total is not -- it would
+// disclose that hidden (people-sensitive) references exist, and how many,
+// to a caller who cannot see any of them. This generic message is used
+// whenever the visible summary is empty but the record is still blocked.
+function formatHiddenReferenceMessage(entityName: string) {
+  return `Cannot delete this ${entityName} because it is referenced by other records.`;
+}
+
 function formatCommentReferenceMessage(entityName: string, commentCount: number) {
   return `Cannot delete this ${entityName} because ${commentCount} comment${
     commentCount === 1 ? "" : "s"
   } are part of its discussion history.`;
+}
+
+function formatPersonLinkReferenceMessage(entityName: string) {
+  return `Cannot delete this ${entityName} because it is linked to a workspace member identity. Remove the identity link first.`;
 }
 
 export async function deleteRecord(
@@ -567,10 +589,10 @@ export async function deleteRecord(
 
         return {
           success: false,
-          message: formatReferenceSummary(entityType.name, {
-            ...summary,
-            total: result.referenceCount,
-          }),
+          message:
+            summary.total > 0
+              ? formatReferenceSummary(entityType.name, summary)
+              : formatHiddenReferenceMessage(entityType.name),
         };
       }
 
@@ -578,6 +600,13 @@ export async function deleteRecord(
         return {
           success: false,
           message: formatCommentReferenceMessage(entityType.name, result.commentCount),
+        };
+      }
+
+      if (result.personLinkCount > 0) {
+        return {
+          success: false,
+          message: formatPersonLinkReferenceMessage(entityType.name),
         };
       }
 
@@ -608,6 +637,60 @@ export async function deleteRecord(
     success: true,
     message: "Record deleted.",
   };
+}
+
+export async function linkPersonAction(
+  context: UpdateRecordContext,
+  _previousState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  const userId = formData.get("userId");
+
+  if (typeof userId !== "string" || !userId) {
+    return { success: false, message: "Choose a workspace member to link." };
+  }
+
+  try {
+    await setPersonLinkInRepository({
+      workspaceId: context.workspaceId,
+      entityRecordId: context.recordId,
+      userId,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to link this record. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
+
+  return { success: true, message: "Linked to workspace member." };
+}
+
+export async function unlinkPersonAction(
+  context: UpdateRecordContext,
+  previousState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  void previousState;
+  void formData;
+
+  try {
+    await removePersonLinkInRepository({
+      workspaceId: context.workspaceId,
+      entityRecordId: context.recordId,
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to unlink this record. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
+
+  return { success: true, message: "Identity link removed." };
 }
 
 function formatProcessRunReferenceMessage(
@@ -2335,6 +2418,58 @@ export async function updateEntityMetadata(
   };
 }
 
+export async function updateEntityTypeSensitiveAccess(
+  context: EntityTypeContext,
+  _previousState: EntityTypeActionState,
+  formData: FormData,
+): Promise<EntityTypeActionState> {
+  const { entityType } = await getEntityContext(context);
+
+  if (entityType.archivedAt) {
+    return {
+      success: false,
+      message: "Archived entities are read-only. Restore this entity before editing settings.",
+    };
+  }
+
+  const peopleSensitive = formData.get("peopleSensitive") === "on";
+  const subjectPersonFieldId = (formData.get("subjectPersonFieldId") as string | null) || null;
+  const authorPersonFieldId = (formData.get("authorPersonFieldId") as string | null) || null;
+  const subjectCanView = formData.get("subjectCanView") === "on";
+  const managerCanView = formData.get("managerCanView") === "on";
+  const authorCanView = formData.get("authorCanView") === "on";
+
+  try {
+    await setEntityTypeSensitiveAccessConfig({
+      workspaceId: context.workspaceId,
+      entityTypeId: context.entityTypeId,
+      peopleSensitive,
+      subjectPersonFieldId,
+      authorPersonFieldId,
+      subjectCanView,
+      managerCanView,
+      authorCanView,
+    });
+  } catch (error) {
+    // Surfaced verbatim -- the RPC's own messages are already specific and
+    // truthful (missing Person type, invalid subject field, existing
+    // records without a valid subject with a real count, a Process
+    // Template/Workflow conflict, author_can_view without a field). Never
+    // replaced with a generic "please try again."
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to update sensitive-access configuration.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: peopleSensitive ? "Sensitive people data configuration saved." : "Sensitive people data disabled.",
+  };
+}
+
 export async function archiveEntity(
   context: EntityTypeContext,
   previousState: EntityTypeActionState,
@@ -2396,6 +2531,7 @@ function formatEntityDeleteBlockMessage({
   workflowReferences,
   processTemplateCount,
   processTemplateReferences,
+  personTypeDesignationCount,
 }: {
   entityName: string;
   recordCount: number;
@@ -2408,11 +2544,16 @@ function formatEntityDeleteBlockMessage({
   workflowReferences: Array<{ workflowName: string }>;
   processTemplateCount: number;
   processTemplateReferences: Array<{ templateName: string }>;
+  personTypeDesignationCount: number;
 }) {
   if (recordCount > 0) {
     return `Cannot delete ${entityName} because it contains ${recordCount} record${
       recordCount === 1 ? "" : "s"
     }.`;
+  }
+
+  if (personTypeDesignationCount > 0) {
+    return `Cannot delete ${entityName} because it is the workspace's designated Person type. Clear that designation in Workspace Settings first.`;
   }
 
   if (relationFieldCount > 0) {
@@ -2489,6 +2630,7 @@ export async function deleteEntity(
           workflowReferences: workflowSummary.references,
           processTemplateCount: result.processTemplateCount,
           processTemplateReferences: processTemplateSummary.references,
+          personTypeDesignationCount: result.personTypeDesignationCount,
         }),
       };
     }

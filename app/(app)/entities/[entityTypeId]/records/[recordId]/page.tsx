@@ -6,9 +6,11 @@ import {
   createRecordInputRequest,
   deleteRecordFromDetail,
   cancelRecordInputRequest,
+  linkPersonAction,
   respondRecordInputRequest,
   restoreRecord,
   tombstoneRecordComment,
+  unlinkPersonAction,
   updateRecordField,
 } from "@/app/actions";
 import { ObjectContextNav } from "@/app/components/object-context-nav";
@@ -36,9 +38,15 @@ import {
 import { resolveImpersonationContext } from "@/lib/auth/impersonation";
 import { getEntityContext } from "@/lib/domain/metadata-repository";
 import {
+  getPersonEntityTypeId,
+  getPersonLink,
+  listUnlinkedWorkspaceMemberIdentities,
+} from "@/lib/domain/person-link-repository";
+import {
   getProcessRunWithSteps,
   listApplicableProcessTemplatesForEntityType,
   listProcessRunsForOrigin,
+  listWorkspaceMemberIdentities,
 } from "@/lib/domain/process-repository";
 import {
   getEntityRecord,
@@ -181,11 +189,13 @@ async function loadRecordDetailPageData(
   };
 
   try {
-    const [views, entityContext, permissions] = await Promise.all([
+    const [views, entityContext, permissions, personEntityTypeId] = await Promise.all([
       listEntityViews({ workspaceId, entityTypeId }),
       getEntityContext(context),
       getWorkspacePermissionContext(workspaceId),
+      getPersonEntityTypeId({ workspaceId }),
     ]);
+    const isPersonRecord = personEntityTypeId === entityTypeId;
     const canManageAutomation = permissions?.capabilities.has("automation.manage") ?? false;
     const record = await getEntityRecord({
       ...context,
@@ -247,6 +257,24 @@ async function loadRecordDetailPageData(
           permissions.capabilities.has("workspace.manage_roles"),
       );
 
+    // Identity is visible to any workspace viewer of a Person-type record;
+    // only workspace.manage_members holders (and never while impersonating,
+    // matching every other administrative control in this app) ever see
+    // Link/Unlink themselves.
+    const canManagePersonLinks =
+      !impersonation.isImpersonating && (permissions?.capabilities.has("workspace.manage_members") ?? false);
+    let personLinkedEmail: string | undefined;
+    let personLinkCandidates: Awaited<ReturnType<typeof listWorkspaceMemberIdentities>> = [];
+    if (isPersonRecord) {
+      const personLink = await getPersonLink({ workspaceId, entityRecordId: recordId });
+      if (personLink) {
+        const identities = await listWorkspaceMemberIdentities({ workspaceId });
+        personLinkedEmail = identities.find((identity) => identity.userId === personLink.userId)?.email;
+      } else if (canManagePersonLinks) {
+        personLinkCandidates = await listUnlinkedWorkspaceMemberIdentities({ workspaceId });
+      }
+    }
+
     return {
       context,
       views,
@@ -262,6 +290,10 @@ async function loadRecordDetailPageData(
       inputRequests,
       inputRequestRecipientCandidates,
       currentUserId,
+      isPersonRecord,
+      personLinkedEmail,
+      canManagePersonLinks,
+      personLinkCandidates,
       canCancelAnyInputRequest,
     };
   } catch {
@@ -301,6 +333,10 @@ export default async function RecordDetailPage({
     inputRequestRecipientCandidates,
     currentUserId,
     canCancelAnyInputRequest,
+    isPersonRecord,
+    personLinkedEmail,
+    canManagePersonLinks,
+    personLinkCandidates,
   } = pageData;
   const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(fields, choiceOptionsByFieldId);
   const actionContext = {
@@ -343,6 +379,12 @@ export default async function RecordDetailPage({
           inputRequestRecipientCandidates={inputRequestRecipientCandidates}
           currentUserId={currentUserId}
           canCancelAnyInputRequest={canCancelAnyInputRequest}
+          isPersonRecord={isPersonRecord}
+          personLinkedEmail={personLinkedEmail}
+          canManagePersonLinks={canManagePersonLinks}
+          personLinkCandidates={personLinkCandidates}
+          linkPersonAction={linkPersonAction.bind(null, actionContext)}
+          unlinkPersonAction={unlinkPersonAction.bind(null, actionContext)}
           editHref={editHref}
           updateFieldAction={updateFieldAction}
           createCommentAction={createRecordComment.bind(null, actionContext)}

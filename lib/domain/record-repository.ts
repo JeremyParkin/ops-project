@@ -1164,6 +1164,7 @@ export async function deleteEntityRecord({
     reference_count: number;
     process_run_count: number;
     comment_count?: number;
+    person_link_count?: number;
   }> | null;
   const result = resultRows?.[0];
 
@@ -1176,5 +1177,6 @@ export async function deleteEntityRecord({
     referenceCount: result.reference_count,
     processRunCount: result.process_run_count,
     commentCount: result.comment_count ?? 0,
+    personLinkCount: result.person_link_count ?? 0,
   };
 }

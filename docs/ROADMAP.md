@@ -143,6 +143,38 @@ Design constraints:
 - Prefer new durable events over reinterpreting or rewriting historical rows, matching this project's established pattern for `routing_result`, `decided_by_*`, and now `cancelled_at`/`cancellation_reason`.
 - Do not silently turn manager/team visibility scope (`private.managed_user_ids`) into mutation authority.
 
+## Phase 12 - People Foundations
+
+**Status:** In progress. 12.1 (People Identity Foundation) is complete -- migration `0097`/`0098`/`0099`, implementation and verification detail live in `PROJECT_CONTEXT.md`. 12.2 (People Data Access) is the active next roadmap focus and requires its own `PLAN ONLY` security/authorization investigation before any implementation begins. 12.3 (People Experience / performance-management dogfood) is later still, dependent on 12.2 shipping safely.
+
+**Goal:** Let a configurable, metadata-defined Person business record be durably bridged to an authenticated workspace member identity, and -- once that bridge's own safety is proven -- eventually support performance-management-style use cases (quality reviews, goals) as ordinary business objects, without building a bespoke HR/person-record subsystem and without prematurely broadening authorization into a general policy engine.
+
+This phase followed a dedicated investigation into whether Kinema's existing generic entity/relation/view/process architecture could already model performance-review and goal-tracking scenarios, and what was genuinely missing. The investigation found the data-modeling side already fully generic (Quality Review, Performance Cycle, Goal, and Goal Check-In all model cleanly as ordinary EntityTypes with no new primitive) but identified two real gaps: no durable link between a business record and a workspace member identity, and no row-level read restriction narrower than "whole workspace" anywhere in this schema. The recommendation -- approved -- was to ship the identity link alone first (12.1, low risk, independently valuable), and defer the visibility question to its own dedicated authority investigation (12.2) before any people-sensitive data exists, mirroring how Phase 11.3's authority question was kept out of 11.1/11.2.
+
+Delivered scope (12.1):
+
+- People Identity Foundation: a workspace may optionally designate exactly one metadata-defined EntityType as its Person type (`workspaces.person_entity_type_id`, `schema.manage`-gated). A new `entity_record_person_links` mapping table provides an explicit, optional, 1:1 bridge between one Person EntityRecord and one workspace member `user_id`, structurally workspace-safe via composite FKs. Person records may exist without workspace accounts; workspace members may exist without Person records; linking is always explicit/manual (`workspace.manage_members`-gated), never automatic on invitation and never inferred from email/name matching. Links survive member deactivation and Person-record archival; a linked Person record or the currently-designated Person type cannot be safely hard-deleted until explicitly unlinked/undesignated; every link/unlink is durably recorded as a `person_linked`/`person_unlinked` event; all three governance RPCs (designation, link, unlink) are unavailable during active impersonation. No new capability was introduced, and existing `workspace_reporting_relationships`/teams/My Work/Team Work/Process assignment remain untouched, keyed on `user_id` as before. **No people-sensitive row visibility was introduced** -- the existence of a link is readable by any workspace member; only mutation is capability-gated.
+
+Planned scope (12.2, 12.3 -- not yet built):
+
+- People Data Access (12.2): safe self/manager/admin record visibility for people-sensitive data, built on the 12.1 identity link. Requires its own `PLAN ONLY` authorization investigation before implementation -- this roadmap entry does not pre-approve any specific access model (e.g. "self + manager + capability" is not assumed correct), and must separately resolve subject-vs-author-vs-manager semantics, dynamic-vs-frozen access after org changes, every leakage path (Activity/search/export/API/reverse-relation), impersonation interaction, and the strongest practical enforcement boundary before any code is written.
+- People Experience / performance-management dogfood (12.3): enough UX to dogfood Quality Review and Goals as ordinary business objects using the access model 12.2 establishes. Explicitly gated on 12.2 shipping safely first -- not to be pulled forward.
+
+Explicitly out of scope for this phase (rejected or deferred, not simply unstarted):
+
+- Payroll, compensation, recruiting/ATS, leave/PTO management, benefits, disciplinary workflows, and any generic HRIS replacement.
+- Automated/algorithmic employee ranking and AI-generated performance judgments -- explicit, reviewer-entered scores are in scope for 12.3; Kinema inferring or computing a composite performance judgment is not, and would need its own separate product decision if ever reconsidered.
+- A broad ABAC/policy-language engine, and a generic dashboard/page-builder -- any 12.2 visibility rule must stay a small, fixed mechanism, not a configurable policy language; any 12.3 UX must stay a purposeful record-detail section, not a generic builder.
+- Manager mutation authority arising merely because manager/team visibility (`private.managed_user_ids`, Team Work) exists -- visibility and mutation authority remain separate axes, exactly as established in Phase 11's design constraints.
+- Any Quality Review/Goal/Performance Cycle sensitive-data rollout before 12.2 resolves access enforcement -- 12.1 deliberately ships zero sensitive record types.
+
+Design constraints:
+
+- Keep authentication/workspace membership (`auth.users`/`workspace_memberships`) separate from configurable business data -- never turn `workspace_memberships` itself into an extensible business-object table.
+- Prefer explicit, reversible, non-destructive lifecycle transitions (explicit link/unlink over silent replacement; designation blocked rather than auto-cleared while links exist) over inventing new migration/reinterpretation semantics.
+- Do not silently turn manager/team visibility scope (`private.managed_user_ids`) into mutation authority -- carried forward unchanged from Phase 11, and binding on 12.2 as well.
+- Any people-sensitive visibility mechanism 12.2 designs must be evaluated against the risk of "creating an over-general policy engine prematurely" before being approved.
+
 ## Later Strategic Capabilities
 
 These areas are important, but should be sequenced after Phases 8F-10 unless a concrete product need pulls a smaller slice forward.

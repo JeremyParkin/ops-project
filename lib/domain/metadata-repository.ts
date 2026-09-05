@@ -546,6 +546,88 @@ export async function updateEntityTypeMetadata({
   return mapEntityType(data);
 }
 
+// Phase 12.2: sensitive-access configuration. Deliberately a narrow, dedicated
+// getter/setter pair (mirroring getPersonEntityTypeId/setPersonEntityType,
+// lib/domain/person-link-repository.ts) rather than extending the shared
+// EntityType type/mapper -- these six columns are read/written only by this
+// one builder surface, not by every ordinary entity-type consumer.
+export type EntityTypeSensitiveAccessConfig = {
+  peopleSensitive: boolean;
+  subjectPersonFieldId: string | null;
+  authorPersonFieldId: string | null;
+  subjectCanView: boolean;
+  managerCanView: boolean;
+  authorCanView: boolean;
+};
+
+type EntityTypeSensitiveAccessRow = {
+  people_sensitive: boolean;
+  subject_person_field_id: string | null;
+  author_person_field_id: string | null;
+  subject_can_view: boolean;
+  manager_can_view: boolean;
+  author_can_view: boolean;
+};
+
+export async function getEntityTypeSensitiveAccessConfig({
+  workspaceId,
+  entityTypeId,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+}): Promise<EntityTypeSensitiveAccessConfig> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("entity_types")
+    .select("people_sensitive, subject_person_field_id, author_person_field_id, subject_can_view, manager_can_view, author_can_view")
+    .eq("workspace_id", workspaceId)
+    .eq("id", entityTypeId)
+    .single<EntityTypeSensitiveAccessRow>();
+
+  if (error) {
+    throw new Error(`Unable to load sensitive-access configuration: ${error.message}`);
+  }
+
+  return {
+    peopleSensitive: data.people_sensitive,
+    subjectPersonFieldId: data.subject_person_field_id,
+    authorPersonFieldId: data.author_person_field_id,
+    subjectCanView: data.subject_can_view,
+    managerCanView: data.manager_can_view,
+    authorCanView: data.author_can_view,
+  };
+}
+
+export async function setEntityTypeSensitiveAccessConfig({
+  workspaceId,
+  entityTypeId,
+  peopleSensitive,
+  subjectPersonFieldId,
+  authorPersonFieldId,
+  subjectCanView,
+  managerCanView,
+  authorCanView,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+} & EntityTypeSensitiveAccessConfig): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("set_entity_type_people_sensitive_access_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_people_sensitive: peopleSensitive,
+    p_subject_person_field_id: subjectPersonFieldId,
+    p_author_person_field_id: authorPersonFieldId,
+    p_subject_can_view: subjectCanView,
+    p_manager_can_view: managerCanView,
+    p_author_can_view: authorCanView,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function setEntityDisplayField({
   workspaceId,
   entityTypeId,
@@ -708,6 +790,7 @@ export async function deleteEntityType({
     relation_field_count: number;
     workflow_target_count: number;
     process_template_count: number;
+    person_type_designation_count?: number;
   }> | null;
   const result = resultRows?.[0];
 
@@ -721,5 +804,6 @@ export async function deleteEntityType({
     relationFieldCount: result.relation_field_count,
     workflowTargetCount: result.workflow_target_count,
     processTemplateCount: result.process_template_count,
+    personTypeDesignationCount: result.person_type_designation_count ?? 0,
   };
 }

@@ -9,10 +9,12 @@ import {
   restoreEntity,
   deleteView,
   updateEntityMetadata,
+  updateEntityTypeSensitiveAccess,
   updateView,
 } from "@/app/actions";
 import { EntityRecordsTable } from "@/app/components/entity-records-table";
 import { EntitySettingsForm } from "@/app/components/entity-settings-form";
+import { EntityTypeSensitiveAccessForm } from "@/app/components/entity-type-sensitive-access-form";
 import { EntityViewQuickBar } from "@/app/components/entity-view-quickbar";
 import { EntityViewsPanel } from "@/app/components/entity-views-panel";
 import { FieldCreateForm } from "@/app/components/field-create-form";
@@ -26,8 +28,10 @@ import {
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import {
   getEntityContext,
+  getEntityTypeSensitiveAccessConfig,
   listEntityTypes,
 } from "@/lib/domain/metadata-repository";
+import { getPersonEntityTypeId } from "@/lib/domain/person-link-repository";
 import {
   countEntityRecords,
   entityRecordExists,
@@ -173,6 +177,8 @@ async function loadEntityPageData({
       allFieldContext,
       workflows,
       views,
+      personEntityTypeId,
+      sensitiveAccessConfig,
     ] = await Promise.all([
       listEntityTypes({ workspaceId }),
       listEntityTypes({
@@ -190,6 +196,8 @@ async function loadEntityPageData({
       }),
       listWorkflows({ workspaceId }),
       listEntityViews(context),
+      getPersonEntityTypeId({ workspaceId }),
+      getEntityTypeSensitiveAccessConfig(context),
     ]);
     const [records, choiceOptionsByFieldId] = await Promise.all([
       listEntityRecords({
@@ -232,6 +240,8 @@ async function loadEntityPageData({
       views,
       records,
       relationLookups,
+      personEntityTypeId,
+      sensitiveAccessConfig,
     };
   } catch {
     return null;
@@ -303,6 +313,8 @@ export default async function EntityPage({
     views,
     records,
     relationLookups,
+    personEntityTypeId,
+    sensitiveAccessConfig,
   } = pageData;
   const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(allFields, choiceOptionsByFieldId);
   const selectedView =
@@ -451,6 +463,7 @@ export default async function EntityPage({
     ? deleteView.bind(null, { ...context, viewId: selectedView.id })
     : undefined;
   const updateEntity = updateEntityMetadata.bind(null, context);
+  const updateSensitiveAccess = updateEntityTypeSensitiveAccess.bind(null, context);
   const archiveCurrentEntity = archiveEntity.bind(null, context);
   const restoreCurrentEntity = restoreEntity.bind(null, context);
   const deleteCurrentEntity = deleteEntity.bind(null, context);
@@ -545,6 +558,17 @@ export default async function EntityPage({
             archiveEntityAction={archiveCurrentEntity}
             restoreEntityAction={restoreCurrentEntity}
             deleteEntityAction={deleteCurrentEntity}
+          />
+        ) : null}
+        {isManaging && !isArchivedEntity ? (
+          <EntityTypeSensitiveAccessForm
+            entityTypeId={entityType.id}
+            personTypeDesignated={Boolean(personEntityTypeId)}
+            relationFieldsTargetingPersonType={fields.filter(
+              (field) => field.type === "relation" && field.relatedEntityTypeId === personEntityTypeId && !field.archivedAt,
+            )}
+            config={sensitiveAccessConfig}
+            action={updateSensitiveAccess}
           />
         ) : null}
         {isManaging && !isArchivedEntity ? (
