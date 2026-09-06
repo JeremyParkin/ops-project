@@ -39,6 +39,10 @@ type WorkflowExecutionLogRow = {
   id: string;
   workspace_id: string;
   workflow_id: string;
+  workflow_name_snapshot: string | null;
+  trigger_entity_type_name_snapshot: string | null;
+  trigger_context_snapshot: Record<string, unknown> | null;
+  action_context_snapshot: Array<Record<string, unknown>> | null;
   trigger_entity_type_id: string;
   trigger_record_id: string;
   status: WorkflowExecutionStatus;
@@ -71,6 +75,10 @@ type UpdateWorkflowInput = CreateWorkflowInput & {
 type CreateWorkflowExecutionLogInput = {
   workspaceId: string;
   workflowId: string;
+  workflowNameSnapshot?: string;
+  triggerEntityTypeNameSnapshot?: string;
+  triggerContextSnapshot?: Record<string, unknown>;
+  actionContextSnapshot?: Array<Record<string, unknown>>;
   triggerEntityTypeId: string;
   triggerRecordId: string;
   status: WorkflowExecutionStatus;
@@ -83,6 +91,83 @@ type CreateWorkflowExecutionLogInput = {
   startedAt: string;
   completedAt: string;
 };
+
+async function getExecutionContextSnapshot(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  workspaceId: string,
+  workflowId: string,
+) {
+  const { data: workflow, error: workflowError } = await supabase
+    .from("workflows")
+    .select("name, trigger_type, trigger_entity_type_id, action_config, actions")
+    .eq("workspace_id", workspaceId)
+    .eq("id", workflowId)
+    .maybeSingle<WorkflowRow>();
+
+  if (workflowError || !workflow) {
+    return {};
+  }
+
+  const entityTypeIds = [
+    workflow.trigger_entity_type_id,
+    ...workflow.actions
+      .map((action) => action.actionTargetEntityTypeId)
+      .filter((id): id is string => Boolean(id)),
+  ];
+  const fieldIds = [
+    ...(workflow.action_config?.triggerConfig?.watchedFieldDefinitionIds ?? []),
+    ...(workflow.action_config?.conditions ?? []).map((condition) => condition.sourceFieldDefinitionId),
+    ...workflow.actions.flatMap((action) => [
+      ...(action.relatedFieldDefinitionId ? [action.relatedFieldDefinitionId] : []),
+      ...(action.fieldMappings ?? []).flatMap((mapping) => [
+        mapping.targetFieldDefinitionId,
+        mapping.source.type === "source_field" ? mapping.source.sourceFieldDefinitionId : undefined,
+      ]),
+    ]),
+  ].filter((id): id is string => Boolean(id));
+  const processTemplateIds = workflow.actions
+    .map((action) => action.processTemplateId)
+    .filter((id): id is string => Boolean(id));
+
+  const [{ data: entityTypes }, { data: fields }, { data: templates }] = await Promise.all([
+    supabase.from("entity_types").select("id, name").eq("workspace_id", workspaceId).in("id", [...new Set(entityTypeIds)]),
+    supabase.from("field_definitions").select("id, name").eq("workspace_id", workspaceId).in("id", [...new Set(fieldIds)]),
+    supabase.from("process_templates").select("id, name").eq("workspace_id", workspaceId).in("id", [...new Set(processTemplateIds)]),
+  ]);
+  const entityNames = new Map((entityTypes ?? []).map((row) => [row.id, row.name]));
+  const fieldNames = new Map((fields ?? []).map((row) => [row.id, row.name]));
+  const templateNames = new Map((templates ?? []).map((row) => [row.id, row.name]));
+  const triggerConfig = workflow.action_config?.triggerConfig ?? {};
+
+  return {
+    workflowNameSnapshot: workflow.name,
+    triggerEntityTypeNameSnapshot: entityNames.get(workflow.trigger_entity_type_id),
+    triggerContextSnapshot: {
+      triggerType: workflow.trigger_type,
+      watchedFields: (triggerConfig.watchedFieldDefinitionIds ?? []).map((id) => ({
+        id,
+        name: fieldNames.get(id) ?? null,
+      })),
+      conditions: workflow.action_config?.conditions ?? [],
+    },
+    actionContextSnapshot: workflow.actions.map((action, index) => ({
+      index,
+      actionType: action.actionType,
+      targetEntityTypeId: action.actionTargetEntityTypeId ?? null,
+      targetEntityTypeName: action.actionTargetEntityTypeId
+        ? entityNames.get(action.actionTargetEntityTypeId) ?? null
+        : null,
+      relatedFieldDefinitionId: action.relatedFieldDefinitionId ?? null,
+      relatedFieldName: action.relatedFieldDefinitionId
+        ? fieldNames.get(action.relatedFieldDefinitionId) ?? null
+        : null,
+      processTemplateId: action.processTemplateId ?? null,
+      processTemplateName: action.processTemplateId
+        ? templateNames.get(action.processTemplateId) ?? null
+        : null,
+    })),
+  };
+}
 
 function mapWorkflowAction(row: WorkflowActionRow): WorkflowAction {
   return {
@@ -117,6 +202,10 @@ function mapWorkflowExecutionLog(
     id: row.id,
     workspaceId: row.workspace_id,
     workflowId: row.workflow_id,
+    workflowNameSnapshot: row.workflow_name_snapshot ?? undefined,
+    triggerEntityTypeNameSnapshot: row.trigger_entity_type_name_snapshot ?? undefined,
+    triggerContextSnapshot: row.trigger_context_snapshot ?? undefined,
+    actionContextSnapshot: row.action_context_snapshot ?? undefined,
     triggerEntityTypeId: row.trigger_entity_type_id,
     triggerRecordId: row.trigger_record_id,
     status: row.status,
@@ -400,6 +489,10 @@ export async function deleteWorkflowDefinition({
 export async function createWorkflowExecutionLog({
   workspaceId,
   workflowId,
+  workflowNameSnapshot,
+  triggerEntityTypeNameSnapshot,
+  triggerContextSnapshot,
+  actionContextSnapshot,
   triggerEntityTypeId,
   triggerRecordId,
   status,
@@ -413,9 +506,15 @@ export async function createWorkflowExecutionLog({
   completedAt,
 }: CreateWorkflowExecutionLogInput) {
   const supabase = await createServerSupabaseClient();
+  const snapshot = await getExecutionContextSnapshot(supabase, workspaceId, workflowId);
   const { error } = await supabase.from("workflow_execution_logs").insert({
     workspace_id: workspaceId,
     workflow_id: workflowId,
+    workflow_name_snapshot: workflowNameSnapshot ?? snapshot.workflowNameSnapshot ?? null,
+    trigger_entity_type_name_snapshot:
+      triggerEntityTypeNameSnapshot ?? snapshot.triggerEntityTypeNameSnapshot ?? null,
+    trigger_context_snapshot: triggerContextSnapshot ?? snapshot.triggerContextSnapshot ?? {},
+    action_context_snapshot: actionContextSnapshot ?? snapshot.actionContextSnapshot ?? [],
     trigger_entity_type_id: triggerEntityTypeId,
     trigger_record_id: triggerRecordId,
     status,

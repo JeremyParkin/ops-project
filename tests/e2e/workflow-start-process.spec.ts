@@ -709,13 +709,33 @@ test("an archived referenced template remains configured, fails execution, and c
   expect(await getProcessRuns(template.id)).toHaveLength(0);
   const { data: failedLog } = await supabase
     .from("workflow_execution_logs")
-    .select("status, error_message")
+    .select("status, error_message, workflow_name_snapshot, trigger_entity_type_name_snapshot, trigger_context_snapshot, action_context_snapshot, action_results")
     .eq("workspace_id", DEMO_WORKSPACE_ID)
     .eq("workflow_id", workflow?.id ?? "")
     .single();
   expect(failedLog).toMatchObject({
     status: "failed",
     error_message: expect.stringContaining("Process template not found or archived"),
+    workflow_name_snapshot: workflowName,
+    trigger_entity_type_name_snapshot: deliverable.name,
+    trigger_context_snapshot: { triggerType: "record_created", watchedFields: [], conditions: [] },
+    action_context_snapshot: [
+      expect.objectContaining({
+        index: 0,
+        actionType: "start_process",
+        processTemplateId: template.id,
+        processTemplateName: template.name,
+      }),
+    ],
+    action_results: [
+      expect.objectContaining({
+        index: 0,
+        actionType: "start_process",
+        status: "failed",
+        processTemplateId: template.id,
+        errorMessage: expect.stringContaining("Process template not found or archived"),
+      }),
+    ],
   });
 
   const { error: restoreError } = await authenticated.rpc(
@@ -733,4 +753,97 @@ test("an archived referenced template remains configured, fails execution, and c
     "Monthly Report",
   );
   await expect.poll(() => getProcessRuns(template.id)).toHaveLength(1);
+});
+
+test("execution logs retain Workflow context after the Workflow is deleted", async ({ page }) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const deliverable = await createEntity(supabase, run, "Deliverable", [
+    { slug: "name", name: "Name", type: "text", required: true },
+    { slug: "type", name: "Type", type: "text", required: true },
+    { slug: "status", name: "Status", type: "text" },
+  ]);
+  const template = await createTemplate({ run, entity: deliverable, suffix: "Durable Log" });
+  const workflowName = `${run.label} Durable Automation`;
+
+  await createStartProcessWorkflow({
+    page,
+    name: workflowName,
+    entity: deliverable,
+    templateId: template.id,
+  });
+  const record = await createDeliverable(page, deliverable, `${run.label} Durable Record`, "Report");
+  await expect.poll(() => getProcessRuns(template.id)).toHaveLength(1);
+
+  const { data: workflow, error: workflowError } = await supabase
+    .from("workflows")
+    .select("id")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("name", workflowName)
+    .single();
+  expect(workflowError).toBeNull();
+
+  const { data: beforeDelete, error: logError } = await supabase
+    .from("workflow_execution_logs")
+    .select("workflow_id, workflow_name_snapshot, trigger_entity_type_name_snapshot, trigger_context_snapshot, action_context_snapshot, action_results")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("workflow_id", workflow?.id ?? "")
+    .eq("trigger_record_id", record.id)
+    .single();
+  expect(logError).toBeNull();
+  expect(beforeDelete).toMatchObject({
+    workflow_id: workflow?.id,
+    workflow_name_snapshot: workflowName,
+    trigger_entity_type_name_snapshot: deliverable.name,
+    trigger_context_snapshot: { triggerType: "record_created", watchedFields: [], conditions: [] },
+    action_context_snapshot: [
+      expect.objectContaining({
+        index: 0,
+        actionType: "start_process",
+        processTemplateId: template.id,
+        processTemplateName: template.name,
+      }),
+    ],
+    action_results: [expect.objectContaining({ actionType: "start_process", status: "succeeded" })],
+  });
+
+  const renamedWorkflowName = `${workflowName} Renamed`;
+  const { error: workflowEditError } = await supabase
+    .from("workflows")
+    .update({
+      name: renamedWorkflowName,
+      action_config: {
+        triggerConfig: {},
+        conditions: [{ sourceFieldDefinitionId: deliverable.fields.status.id, operator: "is_set" }],
+      },
+    })
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("id", workflow?.id ?? "");
+  expect(workflowEditError).toBeNull();
+
+  const { data: afterEdit, error: editedLogError } = await supabase
+    .from("workflow_execution_logs")
+    .select("workflow_id, workflow_name_snapshot, trigger_entity_type_name_snapshot, trigger_context_snapshot, action_context_snapshot, action_results")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("workflow_id", workflow?.id ?? "")
+    .eq("trigger_record_id", record.id)
+    .single();
+  expect(editedLogError).toBeNull();
+  expect(afterEdit).toEqual(beforeDelete);
+
+  await page.goto("/workflows");
+  const workflowRow = page.getByRole("row").filter({ hasText: renamedWorkflowName });
+  page.once("dialog", (dialog) => dialog.accept());
+  await workflowRow.getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByRole("link", { name: renamedWorkflowName })).not.toBeVisible();
+
+  const { data: afterDelete, error: retainedLogError } = await supabase
+    .from("workflow_execution_logs")
+    .select("workflow_id, workflow_name_snapshot, trigger_entity_type_name_snapshot, trigger_context_snapshot, action_context_snapshot, action_results")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("workflow_id", workflow?.id ?? "")
+    .eq("trigger_record_id", record.id)
+    .single();
+  expect(retainedLogError).toBeNull();
+  expect(afterDelete).toEqual(beforeDelete);
 });

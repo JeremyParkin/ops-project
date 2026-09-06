@@ -172,13 +172,17 @@ Explicitly out of scope for this phase (rejected or deferred, not simply unstart
 
 ## Phase 13 - Audit & Operational Trust
 
-**Status:** Active major direction. Phase 13.1 (Record Change History) is complete; further slices remain open for review and are not automatically started.
+**Status:** Active major direction. Phase 13.1 (Record Change History) and Phase 13.2A (Workflow Execution-Log Durability) are complete; governance/configuration audit remains open for review and is not automatically started.
 
 ### Phase 13.1 - Record Change History
 
 **Status:** Complete. Migrations `0110`-`0114` are immutable. Implementation, verification, and dogfood evidence live in `PROJECT_CONTEXT.md`.
 
 This slice delivers append-only, record-context change history for create, update, import, archive, and restore operations, with truthful human, impersonated, Automation, and Process attribution. It deliberately does not create a workspace-wide audit explorer or claim comprehensive historical coverage.
+
+### Phase 13.2A - Workflow Execution-Log Durability
+
+**Status:** Complete. Migration `0115` is immutable. Workflow execution logs retain the originating Workflow UUID as a historical soft ID and snapshot the Workflow name, trigger EntityType name, trigger type, watched fields, conditions, and ordered action context. `action_results` remains the authoritative execution outcome. Workflow hard deletion no longer deletes execution logs, and the existing log surface falls back to the snapshotted Automation name when the live definition is absent. Governance/configuration audit coverage and a Workspace Audit Explorer remain deferred for separate review.
 
 ### Governance, Audit & Workspace Hygiene
 
@@ -210,7 +214,7 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 - General workspace activity/audit explorer, including imports, workflow execution, process failures, administrative changes, richer actor/effective-actor history, and support/impersonation events.
 - Impersonation/support-mode evolution: effective-user-aware UI gating, effective-user-aware notifications, reason capture, optional read-only support access, and stronger production support traceability.
 - Hardening of remaining raw/schema mutation paths where retained `SECURITY INVOKER` behavior can bypass app-layer validation.
-- Durable workflow log preservation; deleting a workflow should eventually not erase meaningful execution history.
+- Governance/configuration audit coverage and semantic administrative history, pending a dedicated Phase 13.2 review.
 - Row-scoped visibility, team-based record visibility, ownership, and possibly multi-role membership if the permission model needs them.
 
 ### Process, Automation & Notifications

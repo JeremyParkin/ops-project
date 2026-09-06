@@ -79,7 +79,7 @@ export function WorkflowRowActions({
           onSubmit={(event) => {
             if (
               !window.confirm(
-                "Delete this workflow? Existing execution logs will also be removed.",
+                "Delete this workflow? Existing execution logs will be preserved.",
               )
             ) {
               event.preventDefault();

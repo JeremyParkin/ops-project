@@ -182,7 +182,9 @@ export default async function WorkflowsPage() {
                 {logs.map((log) => (
                   <tr key={log.id}>
                     <td className="px-4 py-3">
-                      {workflowNameById.get(log.workflowId) ?? "Automation"}
+                      {log.workflowNameSnapshot ??
+                        workflowNameById.get(log.workflowId) ??
+                        "Automation"}
                     </td>
                     <td className="px-4 py-3">{log.status}</td>
                     <td className="px-4 py-3">

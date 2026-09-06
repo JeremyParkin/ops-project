@@ -137,6 +137,10 @@ export type WorkflowExecutionLog = {
   id: string;
   workspaceId: string;
   workflowId: string;
+  workflowNameSnapshot?: string;
+  triggerEntityTypeNameSnapshot?: string;
+  triggerContextSnapshot?: Record<string, unknown>;
+  actionContextSnapshot?: Array<Record<string, unknown>>;
   triggerEntityTypeId: EntityType["id"];
   triggerRecordId: string;
   status: WorkflowExecutionStatus;
