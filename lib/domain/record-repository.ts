@@ -51,6 +51,9 @@ type CreateEntityRecordInput = Pick<
   // a retry after a crashed/uncommitted completion reuse the record a prior
   // attempt already created, instead of creating a duplicate.
   originatingProcessStepRunId?: string;
+  originatingWorkflowId?: string;
+  originatingActionType?: "create_record" | "update_record" | "update_related_record" | "start_process";
+  originatingRelatedFieldDefinitionId?: string;
 };
 
 type GetEntityRecordInput = ListEntityRecordsInput & {
@@ -59,6 +62,10 @@ type GetEntityRecordInput = ListEntityRecordsInput & {
 
 type UpdateEntityRecordInput = GetEntityRecordInput & {
   values: EntityRecord["values"];
+  originatingProcessStepRunId?: string;
+  originatingWorkflowId?: string;
+  originatingActionType?: "create_record" | "update_record" | "update_related_record" | "start_process";
+  originatingRelatedFieldDefinitionId?: string;
 };
 
 type RelationValueRow = {
@@ -497,18 +504,46 @@ export async function createEntityRecord({
   values,
   supabase: injectedSupabase,
   originatingProcessStepRunId,
+  originatingWorkflowId,
+  originatingActionType,
+  originatingRelatedFieldDefinitionId,
 }: CreateEntityRecordInput) {
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   const { primitiveValues, relations } = splitRecordValues(fields, values);
+  const rpcName = originatingWorkflowId
+    ? "create_entity_record_with_relations_automation_system"
+    : originatingProcessStepRunId
+      ? "create_entity_record_with_relations_process_system"
+      : "create_entity_record_with_relations_authorized";
+  const rpcArgs = originatingWorkflowId
+    ? {
+        p_workspace_id: workspaceId,
+        p_entity_type_id: entityTypeId,
+        p_values: primitiveValues,
+        p_relations: relations,
+        p_originating_workflow_id: originatingWorkflowId,
+        p_action_type: originatingActionType,
+        p_related_field_definition_id: originatingRelatedFieldDefinitionId ?? null,
+      }
+    : originatingProcessStepRunId
+      ? {
+          p_workspace_id: workspaceId,
+          p_entity_type_id: entityTypeId,
+          p_values: primitiveValues,
+          p_relations: relations,
+          p_originating_process_step_run_id: originatingProcessStepRunId,
+          p_action_type: originatingActionType,
+          p_related_field_definition_id: originatingRelatedFieldDefinitionId ?? null,
+        }
+      : {
+          p_workspace_id: workspaceId,
+          p_entity_type_id: entityTypeId,
+          p_values: primitiveValues,
+          p_relations: relations,
+        };
   const { data, error } = await supabase.rpc(
-    "create_entity_record_with_relations_authorized",
-    {
-      p_workspace_id: workspaceId,
-      p_entity_type_id: entityTypeId,
-      p_values: primitiveValues,
-      p_relations: relations,
-      p_originating_process_step_run_id: originatingProcessStepRunId ?? null,
-    },
+    rpcName,
+    rpcArgs,
   );
 
   if (error) {
@@ -599,6 +634,10 @@ export async function updateEntityRecord({
   fields,
   values,
   supabase: injectedSupabase,
+  originatingProcessStepRunId,
+  originatingWorkflowId,
+  originatingActionType,
+  originatingRelatedFieldDefinitionId,
 }: UpdateEntityRecordInput) {
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   const { primitiveValues, relationFieldIds, relations } = splitRecordValues(
@@ -606,7 +645,11 @@ export async function updateEntityRecord({
     values,
   );
   const { data, error } = await supabase.rpc(
-    "update_entity_record_with_relations_authorized",
+    originatingWorkflowId
+      ? "update_entity_record_with_relations_automation_system"
+      : originatingProcessStepRunId
+        ? "update_entity_record_with_relations_process_system"
+        : "update_entity_record_with_relations_authorized",
     {
       p_workspace_id: workspaceId,
       p_entity_type_id: entityTypeId,
@@ -614,6 +657,14 @@ export async function updateEntityRecord({
       p_values: primitiveValues,
       p_relation_field_ids: relationFieldIds,
       p_relations: relations,
+      ...(originatingWorkflowId ? { p_originating_workflow_id: originatingWorkflowId } : {}),
+      ...(originatingProcessStepRunId ? { p_originating_process_step_run_id: originatingProcessStepRunId } : {}),
+      ...(originatingWorkflowId || originatingProcessStepRunId
+        ? {
+            p_action_type: originatingActionType,
+            p_related_field_definition_id: originatingRelatedFieldDefinitionId ?? null,
+          }
+        : {}),
     },
   );
 
@@ -831,30 +882,26 @@ export async function archiveEntityRecord({
   workspaceId,
   entityTypeId,
   recordId,
+  supabase: injectedSupabase,
 }: {
   workspaceId: string;
   entityTypeId: string;
   recordId: string;
+  supabase?: SupabaseServerClient;
 }) {
-  const supabase = await createServerSupabaseClient();
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from("entity_records")
-    .update({
-      archived_at: now,
-      updated_at: now,
-    })
-    .eq("workspace_id", workspaceId)
-    .eq("entity_type_id", entityTypeId)
-    .eq("id", recordId)
-    .select("id")
-    .maybeSingle<{ id: string }>();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+  const { data, error } = await supabase.rpc("set_entity_records_archived_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_record_ids: [recordId],
+    p_archived: true,
+  });
 
   if (error) {
     throw new Error(`Unable to archive entity record: ${error.message}`);
   }
 
-  if (!data) {
+  if (!data || (data as Array<{ updated_record_count: number }>)[0]?.updated_record_count !== 1) {
     throw new Error("Unable to archive entity record: record not found.");
   }
 }
@@ -863,29 +910,26 @@ export async function restoreEntityRecord({
   workspaceId,
   entityTypeId,
   recordId,
+  supabase: injectedSupabase,
 }: {
   workspaceId: string;
   entityTypeId: string;
   recordId: string;
+  supabase?: SupabaseServerClient;
 }) {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("entity_records")
-    .update({
-      archived_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("workspace_id", workspaceId)
-    .eq("entity_type_id", entityTypeId)
-    .eq("id", recordId)
-    .select("id")
-    .maybeSingle<{ id: string }>();
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+  const { data, error } = await supabase.rpc("set_entity_records_archived_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_record_ids: [recordId],
+    p_archived: false,
+  });
 
   if (error) {
     throw new Error(`Unable to restore entity record: ${error.message}`);
   }
 
-  if (!data) {
+  if (!data || (data as Array<{ updated_record_count: number }>)[0]?.updated_record_count !== 1) {
     throw new Error("Unable to restore entity record: record not found.");
   }
 }

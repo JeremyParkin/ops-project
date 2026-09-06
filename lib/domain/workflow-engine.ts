@@ -1,4 +1,5 @@
 import type { SupabaseServerClient } from "@/lib/supabase/server";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { getEntityContext } from "./metadata-repository";
 import { startProcessRun } from "./process-repository";
 import {
@@ -47,6 +48,9 @@ export type WorkflowExecutionSummary = {
 export type ActionExecutionContext = {
   supabase?: SupabaseServerClient;
   originatingProcessStepRunId?: string;
+  originatingWorkflowId?: string;
+  originatingActionType?: WorkflowAction["actionType"];
+  originatingRelatedFieldDefinitionId?: string;
 };
 
 function getErrorMessage(error: unknown) {
@@ -167,6 +171,9 @@ async function executeCreateRecordAction({
     values: validation.values,
     supabase: context?.supabase,
     originatingProcessStepRunId: context?.originatingProcessStepRunId,
+    originatingWorkflowId: context?.originatingWorkflowId,
+    originatingActionType: context?.originatingActionType,
+    originatingRelatedFieldDefinitionId: context?.originatingRelatedFieldDefinitionId,
   });
 
   return {
@@ -376,6 +383,10 @@ async function executeRecordUpdate({
     fields: targetContext.fields,
     values: proposedValues,
     supabase: context?.supabase,
+    originatingProcessStepRunId: context?.originatingProcessStepRunId,
+    originatingWorkflowId: context?.originatingWorkflowId,
+    originatingActionType: context?.originatingActionType,
+    originatingRelatedFieldDefinitionId: context?.originatingRelatedFieldDefinitionId,
   });
 
   return {
@@ -544,11 +555,9 @@ async function executeStartProcessAction({
   };
 }
 
-// The single canonical per-action executor. Workflows call this (via
-// executeWorkflowActions below) with no `context`, so it behaves exactly as
-// before -- their own per-request session, no idempotency key. Process
-// action-node execution is the only other caller, and always passes both
-// fields of `context`.
+// The single canonical per-action executor. Workflow and process action-node
+// execution pass system attribution context; direct callers without context
+// continue to use the interactive mutation doors.
 export async function executeSingleAction({
   workspaceId,
   sourceContext,
@@ -649,17 +658,20 @@ async function executeWorkflowActions({
   sourceContext,
   triggerRecord,
   actions,
+  workflowId,
 }: {
   workspaceId: string;
   sourceContext: Awaited<ReturnType<typeof getEntityContext>>;
   triggerRecord: EntityRecord;
   actions: WorkflowAction[];
+  workflowId: string;
 }): Promise<{
   actionResults: WorkflowActionResult[];
   targetEntityTypeIds: string[];
 }> {
   const actionResults: WorkflowActionResult[] = [];
   const targetEntityTypeIds: string[] = [];
+  const actionSupabase = createAdminSupabaseClient();
 
   for (const [index, action] of actions.entries()) {
     try {
@@ -668,6 +680,12 @@ async function executeWorkflowActions({
         sourceContext,
         triggerRecord,
         action,
+        context: {
+          supabase: actionSupabase,
+          originatingWorkflowId: workflowId,
+          originatingActionType: action.actionType,
+          originatingRelatedFieldDefinitionId: action.relatedFieldDefinitionId,
+        },
       });
 
       actionResults.push({
@@ -928,6 +946,7 @@ export async function executeRecordCreatedWorkflows({
         sourceContext,
         triggerRecord,
         actions: workflow.actions,
+        workflowId: workflow.id,
       });
 
       actionResults = executionResult.actionResults;
@@ -1107,6 +1126,7 @@ export async function executeRecordUpdatedWorkflows({
           sourceContext,
           triggerRecord,
           actions: workflow.actions,
+          workflowId: workflow.id,
         });
 
         actionResults = executionResult.actionResults;

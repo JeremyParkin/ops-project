@@ -95,6 +95,7 @@ async function createFixture(): Promise<Fixture> {
   const recordId = randomUUID();
   const archivedRecordId = randomUUID();
   const fieldId = randomUUID();
+  const statusFieldId = randomUUID();
   const worker = await createUser("worker");
   const secondWorker = await createUser("second-worker");
   const administrator = await createUser("administrator");
@@ -146,6 +147,19 @@ async function createFixture(): Promise<Fixture> {
   });
   if (fieldError) throw new Error(fieldError.message);
 
+  const { error: statusFieldError } = await admin.from("field_definitions").insert({
+    id: statusFieldId,
+    workspace_id: workspaceId,
+    entity_type_id: entityTypeId,
+    key: "status",
+    name: "Status",
+    slug: "status",
+    type: "text",
+    required: false,
+    position: 2,
+  });
+  if (statusFieldError) throw new Error(statusFieldError.message);
+
   const { error: displayError } = await admin.rpc("set_entity_display_field", {
     p_workspace_id: workspaceId,
     p_entity_type_id: entityTypeId,
@@ -158,13 +172,13 @@ async function createFixture(): Promise<Fixture> {
       id: recordId,
       workspace_id: workspaceId,
       entity_type_id: entityTypeId,
-      values: { name: "Discussion Acme" },
+      values: { name: "Discussion Acme", status: "Open" },
     },
     {
       id: archivedRecordId,
       workspace_id: workspaceId,
       entity_type_id: entityTypeId,
-      values: { name: "Archived Discussion Acme" },
+      values: { name: "Archived Discussion Acme", status: "Open" },
       archived_at: new Date().toISOString(),
     },
   ]);
@@ -254,6 +268,35 @@ test("Discussion supports create, ordering, validation, tombstone, and remains d
   await expect(discussion(page).getByText("Comment removed")).toBeVisible();
   await expect(discussion(page).getByText("Second visible comment")).toHaveCount(0);
   await expect(activity(page).getByText("Comment removed")).toHaveCount(0);
+});
+
+test("record Activity shows human field changes and archive/restore transitions", async ({ page }) => {
+  await signIn(page, fixture.worker);
+  await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
+
+  const overview = page.locator("details").filter({
+    has: page.getByRole("heading", { name: "Overview", exact: true }),
+  });
+  await overview.getByRole("button", { name: "Edit Status" }).click();
+  const statusInput = overview.locator('input[name="value"], textarea[name="value"]').first();
+  await statusInput.fill("Closed");
+  if (await statusInput.evaluate((element) => element.tagName === "TEXTAREA")) {
+    await overview.getByRole("button", { name: "Save" }).click();
+  } else {
+    await statusInput.press("Enter");
+  }
+
+  await expect(activity(page).getByText("Status changed from Open to Closed")).toBeVisible();
+  await expect(activity(page)).toContainText(`· ${fixture.worker.email}`);
+
+  await page.locator("summary", { hasText: "More actions" }).click();
+  await page.getByRole("button", { name: "Archive" }).click();
+  await expect(activity(page).getByText("Record archived")).toBeVisible();
+
+  await page.reload();
+  await page.locator("summary", { hasText: "More actions" }).click();
+  await page.getByRole("button", { name: "Restore" }).click();
+  await expect(activity(page).getByText("Record restored")).toBeVisible();
 });
 
 test("Discussion mentions active members and creates navigable notifications", async ({ page }) => {
@@ -487,7 +530,12 @@ test("Request input creates one discussion item, deep-links recipient response, 
 });
 
 test("Request input cancellation and archived open-request UI expose only valid actions", async ({ page }) => {
-  const admin = createSupabaseTestClient();
+  const authenticatedClient = createSupabaseTestClient();
+  const { error: signInError } = await authenticatedClient.auth.signInWithPassword({
+    email: fixture.worker.email,
+    password: fixture.worker.password,
+  });
+  expect(signInError).toBeNull();
   await signIn(page, fixture.worker);
   await page.goto(`/entities/${fixture.entityTypeId}/records/${fixture.recordId}`);
   await discussion(page).getByText("Request input").click();
@@ -525,7 +573,7 @@ test("Request input cancellation and archived open-request UI expose only valid 
   const archivedRequestTreatmentId = await archivedRequestItem.locator("[id^='input-request-']").getAttribute("id");
   expect(archivedRequestTreatmentId).toBeTruthy();
   const archivedRequestId = archivedRequestTreatmentId!.replace("input-request-", "");
-  const archive = await admin.rpc("set_entity_records_archived_authorized", {
+  const archive = await authenticatedClient.rpc("set_entity_records_archived_authorized", {
     p_workspace_id: fixture.workspaceId,
     p_entity_type_id: fixture.entityTypeId,
     p_record_ids: [fixture.recordId],

@@ -8,7 +8,11 @@ export type ActivityEventType =
   | "process_cancelled"
   | "step_reassigned"
   | "quality_review_finalized"
-  | "quality_review_reopened";
+  | "quality_review_reopened"
+  | "record_created"
+  | "record_updated"
+  | "record_archived"
+  | "record_restored";
 
 export type RecordActivityEvent = {
   id: string;
@@ -33,4 +37,11 @@ export type RecordActivityEvent = {
   /** step_reassigned event metadata, frozen at reassignment time -- never a live join, since a later reassignment must not corrupt an earlier event's own from/to display. */
   fromAssigneeLabel?: string;
   toAssigneeLabel?: string;
+  changes?: {
+    fields?: Array<{ field_name_snapshot?: string; old_value?: unknown; new_value?: unknown; old_choice_label_snapshot?: string; new_choice_label_snapshot?: string }>;
+    relations?: Array<{ field_name_snapshot?: string; old_target_label_snapshot?: string; new_target_label_snapshot?: string }>;
+  };
+  authorityKind?: "human" | "impersonated" | "automation" | "process";
+  realActorLabel?: string;
+  entityTypeNameSnapshot?: string;
 };

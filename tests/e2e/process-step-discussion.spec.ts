@@ -178,6 +178,7 @@ async function createFixture(): Promise<Fixture> {
     "workspace.manage_members",
     "workspace.manage_roles",
     "processes.operate",
+    "records.operate",
   ]);
   const readOnlyRoleId = await createRole(workspaceId, "Read only", []);
 
@@ -599,6 +600,12 @@ test("Archived-origin steps preserve request history read-only, deny new request
   page,
 }) => {
   const admin = createSupabaseTestClient();
+  const authenticatedClient = createSupabaseTestClient();
+  const { error: signInError } = await authenticatedClient.auth.signInWithPassword({
+    email: fixture.administrator.email,
+    password: fixture.administrator.password,
+  });
+  expect(signInError).toBeNull();
   await signIn(page, fixture.worker);
 
   // Create a fresh active-origin run/step specifically for this test so
@@ -656,7 +663,7 @@ test("Archived-origin steps preserve request history read-only, deny new request
   expect(requestTreatmentId).toBeTruthy();
   const requestId = requestTreatmentId!.replace("step-input-request-", "");
 
-  const archive = await admin.rpc("set_entity_records_archived_authorized", {
+  const archive = await authenticatedClient.rpc("set_entity_records_archived_authorized", {
     p_workspace_id: fixture.workspaceId,
     p_entity_type_id: fixture.entityTypeId,
     p_record_ids: [originRecordId],

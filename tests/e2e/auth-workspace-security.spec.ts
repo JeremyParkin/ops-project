@@ -544,16 +544,25 @@ test("RLS blocks cross-workspace table and RPC access while own operations work"
   });
   expect((safeFieldDelete.data as Array<{ deleted: boolean }>)[0]?.deleted).toBe(true);
 
-  const archivedRecord = await client
+  const archivedRecord = await client.rpc("set_entity_records_archived_authorized", {
+    p_workspace_id: fixture.workspaceAId,
+    p_entity_type_id: fixture.entityAId,
+    p_record_ids: [sourceRecordId],
+    p_archived: true,
+  });
+  expect(archivedRecord.error).toBeNull();
+  const restoredRecord = await client.rpc("set_entity_records_archived_authorized", {
+    p_workspace_id: fixture.workspaceAId,
+    p_entity_type_id: fixture.entityAId,
+    p_record_ids: [sourceRecordId],
+    p_archived: false,
+  });
+  expect(restoredRecord.error).toBeNull();
+  const rawArchive = await client
     .from("entity_records")
     .update({ archived_at: new Date().toISOString() })
     .eq("id", sourceRecordId);
-  expect(archivedRecord.error).toBeNull();
-  const restoredRecord = await client
-    .from("entity_records")
-    .update({ archived_at: null })
-    .eq("id", sourceRecordId);
-  expect(restoredRecord.error).toBeNull();
+  expect(rawArchive.error).not.toBeNull();
   const rawRecordChange = await client
     .from("entity_records")
     .update({ values: { name: "Raw record change" } })

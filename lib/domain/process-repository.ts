@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/auth/workspace";
 import { getEntityContext } from "./metadata-repository";
 import { getEntityRecord, getRecordLabel } from "./record-repository";
 import { createServerSupabaseClient, type SupabaseServerClient } from "@/lib/supabase/server";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { executeSingleAction } from "./workflow-engine";
 import type { WorkflowAction, WorkflowFieldMapping } from "./workflow-types";
 import type {
@@ -1153,25 +1154,35 @@ async function executeAndCompleteActionStep({
   }
 
   try {
+    // Process actions are deterministic system work even when a human
+    // completion or retry caused activation. Keep the control client for
+    // step authorization/result recording; use the server-only client only
+    // for the selected persisted action mutation.
+    const actionSupabase = createAdminSupabaseClient();
     const sourceContext = await getEntityContext({
       workspaceId,
       entityTypeId: originEntityTypeId,
       includeArchivedFields: true,
-      supabase,
+      supabase: actionSupabase,
     });
     const originRecord = await getEntityRecord({
       workspaceId,
       entityTypeId: originEntityTypeId,
       recordId: originRecordId,
       fields: sourceContext.fields,
-      supabase,
+      supabase: actionSupabase,
     });
     const result = await executeSingleAction({
       workspaceId,
       sourceContext,
       triggerRecord: originRecord,
       action: step.config.actionConfig,
-      context: { supabase, originatingProcessStepRunId: step.id },
+      context: {
+        supabase: actionSupabase,
+        originatingProcessStepRunId: step.id,
+        originatingActionType: step.config.actionConfig.actionType,
+        originatingRelatedFieldDefinitionId: step.config.actionConfig.relatedFieldDefinitionId,
+      },
     });
     const { error } = await supabase.rpc("complete_process_action_step_authorized", {
       p_workspace_id: workspaceId,

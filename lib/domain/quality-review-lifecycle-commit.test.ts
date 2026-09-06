@@ -927,43 +927,61 @@ describe("quality review write authority", () => {
     const created = await createQualityReview(reviewerClient, { reviewerPersonId: fixture.reviewerPersonRecordId, subjectPersonId: fixture.subjectPersonRecordId });
     if (created.error) throw new Error(created.error.message);
     const reviewId = created.data as string;
-    await reviewerClient.from("entity_records").update({ archived_at: new Date().toISOString() }).eq("id", reviewId);
+    await reviewerClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: true,
+    });
 
     const coworkerClient = await authenticatedClient(fixture.coworker);
-    const coworkerRestore = await coworkerClient.from("entity_records").update({ archived_at: null }).eq("id", reviewId).select("id");
-    expect(coworkerRestore.data ?? []).toHaveLength(0);
+    const coworkerRestore = await coworkerClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: false,
+    });
+    expect(coworkerRestore.error?.message).toMatch(/records\.operate|could not be found/i);
 
-    const reviewerRestore = await reviewerClient.from("entity_records").update({ archived_at: null }).eq("id", reviewId).select("id");
+    const reviewerRestore = await reviewerClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: false,
+    });
     expect(reviewerRestore.error).toBeNull();
-    expect(reviewerRestore.data).toHaveLength(1);
+    expect(reviewerRestore.data).toEqual([{ updated_record_count: 1 }]);
 
-    await reviewerClient.from("entity_records").update({ archived_at: new Date().toISOString() }).eq("id", reviewId);
+    await reviewerClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: true,
+    });
     const privilegedClient = await authenticatedClient(fixture.privileged);
-    const governanceRestore = await privilegedClient.from("entity_records").update({ archived_at: null }).eq("id", reviewId).select("id");
+    const governanceRestore = await privilegedClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: false,
+    });
     expect(governanceRestore.error).toBeNull();
-    expect(governanceRestore.data).toHaveLength(1);
+    expect(governanceRestore.data).toEqual([{ updated_record_count: 1 }]);
   });
 
   it("Finalized restore requires governance authority; the Reviewer alone cannot restore it", async () => {
     const builderClient = await authenticatedClient(fixture.builder);
     const reviewId = await createFinalizedReview(builderClient, fixture.reviewerUser, fixture.reviewerPersonRecordId, fixture.subjectPersonRecordId);
     const privilegedClient = await authenticatedClient(fixture.privileged);
-    await privilegedClient.from("entity_records").update({ archived_at: new Date().toISOString() }).eq("id", reviewId);
+    await privilegedClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: true,
+    });
 
     const reviewerClient = await authenticatedClient(fixture.reviewerUser);
-    const reviewerRestore = await reviewerClient.from("entity_records").update({ archived_at: null }).eq("id", reviewId).select("id");
+    const reviewerRestore = await reviewerClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: false,
+    });
     expect(reviewerRestore.error?.message).toMatch(/only a privileged administrator may restore/i);
 
-    const governanceRestore = await privilegedClient.from("entity_records").update({ archived_at: null }).eq("id", reviewId).select("id");
+    const governanceRestore = await privilegedClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: false,
+    });
     expect(governanceRestore.error).toBeNull();
-    expect(governanceRestore.data).toHaveLength(1);
+    expect(governanceRestore.data).toEqual([{ updated_record_count: 1 }]);
   });
 
   it("bulk restore is subject to the identical lifecycle rules as bulk archive", async () => {
     const builderClient = await authenticatedClient(fixture.builder);
     const reviewId = await createFinalizedReview(builderClient, fixture.reviewerUser, fixture.reviewerPersonRecordId, fixture.subjectPersonRecordId);
     const privilegedClient = await authenticatedClient(fixture.privileged);
-    await privilegedClient.from("entity_records").update({ archived_at: new Date().toISOString() }).eq("id", reviewId);
+    await privilegedClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: true,
+    });
 
     const reviewerClient = await authenticatedClient(fixture.reviewerUser);
     const reviewerBulkRestore = await reviewerClient.rpc("set_entity_records_archived_authorized", {
@@ -984,11 +1002,15 @@ describe("quality review write authority", () => {
     const reviewId = created.data as string;
 
     const privilegedClient = await authenticatedClient(fixture.privileged);
-    const archive = await privilegedClient.from("entity_records").update({ archived_at: new Date().toISOString() }).eq("id", reviewId).select("id");
+    const archive = await privilegedClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: true,
+    });
     expect(archive.error).toBeNull();
-    expect(archive.data).toHaveLength(1);
+    expect(archive.data).toEqual([{ updated_record_count: 1 }]);
 
-    const restore = await privilegedClient.from("entity_records").update({ archived_at: null }).eq("id", reviewId).select("id");
+    const restore = await privilegedClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: false,
+    });
     expect(restore.error).toBeNull();
 
     const del = await privilegedClient.rpc("delete_entity_record_if_unreferenced_authorized", {
@@ -1031,14 +1053,20 @@ describe("quality review write authority", () => {
     const reviewId = await createFinalizedReview(builderClient, fixture.reviewerUser, fixture.reviewerPersonRecordId, fixture.subjectPersonRecordId);
 
     const reviewerClient = await authenticatedClient(fixture.reviewerUser);
-    const reviewerArchive = await reviewerClient.from("entity_records").update({ archived_at: new Date().toISOString() }).eq("id", reviewId).select("id");
+    const reviewerArchive = await reviewerClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: true,
+    });
     expect(reviewerArchive.error?.message).toMatch(/only a privileged administrator may archive/i);
 
     const privilegedClient = await authenticatedClient(fixture.privileged);
-    const privilegedArchive = await privilegedClient.from("entity_records").update({ archived_at: new Date().toISOString() }).eq("id", reviewId).select("id");
+    const privilegedArchive = await privilegedClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: true,
+    });
     expect(privilegedArchive.error).toBeNull();
-    expect(privilegedArchive.data).toHaveLength(1);
-    await privilegedClient.from("entity_records").update({ archived_at: null }).eq("id", reviewId);
+    expect(privilegedArchive.data).toEqual([{ updated_record_count: 1 }]);
+    await privilegedClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.reviewEntityTypeId, p_record_ids: [reviewId], p_archived: false,
+    });
   });
 
   it("Finalized: hard delete is blocked for everyone, including governance authority", async () => {

@@ -170,6 +170,18 @@ Explicitly out of scope for this phase (rejected or deferred, not simply unstart
 - Trends, score aggregation, cross-person comparison, and rankings -- 12.3.2 is trustworthy longitudinal history, not analytics; a later 12.3.3 trend slice would need its own separate product decision.
 - Goals, Performance Cycles, and Check-Ins -- a separate, later slice of People Experience, not part of 12.3.1 or 12.3.2.
 
+## Phase 13 - Audit & Operational Trust
+
+**Status:** Active major direction. Phase 13.1 (Record Change History) is complete; further slices remain open for review and are not automatically started.
+
+### Phase 13.1 - Record Change History
+
+**Status:** Complete. Migrations `0110`-`0114` are immutable. Implementation, verification, and dogfood evidence live in `PROJECT_CONTEXT.md`.
+
+This slice delivers append-only, record-context change history for create, update, import, archive, and restore operations, with truthful human, impersonated, Automation, and Process attribution. It deliberately does not create a workspace-wide audit explorer or claim comprehensive historical coverage.
+
+### Governance, Audit & Workspace Hygiene
+
 Design constraints:
 
 - Keep authentication/workspace membership (`auth.users`/`workspace_memberships`) separate from configurable business data -- never turn `workspace_memberships` itself into an extensible business-object table.
@@ -195,7 +207,6 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 - Workspace Health V2: pending deactivated-assignee findings, additional deterministic structural checks, and better fix workflows; extend checks only when they are explainable and directly actionable.
 - Recurring hygiene policies for stale records, missing ownership, stuck processes, orphaned relationships, inactive owners, possible duplicates, and configurable archive rules.
 - Preview/review paths for any hygiene action that could alter or hide data.
-- Field-level record-change and relation-change history.
 - General workspace activity/audit explorer, including imports, workflow execution, process failures, administrative changes, richer actor/effective-actor history, and support/impersonation events.
 - Impersonation/support-mode evolution: effective-user-aware UI gating, effective-user-aware notifications, reason capture, optional read-only support access, and stronger production support traceability.
 - Hardening of remaining raw/schema mutation paths where retained `SECURITY INVOKER` behavior can bypass app-layer validation.

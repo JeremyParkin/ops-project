@@ -19,6 +19,10 @@ type RecordActivityRow = {
   cancellation_reason: string | null;
   from_assignee_label: string | null;
   to_assignee_label: string | null;
+  changes: RecordActivityEvent["changes"] | null;
+  authority_kind: RecordActivityEvent["authorityKind"] | null;
+  real_actor_label: string | null;
+  entity_type_name_snapshot: string | null;
 };
 
 // Events created within the same canonical transaction share the exact same
@@ -50,6 +54,10 @@ const EVENT_CAUSAL_TIER: Record<ActivityEventType, number> = {
   // emit exactly one workspace_events row per transaction, same reasoning.
   quality_review_finalized: 0,
   quality_review_reopened: 0,
+  record_created: 0,
+  record_updated: 0,
+  record_archived: 0,
+  record_restored: 0,
 };
 
 export function compareNewestFirstWithStableTies(a: RecordActivityEvent, b: RecordActivityEvent): number {
@@ -75,6 +83,10 @@ function mapRow(row: RecordActivityRow): RecordActivityEvent {
     cancellationReason: row.cancellation_reason ?? undefined,
     fromAssigneeLabel: row.from_assignee_label ?? undefined,
     toAssigneeLabel: row.to_assignee_label ?? undefined,
+    changes: row.changes ?? undefined,
+    authorityKind: row.authority_kind ?? undefined,
+    realActorLabel: row.real_actor_label ?? undefined,
+    entityTypeNameSnapshot: row.entity_type_name_snapshot ?? undefined,
   };
 }
 

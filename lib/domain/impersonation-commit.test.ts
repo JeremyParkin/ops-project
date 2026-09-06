@@ -382,7 +382,7 @@ describe("effective-identity enforcement: records.operate", () => {
     await endAnyActiveSession(adminClient);
   });
 
-  it("the entity_records RLS write policy (archive) evaluates the effective user, not the real admin", async () => {
+  it("the supported archive RPC evaluates records.operate against the effective user", async () => {
     const recordId = await createRecord(fixture.workspaceId, fixture.entityTypeId, "RLS archive target");
     const adminClient = await sharedAdminClient();
     await endAnyActiveSession(adminClient);
@@ -392,15 +392,11 @@ describe("effective-identity enforcement: records.operate", () => {
     });
     expect(asRestricted.error).toBeNull();
 
-    const deniedArchive = await adminClient
-      .from("entity_records")
-      .update({ archived_at: new Date().toISOString() })
-      .eq("workspace_id", fixture.workspaceId).eq("id", recordId)
-      .select("id");
-    // RLS silently filters rather than raising -- zero rows affected is the
-    // correct signal a WITH CHECK failure produces here.
-    expect(deniedArchive.error).toBeNull();
-    expect(deniedArchive.data).toEqual([]);
+    const deniedArchive = await adminClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.entityTypeId,
+      p_record_ids: [recordId], p_archived: true,
+    });
+    expect(deniedArchive.error?.message).toMatch(/records\.operate/i);
 
     await endAnyActiveSession(adminClient);
     const asWorker = await adminClient.rpc("start_impersonation_session_authorized", {
@@ -408,13 +404,12 @@ describe("effective-identity enforcement: records.operate", () => {
     });
     expect(asWorker.error).toBeNull();
 
-    const allowedArchive = await adminClient
-      .from("entity_records")
-      .update({ archived_at: new Date().toISOString() })
-      .eq("workspace_id", fixture.workspaceId).eq("id", recordId)
-      .select("id");
+    const allowedArchive = await adminClient.rpc("set_entity_records_archived_authorized", {
+      p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.entityTypeId,
+      p_record_ids: [recordId], p_archived: true,
+    });
     expect(allowedArchive.error).toBeNull();
-    expect(allowedArchive.data).toHaveLength(1);
+    expect(allowedArchive.data).toEqual([{ updated_record_count: 1 }]);
 
     await endAnyActiveSession(adminClient);
   });

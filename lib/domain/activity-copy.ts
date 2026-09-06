@@ -11,6 +11,27 @@ function processRunHref(processRunId?: string) {
   return processRunId ? `/process-runs/${processRunId}` : undefined;
 }
 
+function displayValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "empty";
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return JSON.stringify(value);
+}
+
+function recordAttribution(event: RecordActivityEvent) {
+  return event.authorityKind === "impersonated" && event.realActorLabel
+    ? `${event.actorLabel ?? "Effective user"} (by ${event.realActorLabel})`
+    : event.actorLabel;
+}
+
+function changeDetail(name: string, oldValue: unknown, newValue: unknown) {
+  const hadOldValue = oldValue !== null && oldValue !== undefined && oldValue !== "";
+  const hasNewValue = newValue !== null && newValue !== undefined && newValue !== "";
+  if (!hadOldValue && hasNewValue) return `${name} set to ${displayValue(newValue)}`;
+  if (hadOldValue && !hasNewValue) return `${name} cleared`;
+  return `${name} changed from ${displayValue(oldValue)} to ${displayValue(newValue)}`;
+}
+
 // Pure event -> human copy. Operational language only, no implementation
 // vocabulary (no "step run", "node", "RPC", IDs) -- see Phase 8D.3 scope.
 // actorLabel/actorUserId being absent IS the "system-triggered" signal for
@@ -18,6 +39,32 @@ function processRunHref(processRunId?: string) {
 // separate "trigger source" field to branch on.
 export function formatActivityEvent(event: RecordActivityEvent): ActivityCopy {
   const runName = event.processRunName ?? "Process";
+
+  if (event.eventType === "record_created") {
+    return { title: "Record created", meta: recordAttribution(event) };
+  }
+  if (event.eventType === "record_archived") return { title: "Record archived", meta: recordAttribution(event) };
+  if (event.eventType === "record_restored") return { title: "Record restored", meta: recordAttribution(event) };
+  if (event.eventType === "record_updated") {
+    const changes = event.changes;
+    const fields = changes?.fields ?? [];
+    const relations = changes?.relations ?? [];
+    const total = fields.length + relations.length;
+    const detail = total === 1
+      ? fields.length === 1
+        ? changeDetail(
+          fields[0].field_name_snapshot ?? "Field",
+          fields[0].old_choice_label_snapshot ?? fields[0].old_value,
+          fields[0].new_choice_label_snapshot ?? fields[0].new_value,
+        )
+        : changeDetail(
+          relations[0].field_name_snapshot ?? "Relation",
+          relations[0].old_target_label_snapshot,
+          relations[0].new_target_label_snapshot,
+        )
+      : `${total} fields changed`;
+    return { title: detail, meta: recordAttribution(event) };
+  }
 
   switch (event.eventType) {
     case "process_started": {

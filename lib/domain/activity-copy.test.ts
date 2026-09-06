@@ -13,6 +13,56 @@ function baseEvent(overrides: Partial<RecordActivityEvent> = {}): RecordActivity
 }
 
 describe("formatActivityEvent", () => {
+  it("renders a single record field change with its old and new values", () => {
+    const copy = formatActivityEvent(baseEvent({
+      eventType: "record_updated",
+      actorLabel: "alex@example.com",
+      changes: {
+        fields: [{ field_name_snapshot: "Status", old_value: "Open", new_value: "Closed" }],
+      },
+    }));
+
+    expect(copy.title).toBe("Status changed from Open to Closed");
+    expect(copy.meta).toBe("alex@example.com");
+  });
+
+  it("renders deterministic system attribution for record changes", () => {
+    const copy = formatActivityEvent(baseEvent({
+      eventType: "record_updated",
+      actorLabel: "Automation",
+      authorityKind: "automation",
+      changes: {
+        relations: [{ field_name_snapshot: "Client", new_target_label_snapshot: "Northwind" }],
+      },
+    }));
+
+    expect(copy.title).toBe("Client set to Northwind");
+    expect(copy.meta).toBe("Automation");
+  });
+
+  it("uses concise set and clear language for record changes", () => {
+    expect(formatActivityEvent(baseEvent({
+      eventType: "record_updated",
+      changes: { fields: [{ field_name_snapshot: "Client", old_value: "Acme", new_value: null }] },
+    })).title).toBe("Client cleared");
+    expect(formatActivityEvent(baseEvent({
+      eventType: "record_updated",
+      changes: { fields: [{ field_name_snapshot: "Enabled", old_value: false, new_value: true }] },
+    })).title).toBe("Enabled changed from No to Yes");
+  });
+
+  it("shows real attribution for every impersonated record event", () => {
+    for (const eventType of ["record_created", "record_archived", "record_restored"] as const) {
+      const copy = formatActivityEvent(baseEvent({
+        eventType,
+        actorLabel: "worker@example.com",
+        authorityKind: "impersonated",
+        realActorLabel: "admin@example.com",
+      }));
+      expect(copy.meta).toBe("worker@example.com (by admin@example.com)");
+    }
+  });
+
   it("renders a manual process start with the acting human implied by an actor", () => {
     const copy = formatActivityEvent(
       baseEvent({
