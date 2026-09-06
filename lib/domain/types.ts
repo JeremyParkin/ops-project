@@ -23,6 +23,12 @@ export type EntityType = {
   slug: string;
   description?: string;
   displayFieldDefinitionId?: string;
+  // Phase 12.3.1/12.3.2 Quality Review metadata -- surfaced here (rather
+  // than a separate lookup) since getEntityContext already selects every
+  // entity_types column. Used narrowly by the Person page's Related
+  // suppression (12.3.2); not a general-purpose semantic taxonomy.
+  qualityReview?: boolean;
+  subjectPersonFieldId?: string;
   archivedAt?: IsoUtcTimestamp;
   createdAt: IsoUtcTimestamp;
   updatedAt: IsoUtcTimestamp;

@@ -6,7 +6,9 @@ import {
   createRecordInputRequest,
   deleteRecordFromDetail,
   cancelRecordInputRequest,
+  finalizeQualityReviewRecord,
   linkPersonAction,
+  reopenQualityReviewRecord,
   respondRecordInputRequest,
   restoreRecord,
   tombstoneRecordComment,
@@ -37,6 +39,7 @@ import {
 } from "@/lib/domain/record-input-request-repository";
 import { resolveImpersonationContext } from "@/lib/auth/impersonation";
 import { getEntityContext } from "@/lib/domain/metadata-repository";
+import { getQualityReviewRecordContext, listPersonQualityReviews } from "@/lib/domain/quality-review-repository";
 import {
   getPersonEntityTypeId,
   getPersonLink,
@@ -52,6 +55,7 @@ import {
   getEntityRecord,
   getRelationLookups,
   listIncomingRelationsForRecord,
+  withoutQualityReviewSubjectGroups,
 } from "@/lib/domain/record-repository";
 import { getWorkspaceTimezone, listRecurrenceRulesForOrigin } from "@/lib/domain/recurrence-repository";
 import { listEntityViews } from "@/lib/domain/view-repository";
@@ -257,6 +261,20 @@ async function loadRecordDetailPageData(
           permissions.capabilities.has("workspace.manage_roles"),
       );
 
+    // Governance authority for Reopen: real actor, never the effective/
+    // impersonated identity, exactly like every other governance-only
+    // control in this app (canCancelAnyInputRequest, person-link
+    // management) -- an impersonated identity's own capabilities never
+    // qualify.
+    const hasQualityReviewGovernanceAuthority =
+      !impersonation.isImpersonating && (permissions?.capabilities.has("people_data.view_all") ?? false);
+    const qualityReviewContext = await getQualityReviewRecordContext({
+      workspaceId,
+      entityTypeId,
+      recordId,
+      effectiveUserId: currentUserId,
+    });
+
     // Identity is visible to any workspace viewer of a Person-type record;
     // only workspace.manage_members holders (and never while impersonating,
     // matching every other administrative control in this app) ever see
@@ -265,8 +283,19 @@ async function loadRecordDetailPageData(
       !impersonation.isImpersonating && (permissions?.capabilities.has("workspace.manage_members") ?? false);
     let personLinkedEmail: string | undefined;
     let personLinkCandidates: Awaited<ReturnType<typeof listWorkspaceMemberIdentities>> = [];
+    let personReviewHistory: Awaited<ReturnType<typeof listPersonQualityReviews>> | undefined;
+    // Presentation-only dedup (12.3.2): the Quality Review subject relation
+    // group is redundant with Review History on a Person's own page --
+    // suppressed here, never in listIncomingRelationsForRecord itself, so
+    // every other record type's generic Related is completely unaffected.
+    let visibleIncomingRelationGroups = incomingRelationGroups;
     if (isPersonRecord) {
-      const personLink = await getPersonLink({ workspaceId, entityRecordId: recordId });
+      visibleIncomingRelationGroups = withoutQualityReviewSubjectGroups(incomingRelationGroups);
+      const [personLink, reviewHistory] = await Promise.all([
+        getPersonLink({ workspaceId, entityRecordId: recordId }),
+        listPersonQualityReviews({ workspaceId, personRecordId: recordId }),
+      ]);
+      personReviewHistory = reviewHistory;
       if (personLink) {
         const identities = await listWorkspaceMemberIdentities({ workspaceId });
         personLinkedEmail = identities.find((identity) => identity.userId === personLink.userId)?.email;
@@ -282,7 +311,7 @@ async function loadRecordDetailPageData(
       record,
       relationLookups,
       choiceOptionsByFieldId,
-      incomingRelationGroups,
+      incomingRelationGroups: visibleIncomingRelationGroups,
       processSectionEntries,
       activityEvents,
       comments,
@@ -290,7 +319,10 @@ async function loadRecordDetailPageData(
       inputRequests,
       inputRequestRecipientCandidates,
       currentUserId,
+      qualityReviewContext,
+      hasQualityReviewGovernanceAuthority,
       isPersonRecord,
+      personReviewHistory,
       personLinkedEmail,
       canManagePersonLinks,
       personLinkCandidates,
@@ -332,8 +364,11 @@ export default async function RecordDetailPage({
     inputRequests,
     inputRequestRecipientCandidates,
     currentUserId,
+    qualityReviewContext,
+    hasQualityReviewGovernanceAuthority,
     canCancelAnyInputRequest,
     isPersonRecord,
+    personReviewHistory,
     personLinkedEmail,
     canManagePersonLinks,
     personLinkCandidates,
@@ -343,14 +378,30 @@ export default async function RecordDetailPage({
     ...context,
     recordId: record.id,
   };
+  // A Finalized Quality Review is read-only for everyone through the
+  // generic edit surface -- no editHref, no inline Save -- regardless of
+  // who is viewing; correction is always Reopen, then an ordinary Draft
+  // edit, never a generic Save that quietly works on finalized content. A
+  // Draft is only ordinarily editable by its designated Reviewer -- a
+  // privileged non-Reviewer viewer (who can see it via the read override)
+  // must not be shown an Edit affordance that would just be rejected;
+  // their path is the existing governed Reviewer-reassignment flow, not
+  // this generic edit surface.
+  const isFinalizedQualityReview = qualityReviewContext.isQualityReviewType && qualityReviewContext.isFinalized;
+  const isDraftQualityReviewNotReviewer =
+    qualityReviewContext.isQualityReviewType && qualityReviewContext.isDraft && !qualityReviewContext.isReviewer;
   const editHref =
-    entityType.archivedAt
+    entityType.archivedAt || isFinalizedQualityReview || isDraftQualityReviewNotReviewer
       ? undefined
       : `/entities/${entityType.id}/records/${record.id}/edit?returnTo=detail`;
   const updateFieldAction =
-    entityType.archivedAt || record.archivedAt
+    entityType.archivedAt || record.archivedAt || isFinalizedQualityReview || isDraftQualityReviewNotReviewer
       ? undefined
       : updateRecordField.bind(null, actionContext);
+  const canFinalizeQualityReview =
+    qualityReviewContext.isQualityReviewType && qualityReviewContext.isDraft && qualityReviewContext.isReviewer;
+  const canReopenQualityReview =
+    qualityReviewContext.isQualityReviewType && qualityReviewContext.isFinalized && hasQualityReviewGovernanceAuthority;
 
   return (
     <WorkspacePageLayout
@@ -380,6 +431,7 @@ export default async function RecordDetailPage({
           currentUserId={currentUserId}
           canCancelAnyInputRequest={canCancelAnyInputRequest}
           isPersonRecord={isPersonRecord}
+          personReviewHistory={personReviewHistory}
           personLinkedEmail={personLinkedEmail}
           canManagePersonLinks={canManagePersonLinks}
           personLinkCandidates={personLinkCandidates}
@@ -387,6 +439,19 @@ export default async function RecordDetailPage({
           unlinkPersonAction={unlinkPersonAction.bind(null, actionContext)}
           editHref={editHref}
           updateFieldAction={updateFieldAction}
+          qualityReviewStatus={
+            qualityReviewContext.isQualityReviewType
+              ? {
+                  isFinalized: qualityReviewContext.isFinalized,
+                  finalizeAction: canFinalizeQualityReview
+                    ? finalizeQualityReviewRecord.bind(null, actionContext)
+                    : undefined,
+                  reopenAction: canReopenQualityReview
+                    ? reopenQualityReviewRecord.bind(null, actionContext)
+                    : undefined,
+                }
+              : undefined
+          }
           createCommentAction={createRecordComment.bind(null, actionContext)}
           tombstoneCommentAction={tombstoneRecordComment.bind(null, actionContext)}
           createInputRequestAction={createRecordInputRequest.bind(null, actionContext)}

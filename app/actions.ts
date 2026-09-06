@@ -69,6 +69,8 @@ import {
   restoreEntityType,
   setEntityDisplayField,
   setEntityTypeSensitiveAccessConfig,
+  setEntityTypeQualityReviewLifecycleConfig,
+  setEntityTypeQualityReviewPresentationConfig,
   swapFieldPositions,
   updateEntityTypeMetadata,
   updateFieldDefinition as updateFieldDefinitionInRepository,
@@ -91,6 +93,7 @@ import {
   type RecordActionState,
   updateEntityRecord as updateEntityRecordInRepository,
 } from "@/lib/domain/record-repository";
+import { finalizeQualityReview, reopenQualityReview } from "@/lib/domain/quality-review-repository";
 import {
   getEntityTypeProcessTemplateSummary,
   getRecordProcessRunSummary,
@@ -434,6 +437,57 @@ export async function restoreRecord(
   return {
     success: true,
     message: "Record restored.",
+  };
+}
+
+export async function finalizeQualityReviewRecord(
+  context: UpdateRecordContext,
+  _previousState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  void formData;
+
+  try {
+    await finalizeQualityReview(context);
+  } catch (error) {
+    // Surfaced verbatim -- the RPC's own message is already specific and
+    // truthful ("Only the designated Reviewer may finalize...", "This
+    // review is not currently in Draft status").
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to finalize this review.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
+
+  return {
+    success: true,
+    message: "Review finalized.",
+  };
+}
+
+export async function reopenQualityReviewRecord(
+  context: UpdateRecordContext,
+  _previousState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  void formData;
+
+  try {
+    await reopenQualityReview(context);
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to reopen this review.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}/records/${context.recordId}`);
+
+  return {
+    success: true,
+    message: "Review reopened for correction.",
   };
 }
 
@@ -2467,6 +2521,94 @@ export async function updateEntityTypeSensitiveAccess(
   return {
     success: true,
     message: peopleSensitive ? "Sensitive people data configuration saved." : "Sensitive people data disabled.",
+  };
+}
+
+export async function updateEntityTypeQualityReviewLifecycle(
+  context: EntityTypeContext,
+  _previousState: EntityTypeActionState,
+  formData: FormData,
+): Promise<EntityTypeActionState> {
+  const { entityType } = await getEntityContext(context);
+
+  if (entityType.archivedAt) {
+    return {
+      success: false,
+      message: "Archived entities are read-only. Restore this entity before editing settings.",
+    };
+  }
+
+  const qualityReview = formData.get("qualityReview") === "on";
+  const statusFieldId = (formData.get("statusFieldId") as string | null) || null;
+  const draftOptionId = (formData.get("draftOptionId") as string | null) || null;
+  const finalizedOptionId = (formData.get("finalizedOptionId") as string | null) || null;
+
+  try {
+    await setEntityTypeQualityReviewLifecycleConfig({
+      workspaceId: context.workspaceId,
+      entityTypeId: context.entityTypeId,
+      qualityReview,
+      statusFieldId,
+      draftOptionId,
+      finalizedOptionId,
+    });
+  } catch (error) {
+    // Surfaced verbatim -- the RPC's own messages are already specific and
+    // truthful. Never replaced with a generic "please try again."
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to update the Quality Review lifecycle configuration.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: qualityReview ? "Quality Review lifecycle configuration saved." : "Quality Review lifecycle disabled.",
+  };
+}
+
+export async function updateEntityTypeQualityReviewPresentation(
+  context: EntityTypeContext,
+  _previousState: EntityTypeActionState,
+  formData: FormData,
+): Promise<EntityTypeActionState> {
+  const { entityType } = await getEntityContext(context);
+
+  if (entityType.archivedAt) {
+    return {
+      success: false,
+      message: "Archived entities are read-only. Restore this entity before editing settings.",
+    };
+  }
+
+  const dateFieldId = (formData.get("dateFieldId") as string | null) || null;
+  const resultFieldId = (formData.get("resultFieldId") as string | null) || null;
+
+  try {
+    await setEntityTypeQualityReviewPresentationConfig({
+      workspaceId: context.workspaceId,
+      entityTypeId: context.entityTypeId,
+      dateFieldId,
+      resultFieldId,
+    });
+  } catch (error) {
+    // Surfaced verbatim -- the RPC's own messages are already specific and
+    // truthful (finalized reviews missing a valid date, an attempt to
+    // change or clear a designation once Finalized history exists). Never
+    // replaced with a generic "please try again."
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to update the review presentation configuration.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Review presentation configuration saved.",
   };
 }
 

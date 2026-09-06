@@ -79,6 +79,14 @@ export function formatActivityEvent(event: RecordActivityEvent): ActivityCopy {
         href: processRunHref(event.processRunId),
       };
     }
+    case "quality_review_finalized": {
+      const by = event.actorLabel ? ` by ${event.actorLabel}` : "";
+      return { title: `Finalized${by}` };
+    }
+    case "quality_review_reopened": {
+      const by = event.actorLabel ? ` by ${event.actorLabel}` : "";
+      return { title: `Reopened for correction${by}` };
+    }
     default:
       return { title: "Activity", href: processRunHref(event.processRunId) };
   }

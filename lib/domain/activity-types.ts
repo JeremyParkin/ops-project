@@ -6,7 +6,9 @@ export type ActivityEventType =
   | "step_assigned"
   | "approval_decided"
   | "process_cancelled"
-  | "step_reassigned";
+  | "step_reassigned"
+  | "quality_review_finalized"
+  | "quality_review_reopened";
 
 export type RecordActivityEvent = {
   id: string;

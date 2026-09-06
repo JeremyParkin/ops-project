@@ -1136,6 +1136,29 @@ export async function listIncomingRelationsForRecord({
   });
 }
 
+// Phase 12.3.2: on a Person record, the Quality Review subject relation
+// group duplicates Review History's own purpose-built presentation --
+// dogfood found the pair redundant and, for a privileged viewer, actively
+// inconsistent (Related could show a Draft that Review History correctly
+// never does). Suppression is driven only by explicit metadata (the source
+// EntityType's own quality_review flag and subject_person_field_id),
+// never by name/slug/label inference, and applies only to the specific
+// group whose relation field IS that subject field -- the Reviewer/author
+// group and every other relation remain untouched. Callers apply this only
+// when rendering a Person record's own Related section; generic Related
+// elsewhere (including non-Person records) is never filtered.
+export function withoutQualityReviewSubjectGroups(
+  groups: IncomingRelationGroup[],
+): IncomingRelationGroup[] {
+  return groups.filter(
+    (group) =>
+      !(
+        group.sourceEntityType.qualityReview &&
+        group.sourceEntityType.subjectPersonFieldId === group.relationField.id
+      ),
+  );
+}
+
 export async function deleteEntityRecord({
   workspaceId,
   entityTypeId,

@@ -8,7 +8,11 @@ export function ChoicePill({
   option,
   className = "",
 }: {
-  option: ChoiceOption;
+  // Only label/color/archivedAt are ever read here, so any caller that has
+  // just those three (e.g. a Result option resolved by a narrow read RPC,
+  // not a full ChoiceOption row) can render a pill without fabricating the
+  // rest of the shape.
+  option: Pick<ChoiceOption, "label" | "color" | "archivedAt">;
   // Lets a clickable wrapper (see EditableTableCell) add its own
   // hover/focus affordance to the pill itself -- unused by the plain,
   // non-interactive rendering in entity-records-table.tsx.

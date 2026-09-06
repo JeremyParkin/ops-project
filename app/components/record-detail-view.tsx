@@ -5,6 +5,12 @@ import { EditableTableCell } from "@/app/components/editable-table-cell";
 import { RecordDetailActions } from "@/app/components/record-detail-actions";
 import { CollapsibleSection, PageHeader } from "@/app/components/page-primitives";
 import { PersonIdentitySection } from "@/app/components/person-identity-section";
+import { PersonReviewHistorySection } from "@/app/components/person-review-history-section";
+import {
+  FinalizeReviewAction,
+  QualityReviewStatusBadge,
+  ReopenReviewAction,
+} from "@/app/components/quality-review-lifecycle-actions";
 import { ProcessSection, type ProcessSectionEntry } from "@/app/components/process-section";
 import { RecordActivity } from "@/app/components/record-activity";
 import { RecordDiscussion } from "@/app/components/record-discussion";
@@ -19,6 +25,7 @@ import type {
   RecordInputRequest,
   RecordInputRequestRecipientCandidate,
 } from "@/lib/domain/record-input-request-repository";
+import type { PersonQualityReviewHistoryEntry } from "@/lib/domain/quality-review-repository";
 import type {
   IncomingRelationGroup,
   RelationLabelsByFieldKey,
@@ -65,6 +72,7 @@ type RecordDetailViewProps = {
   currentUserId?: string;
   canCancelAnyInputRequest?: boolean;
   isPersonRecord?: boolean;
+  personReviewHistory?: PersonQualityReviewHistoryEntry[];
   personLinkedEmail?: string;
   canManagePersonLinks?: boolean;
   personLinkCandidates?: WorkspaceMemberIdentity[];
@@ -72,6 +80,11 @@ type RecordDetailViewProps = {
   unlinkPersonAction?: Parameters<typeof PersonIdentitySection>[0]["unlinkPersonAction"];
   editHref?: string;
   updateFieldAction?: UpdateFieldAction;
+  qualityReviewStatus?: {
+    isFinalized: boolean;
+    finalizeAction?: Parameters<typeof FinalizeReviewAction>[0]["finalizeAction"];
+    reopenAction?: Parameters<typeof ReopenReviewAction>[0]["reopenAction"];
+  };
   createCommentAction: CommentAction;
   tombstoneCommentAction: Parameters<typeof RecordDiscussion>[0]["tombstoneCommentAction"];
   createInputRequestAction: Parameters<typeof RecordDiscussion>[0]["createInputRequestAction"];
@@ -201,6 +214,7 @@ export function RecordDetailView({
   currentUserId,
   canCancelAnyInputRequest,
   isPersonRecord,
+  personReviewHistory,
   personLinkedEmail,
   canManagePersonLinks,
   personLinkCandidates = [],
@@ -208,6 +222,7 @@ export function RecordDetailView({
   unlinkPersonAction,
   editHref,
   updateFieldAction,
+  qualityReviewStatus,
   createCommentAction,
   tombstoneCommentAction,
   createInputRequestAction,
@@ -258,6 +273,15 @@ export function RecordDetailView({
             <span className="border border-grit px-2 py-1 text-xs font-medium uppercase tracking-wide text-stone">
               Archived
             </span>
+          ) : null}
+          {qualityReviewStatus ? (
+            <QualityReviewStatusBadge isFinalized={qualityReviewStatus.isFinalized} />
+          ) : null}
+          {qualityReviewStatus?.finalizeAction ? (
+            <FinalizeReviewAction finalizeAction={qualityReviewStatus.finalizeAction} />
+          ) : null}
+          {qualityReviewStatus?.reopenAction ? (
+            <ReopenReviewAction reopenAction={qualityReviewStatus.reopenAction} />
           ) : null}
           <RecordDetailActions
             editHref={editHref}
@@ -310,6 +334,10 @@ export function RecordDetailView({
           </>
         )}
       </CollapsibleSection>
+
+      {isPersonRecord && personReviewHistory ? (
+        <PersonReviewHistorySection entries={personReviewHistory} personEntityTypeId={entityType.id} />
+      ) : null}
 
       {incomingRelationGroups.length > 0 ? (
         <CollapsibleSection title="Related">

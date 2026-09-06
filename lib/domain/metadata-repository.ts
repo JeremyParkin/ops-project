@@ -14,6 +14,8 @@ type EntityTypeRow = {
   slug: string;
   description: string | null;
   display_field_definition_id: string | null;
+  quality_review: boolean;
+  subject_person_field_id: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -94,6 +96,8 @@ function mapEntityType(row: EntityTypeRow): EntityType {
     slug: row.slug,
     description: row.description ?? undefined,
     displayFieldDefinitionId: row.display_field_definition_id ?? undefined,
+    qualityReview: row.quality_review,
+    subjectPersonFieldId: row.subject_person_field_id ?? undefined,
     archivedAt: row.archived_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -621,6 +625,130 @@ export async function setEntityTypeSensitiveAccessConfig({
     p_subject_can_view: subjectCanView,
     p_manager_can_view: managerCanView,
     p_author_can_view: authorCanView,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export type EntityTypeQualityReviewConfig = {
+  qualityReview: boolean;
+  statusFieldId: string | null;
+  draftOptionId: string | null;
+  finalizedOptionId: string | null;
+};
+
+type EntityTypeQualityReviewRow = {
+  quality_review: boolean;
+  quality_review_status_field_id: string | null;
+  quality_review_draft_option_id: string | null;
+  quality_review_finalized_option_id: string | null;
+};
+
+export async function getEntityTypeQualityReviewConfig({
+  workspaceId,
+  entityTypeId,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+}): Promise<EntityTypeQualityReviewConfig> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("entity_types")
+    .select("quality_review, quality_review_status_field_id, quality_review_draft_option_id, quality_review_finalized_option_id")
+    .eq("workspace_id", workspaceId)
+    .eq("id", entityTypeId)
+    .single<EntityTypeQualityReviewRow>();
+
+  if (error) {
+    throw new Error(`Unable to load Quality Review lifecycle configuration: ${error.message}`);
+  }
+
+  return {
+    qualityReview: data.quality_review,
+    statusFieldId: data.quality_review_status_field_id,
+    draftOptionId: data.quality_review_draft_option_id,
+    finalizedOptionId: data.quality_review_finalized_option_id,
+  };
+}
+
+export async function setEntityTypeQualityReviewLifecycleConfig({
+  workspaceId,
+  entityTypeId,
+  qualityReview,
+  statusFieldId,
+  draftOptionId,
+  finalizedOptionId,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+} & EntityTypeQualityReviewConfig): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("set_entity_type_quality_review_lifecycle_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_quality_review: qualityReview,
+    p_status_field_id: statusFieldId,
+    p_draft_option_id: draftOptionId,
+    p_finalized_option_id: finalizedOptionId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export type EntityTypeQualityReviewPresentationConfig = {
+  dateFieldId: string | null;
+  resultFieldId: string | null;
+};
+
+type EntityTypeQualityReviewPresentationRow = {
+  quality_review_date_field_id: string | null;
+  quality_review_result_field_id: string | null;
+};
+
+export async function getEntityTypeQualityReviewPresentationConfig({
+  workspaceId,
+  entityTypeId,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+}): Promise<EntityTypeQualityReviewPresentationConfig> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("entity_types")
+    .select("quality_review_date_field_id, quality_review_result_field_id")
+    .eq("workspace_id", workspaceId)
+    .eq("id", entityTypeId)
+    .single<EntityTypeQualityReviewPresentationRow>();
+
+  if (error) {
+    throw new Error(`Unable to load Quality Review presentation configuration: ${error.message}`);
+  }
+
+  return {
+    dateFieldId: data.quality_review_date_field_id,
+    resultFieldId: data.quality_review_result_field_id,
+  };
+}
+
+export async function setEntityTypeQualityReviewPresentationConfig({
+  workspaceId,
+  entityTypeId,
+  dateFieldId,
+  resultFieldId,
+}: {
+  workspaceId: string;
+  entityTypeId: string;
+} & EntityTypeQualityReviewPresentationConfig): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("set_entity_type_quality_review_presentation_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_date_field_id: dateFieldId,
+    p_result_field_id: resultFieldId,
   });
 
   if (error) {

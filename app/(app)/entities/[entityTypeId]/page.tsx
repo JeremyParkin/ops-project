@@ -9,11 +9,15 @@ import {
   restoreEntity,
   deleteView,
   updateEntityMetadata,
+  updateEntityTypeQualityReviewLifecycle,
+  updateEntityTypeQualityReviewPresentation,
   updateEntityTypeSensitiveAccess,
   updateView,
 } from "@/app/actions";
 import { EntityRecordsTable } from "@/app/components/entity-records-table";
 import { EntitySettingsForm } from "@/app/components/entity-settings-form";
+import { EntityTypeQualityReviewForm } from "@/app/components/entity-type-quality-review-form";
+import { EntityTypeQualityReviewPresentationForm } from "@/app/components/entity-type-quality-review-presentation-form";
 import { EntityTypeSensitiveAccessForm } from "@/app/components/entity-type-sensitive-access-form";
 import { EntityViewQuickBar } from "@/app/components/entity-view-quickbar";
 import { EntityViewsPanel } from "@/app/components/entity-views-panel";
@@ -28,6 +32,8 @@ import {
 import { getActiveWorkspaceId, getWorkspacePermissionContext } from "@/lib/auth/workspace";
 import {
   getEntityContext,
+  getEntityTypeQualityReviewConfig,
+  getEntityTypeQualityReviewPresentationConfig,
   getEntityTypeSensitiveAccessConfig,
   listEntityTypes,
 } from "@/lib/domain/metadata-repository";
@@ -179,6 +185,8 @@ async function loadEntityPageData({
       views,
       personEntityTypeId,
       sensitiveAccessConfig,
+      qualityReviewConfig,
+      qualityReviewPresentationConfig,
     ] = await Promise.all([
       listEntityTypes({ workspaceId }),
       listEntityTypes({
@@ -198,6 +206,8 @@ async function loadEntityPageData({
       listEntityViews(context),
       getPersonEntityTypeId({ workspaceId }),
       getEntityTypeSensitiveAccessConfig(context),
+      getEntityTypeQualityReviewConfig(context),
+      getEntityTypeQualityReviewPresentationConfig(context),
     ]);
     const [records, choiceOptionsByFieldId] = await Promise.all([
       listEntityRecords({
@@ -242,6 +252,8 @@ async function loadEntityPageData({
       relationLookups,
       personEntityTypeId,
       sensitiveAccessConfig,
+      qualityReviewConfig,
+      qualityReviewPresentationConfig,
     };
   } catch {
     return null;
@@ -315,6 +327,8 @@ export default async function EntityPage({
     relationLookups,
     personEntityTypeId,
     sensitiveAccessConfig,
+    qualityReviewConfig,
+    qualityReviewPresentationConfig,
   } = pageData;
   const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(allFields, choiceOptionsByFieldId);
   const selectedView =
@@ -464,6 +478,8 @@ export default async function EntityPage({
     : undefined;
   const updateEntity = updateEntityMetadata.bind(null, context);
   const updateSensitiveAccess = updateEntityTypeSensitiveAccess.bind(null, context);
+  const updateQualityReviewLifecycle = updateEntityTypeQualityReviewLifecycle.bind(null, context);
+  const updateQualityReviewPresentation = updateEntityTypeQualityReviewPresentation.bind(null, context);
   const archiveCurrentEntity = archiveEntity.bind(null, context);
   const restoreCurrentEntity = restoreEntity.bind(null, context);
   const deleteCurrentEntity = deleteEntity.bind(null, context);
@@ -569,6 +585,30 @@ export default async function EntityPage({
             )}
             config={sensitiveAccessConfig}
             action={updateSensitiveAccess}
+          />
+        ) : null}
+        {isManaging && !isArchivedEntity ? (
+          <EntityTypeQualityReviewForm
+            entityTypeId={entityType.id}
+            prerequisitesMet={
+              sensitiveAccessConfig.peopleSensitive &&
+              Boolean(sensitiveAccessConfig.subjectPersonFieldId) &&
+              Boolean(sensitiveAccessConfig.authorPersonFieldId) &&
+              sensitiveAccessConfig.authorCanView
+            }
+            choiceFields={fields.filter((field) => field.type === "choice" && !field.archivedAt)}
+            optionsByFieldId={choiceOptionsByFieldId}
+            config={qualityReviewConfig}
+            action={updateQualityReviewLifecycle}
+          />
+        ) : null}
+        {isManaging && !isArchivedEntity && qualityReviewConfig.qualityReview ? (
+          <EntityTypeQualityReviewPresentationForm
+            entityTypeId={entityType.id}
+            dateFields={fields.filter((field) => field.type === "date" && !field.archivedAt)}
+            choiceFields={fields.filter((field) => field.type === "choice" && !field.archivedAt)}
+            config={qualityReviewPresentationConfig}
+            action={updateQualityReviewPresentation}
           />
         ) : null}
         {isManaging && !isArchivedEntity ? (

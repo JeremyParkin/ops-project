@@ -46,6 +46,10 @@ const EVENT_CAUSAL_TIER: Record<ActivityEventType, number> = {
   // reassign_process_step_run_authorized emits exactly one workspace_events
   // row per transaction, same reasoning as process_cancelled above.
   step_reassigned: 0,
+  // finalize_quality_review_authorized/reopen_quality_review_authorized each
+  // emit exactly one workspace_events row per transaction, same reasoning.
+  quality_review_finalized: 0,
+  quality_review_reopened: 0,
 };
 
 export function compareNewestFirstWithStableTies(a: RecordActivityEvent, b: RecordActivityEvent): number {
