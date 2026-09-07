@@ -38,6 +38,8 @@ export default async function AppShellLayout({ children }: { children: ReactNode
   const canManageSettings = !impersonation.isImpersonating && Boolean(capabilities?.has("workspace.manage_settings"));
   const canManageIntegrations =
     !impersonation.isImpersonating && Boolean(capabilities?.has("workspace.manage_integrations"));
+  const canViewAdministrativeHistory =
+    !impersonation.isImpersonating && Boolean(capabilities?.has("workspace.audit.read"));
   const canViewManagerPortfolio =
     Boolean(capabilities?.has("operations.view")) &&
     (await listManagedPeopleContext({ workspaceId })).length > 0;
@@ -68,6 +70,7 @@ export default async function AppShellLayout({ children }: { children: ReactNode
         canManageSchema={canManageSchema}
         canManageSettings={canManageSettings}
         canManageIntegrations={canManageIntegrations}
+        canViewAdministrativeHistory={canViewAdministrativeHistory}
         quickJumpEntityTypes={quickJumpEntityTypes}
         hasMoreEntityTypes={sortedEntityTypes.length > quickJumpEntityTypes.length}
         unreadNotificationCount={unreadNotificationCount}

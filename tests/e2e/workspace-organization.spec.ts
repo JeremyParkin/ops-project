@@ -33,6 +33,7 @@ type OrganizationFixture = {
   users: { administrator: TestUser; organizationManager: TestUser; memberA: TestUser; memberB: TestUser; memberC: TestUser; outsider: TestUser };
   entityId: string;
   recordId: string;
+  operationsTeamId: string;
 };
 
 let fixture: OrganizationFixture;
@@ -154,6 +155,7 @@ async function createFixture(): Promise<OrganizationFixture> {
     users: { administrator, organizationManager, memberA, memberB, memberC, outsider },
     entityId,
     recordId,
+    operationsTeamId: "",
   };
 }
 
@@ -209,6 +211,25 @@ async function signIn(page: Page, user: TestUser) {
 test.beforeAll(async () => {
   await cleanupStaleFixtures();
   fixture = await createFixture();
+  const organizationManager = await authenticatedClient(fixture.users.organizationManager);
+  const operationsTeam = await organizationManager.rpc("create_workspace_team_authorized", {
+    p_workspace_id: fixture.workspaceId,
+    p_name: "Operations",
+    p_description: "Keeps delivery moving.",
+  });
+  if (operationsTeam.error || typeof operationsTeam.data !== "string") {
+    throw new Error(operationsTeam.error?.message ?? "Unable to create the Operations test team.");
+  }
+  fixture.operationsTeamId = operationsTeam.data;
+  const operationsMembership = await organizationManager.rpc("set_workspace_team_membership_authorized", {
+    p_workspace_id: fixture.workspaceId,
+    p_team_id: fixture.operationsTeamId,
+    p_user_id: fixture.users.memberA.id,
+    p_is_member: true,
+  });
+  if (operationsMembership.error) {
+    throw new Error(operationsMembership.error.message);
+  }
 });
 
 test.afterAll(async () => {
@@ -247,17 +268,10 @@ test("enforces organization capability, supports multi-team leadership, and pres
 
   const createTeam = await organizationManager.rpc("create_workspace_team_authorized", {
     p_workspace_id: fixture.workspaceId,
-    p_name: "Operations",
-    p_description: "Keeps delivery moving.",
+    p_name: `Creation test team ${randomUUID().slice(0, 8)}`,
+    p_description: "Created to verify the authorized team creation path.",
   });
   expect(createTeam.error).toBeNull();
-  const { data: operationsTeam, error: operationsError } = await admin
-    .from("workspace_teams")
-    .select("id")
-    .eq("workspace_id", fixture.workspaceId)
-    .eq("name", "Operations")
-    .single();
-  expect(operationsError).toBeNull();
 
   const createSecondTeam = await organizationManager.rpc("create_workspace_team_authorized", {
     p_workspace_id: fixture.workspaceId,
@@ -295,7 +309,7 @@ test("enforces organization capability, supports multi-team leadership, and pres
   for (const userId of [fixture.users.memberA.id, fixture.users.memberB.id]) {
     const membership = await organizationManager.rpc("set_workspace_team_membership_authorized", {
       p_workspace_id: fixture.workspaceId,
-      p_team_id: operationsTeam!.id,
+      p_team_id: fixture.operationsTeamId,
       p_user_id: userId,
       p_is_member: true,
     });
@@ -312,7 +326,7 @@ test("enforces organization capability, supports multi-team leadership, and pres
   for (const userId of [fixture.users.memberA.id, fixture.users.memberB.id]) {
     const lead = await organizationManager.rpc("set_workspace_team_lead_authorized", {
       p_workspace_id: fixture.workspaceId,
-      p_team_id: operationsTeam!.id,
+      p_team_id: fixture.operationsTeamId,
       p_user_id: userId,
       p_is_lead: true,
     });
@@ -332,7 +346,7 @@ test("enforces organization capability, supports multi-team leadership, and pres
   expect(organizations.error).toBeNull();
   expect(
     (organizations.data as { team_id: string; member_count: number; lead_count: number }[] | null)?.find(
-      (team) => team.team_id === operationsTeam!.id,
+      (team) => team.team_id === fixture.operationsTeamId,
     ),
   ).toMatchObject({ member_count: 2, lead_count: 2 });
   const afterCapabilities = await admin
@@ -347,14 +361,6 @@ test("enforces organization capability, supports multi-team leadership, and pres
 test("protects manager graph and team lifecycle while cleaning current org rows on membership removal", async () => {
   const admin = createSupabaseTestClient();
   const organizationManager = await authenticatedClient(fixture.users.organizationManager);
-
-  const { data: team, error: teamError } = await admin
-    .from("workspace_teams")
-    .select("id")
-    .eq("workspace_id", fixture.workspaceId)
-    .eq("name", "Operations")
-    .single();
-  expect(teamError).toBeNull();
 
   const selfManager = await organizationManager.rpc("set_workspace_primary_manager_authorized", {
     p_workspace_id: fixture.workspaceId,
@@ -399,46 +405,46 @@ test("protects manager graph and team lifecycle while cleaning current org rows 
 
   const archive = await organizationManager.rpc("set_workspace_team_archived_authorized", {
     p_workspace_id: fixture.workspaceId,
-    p_team_id: team!.id,
+    p_team_id: fixture.operationsTeamId,
     p_archived: true,
   });
   expect(archive.error).toBeNull();
   const addToArchived = await organizationManager.rpc("set_workspace_team_membership_authorized", {
     p_workspace_id: fixture.workspaceId,
-    p_team_id: team!.id,
+    p_team_id: fixture.operationsTeamId,
     p_user_id: fixture.users.memberC.id,
     p_is_member: true,
   });
   expect(addToArchived.error?.message).toContain("Archived teams cannot accept new members");
   const addArchivedLead = await organizationManager.rpc("set_workspace_team_lead_authorized", {
     p_workspace_id: fixture.workspaceId,
-    p_team_id: team!.id,
+    p_team_id: fixture.operationsTeamId,
     p_user_id: fixture.users.memberA.id,
     p_is_lead: true,
   });
   expect(addArchivedLead.error?.message).toContain("Archived teams cannot accept new leads");
   const deleteNonempty = await organizationManager.rpc("delete_workspace_team_if_empty_authorized", {
     p_workspace_id: fixture.workspaceId,
-    p_team_id: team!.id,
+    p_team_id: fixture.operationsTeamId,
   });
   expect(deleteNonempty.error?.message).toContain("Remove team members");
 
   const restore = await organizationManager.rpc("set_workspace_team_archived_authorized", {
     p_workspace_id: fixture.workspaceId,
-    p_team_id: team!.id,
+    p_team_id: fixture.operationsTeamId,
     p_archived: false,
   });
   expect(restore.error).toBeNull();
   const addMemberC = await organizationManager.rpc("set_workspace_team_membership_authorized", {
     p_workspace_id: fixture.workspaceId,
-    p_team_id: team!.id,
+    p_team_id: fixture.operationsTeamId,
     p_user_id: fixture.users.memberC.id,
     p_is_member: true,
   });
   expect(addMemberC.error).toBeNull();
   const addLeadC = await organizationManager.rpc("set_workspace_team_lead_authorized", {
     p_workspace_id: fixture.workspaceId,
-    p_team_id: team!.id,
+    p_team_id: fixture.operationsTeamId,
     p_user_id: fixture.users.memberC.id,
     p_is_lead: true,
   });
@@ -487,7 +493,7 @@ test("keeps organization reads scoped and exposes the teams and reporting contro
   expect(ownManager.error).toBeNull();
   const ownTeamMembers = await ordinaryMember.rpc("list_my_team_members_authorized", {
     p_workspace_id: fixture.workspaceId,
-    p_team_id: scopedTeams?.[0]?.team_id,
+    p_team_id: fixture.operationsTeamId,
   });
   expect(ownTeamMembers.error).toBeNull();
   const rawMemberships = await ordinaryMember

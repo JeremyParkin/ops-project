@@ -21,6 +21,7 @@ type AppHeaderProps = {
   canManageSchema: boolean;
   canManageSettings: boolean;
   canManageIntegrations: boolean;
+  canViewAdministrativeHistory: boolean;
   quickJumpEntityTypes: QuickJumpEntityType[];
   hasMoreEntityTypes: boolean;
   unreadNotificationCount: number;
@@ -68,6 +69,7 @@ export function AppHeader({
   canManageSchema,
   canManageSettings,
   canManageIntegrations,
+  canViewAdministrativeHistory,
   quickJumpEntityTypes,
   hasMoreEntityTypes,
   unreadNotificationCount,
@@ -84,7 +86,7 @@ export function AppHeader({
   // the same capabilities that gate the individual items below, no
   // combination ever produces an empty dropdown.
   const canConfigure =
-    canManageWorkspace || canManageAutomation || canManageSchema || canManageSettings || canManageIntegrations;
+    canManageWorkspace || canManageAutomation || canManageSchema || canManageSettings || canManageIntegrations || canViewAdministrativeHistory;
   const isHome = pathname === "/";
   const isWork = pathname.startsWith("/my-work") || pathname.startsWith("/team-work");
   const isBusiness = pathname.startsWith("/entities");
@@ -164,6 +166,7 @@ export function AppHeader({
               {canManageIntegrations ? (
                 <MenuLink href="/settings/integrations">Integrations</MenuLink>
               ) : null}
+              {canViewAdministrativeHistory ? <MenuLink href="/settings/history">History</MenuLink> : null}
             </NavMenu>
           ) : null}
         </nav>
@@ -202,6 +205,7 @@ export function AppHeader({
                 {canManageWorkspace ? (
                   <MenuLink href="/settings">Workspace settings</MenuLink>
                 ) : null}
+                {canViewAdministrativeHistory ? <MenuLink href="/settings/history">History</MenuLink> : null}
               </>
             ) : null}
           </NavMenu>

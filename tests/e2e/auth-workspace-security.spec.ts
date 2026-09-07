@@ -484,7 +484,7 @@ test("RLS blocks cross-workspace table and RPC access while own operations work"
     name: "Raw entity",
     slug: `raw-entity-${randomUUID().slice(0, 8)}`,
   });
-  expect(rawEntityInsert.error).toBeNull();
+  expect(rawEntityInsert.error?.code).toBe("42501");
   const rawEntityDelete = await client
     .from("entity_types")
     .delete()
