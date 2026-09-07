@@ -172,7 +172,7 @@ Explicitly out of scope for this phase (rejected or deferred, not simply unstart
 
 ## Phase 13 - Audit & Operational Trust
 
-**Status:** Active major direction. Phase 13.1 (Record Change History), Phase 13.2A (Workflow Execution-Log Durability), Phase 13.2B1 (Field + Choice Configuration Audit), Phase 13.2B2 (EntityType Lifecycle Audit), Phase 13.2B3a/b (Workflow and Process Template Governance Audit), and Phase 13.2B4a (Membership and Role Access Governance) are complete. Remaining governance families stay future-looking and require separate review.
+**Status:** Active major direction. Phase 13.1 (Record Change History), Phase 13.2A (Workflow Execution-Log Durability), Phase 13.2B1 (Field + Choice Configuration Audit), Phase 13.2B2 (EntityType Lifecycle Audit), Phase 13.2B3a/b (Workflow and Process Template Governance Audit), Phase 13.2B4a/b (Membership, Role, Team, and Primary Manager Governance), and Phase 13.2C1/C2 (People-Sensitive Access and Quality Review Configuration Governance) are complete. Person identity governance and the Workspace Audit Explorer remain future-looking and require separate review.
 
 ### Phase 13.1 - Record Change History
 
@@ -210,7 +210,15 @@ This slice delivers append-only, record-context change history for create, updat
 
 ### Phase 13.2B4b2 - Primary Manager Governance
 
-**Status:** Complete. Migration `0127` is immutable. Primary-manager set, replace, and clear operations use one `workspace_primary_manager_changed` event with `workspace_member` report subjects, frozen identity snapshots, semantic operation labels, and no-op suppression. Existing authority, impersonation, deactivation, visibility, tenancy, direct-DML, service-role, append-only, and teardown boundaries remain intact. Dedicated live verification passed 2/2; focused backend regressions passed 24/24 plus prior governance constraints 7/7; focused browser verification completed 9/9 after one isolated existing analytics-navigation flake rerun; static checks passed with 0 lint errors and 3 pre-existing warnings. Organizational governance B4b is complete. People-sensitive governance remains future-looking and Workspace Audit Explorer remains deferred pending privacy/read-policy review.
+**Status:** Complete. Migration `0127` is immutable. Primary-manager set, replace, and clear operations use one `workspace_primary_manager_changed` event with `workspace_member` report subjects, frozen identity snapshots, semantic operation labels, and no-op suppression. Existing authority, impersonation, deactivation, visibility, tenancy, direct-DML, service-role, append-only, and teardown boundaries remain intact. Dedicated live verification passed 2/2; focused backend regressions passed 24/24 plus prior governance constraints 7/7; focused browser verification completed 9/9 after one isolated existing analytics-navigation flake rerun; static checks passed with 0 lint errors and 3 pre-existing warnings. Organizational governance B4b is complete. People-sensitive access governance is now complete through 13.2C1; Quality Review configuration governance and Workspace Audit Explorer remain deferred pending separate review.
+
+### Phase 13.2C1 - People-Sensitive Access Configuration Governance
+
+**Status:** Complete. Migration `0128` is immutable. The specialized people-sensitive access RPC captures one bounded `people_sensitive_access_configured` EntityType-subject event for each meaningful enable, disable, field, or visibility configuration save and suppresses semantic no-ops. Existing `schema.manage`, real-actor, impersonation, validation, tenancy, service-role fixture, privacy, generic EntityType-audit separation, append-only, and teardown boundaries remain intact. Dedicated live verification passed 1/1; focused backend regressions passed 118/118 after isolated Auth-rate-limit reruns; focused people-sensitive E2E passed 5/5; static checks passed with 0 lint errors and 3 pre-existing warnings. Quality Review configuration governance is the next separately reviewed governance slice; Person designation/identity-link governance and Workspace Audit Explorer remain future-looking.
+
+### Phase 13.2C2 - Quality Review Configuration Governance
+
+**Status:** Complete. Migration `0129` is immutable. Quality Review lifecycle and presentation configuration use separate authoritative RPC wrappers with bounded EntityType-subject snapshots, one event per meaningful save, grouped changes, and semantic no-op suppression. Runtime finalize/reopen history remains separate in `workspace_events`; generic EntityType and Field/Choice governance remain separate. Dedicated live verification passed 1/1; focused backend regressions passed 185/185 effective after isolated Auth-rate-limit reruns; focused browser verification passed 19/19; static checks passed with 0 lint errors and 3 pre-existing warnings. Person designation/identity-link governance and Workspace Audit Explorer remain future-looking and require separate review.
 
 ### Governance, Audit & Workspace Hygiene
 
@@ -242,7 +250,7 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 - General workspace activity/audit explorer, including imports, workflow execution, process failures, administrative changes, richer actor/effective-actor history, and support/impersonation events.
 - Impersonation/support-mode evolution: effective-user-aware UI gating, effective-user-aware notifications, reason capture, optional read-only support access, and stronger production support traceability.
 - Hardening of remaining raw/schema mutation paths where retained `SECURITY INVOKER` behavior can bypass app-layer validation.
-- Further governance/configuration audit coverage beyond 13.2B2, including Workflow/Process Template, roles/organization, and people-sensitive governance, remains future-looking and requires separate review.
+- Further governance/configuration audit coverage beyond 13.2C2, including identity governance, remains future-looking and requires separate review.
 - Row-scoped visibility, team-based record visibility, ownership, and possibly multi-role membership if the permission model needs them.
 
 ### Process, Automation & Notifications
