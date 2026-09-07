@@ -150,6 +150,42 @@ describe("membership and role governance audit", () => {
     expect(updateEvents[0].changes.old_capabilities).toEqual(["operations.view"]);
     expect(updateEvents[0].changes.new_capabilities).toEqual(["operations.view", "records.operate"]);
 
+    const withAuditRead = await adminClient.rpc("update_workspace_role_authorized", {
+      p_workspace_id: workspaceId,
+      p_role_id: targetRole,
+      p_name: "Temporary renamed",
+      p_description: "Updated",
+      p_capabilities: ["operations.view", "records.operate", "workspace.audit.read"],
+    });
+    expect(withAuditRead.error).toBeNull();
+    const auditReadAdded = (await events(workspaceId)).filter((event) => event.event_type === "workspace_role_updated");
+    expect(auditReadAdded).toHaveLength(2);
+    expect(auditReadAdded.at(-1)?.changes.old_capabilities).toEqual(["operations.view", "records.operate"]);
+    expect(auditReadAdded.at(-1)?.changes.new_capabilities).toEqual(["operations.view", "records.operate", "workspace.audit.read"]);
+
+    const withoutAuditRead = await adminClient.rpc("update_workspace_role_authorized", {
+      p_workspace_id: workspaceId,
+      p_role_id: targetRole,
+      p_name: "Temporary renamed",
+      p_description: "Updated",
+      p_capabilities: ["operations.view", "records.operate"],
+    });
+    expect(withoutAuditRead.error).toBeNull();
+    const auditReadRemoved = (await events(workspaceId)).filter((event) => event.event_type === "workspace_role_updated");
+    expect(auditReadRemoved).toHaveLength(3);
+    expect(auditReadRemoved.at(-1)?.changes.old_capabilities).toEqual(["operations.view", "records.operate", "workspace.audit.read"]);
+    expect(auditReadRemoved.at(-1)?.changes.new_capabilities).toEqual(["operations.view", "records.operate"]);
+
+    const noOp = await adminClient.rpc("update_workspace_role_authorized", {
+      p_workspace_id: workspaceId,
+      p_role_id: targetRole,
+      p_name: "Temporary renamed",
+      p_description: "Updated",
+      p_capabilities: ["operations.view", "records.operate"],
+    });
+    expect(noOp.error).toBeNull();
+    expect((await events(workspaceId)).filter((event) => event.event_type === "workspace_role_updated")).toHaveLength(3);
+
     const deleted = await adminClient.rpc("delete_workspace_role_with_reassignment_authorized", { p_workspace_id: workspaceId, p_role_id: targetRole, p_replacement_role_id: replacementRole });
     expect(deleted.error).toBeNull();
     const newEvents = (await events(workspaceId)).slice(before.length);

@@ -289,11 +289,41 @@ describe("impersonation session lifecycle", () => {
       p_workspace_id: fixture.workspaceId, p_target_user_id: fixture.worker.id,
     });
     expect(first.error).toBeNull();
+    const firstSessionId = first.data as string;
 
     const second = await adminClient.rpc("start_impersonation_session_authorized", {
       p_workspace_id: fixture.workspaceId, p_target_user_id: fixture.restrictedMember.id,
     });
     expect(second.error).toBeNull();
+    const secondSessionId = second.data as string;
+
+    const lifecycle = await createSupabaseTestClient()
+      .from("workspace_events")
+      .select("event_type, workspace_id, actor_user_id, metadata")
+      .eq("workspace_id", fixture.workspaceId)
+      .in("event_type", ["impersonation_started", "impersonation_ended"]);
+    expect(lifecycle.error).toBeNull();
+    const firstEnded = lifecycle.data?.find((event) =>
+      event.event_type === "impersonation_ended" &&
+      (event.metadata as { session_id?: string })?.session_id === firstSessionId,
+    );
+    const secondStarted = lifecycle.data?.find((event) =>
+      event.event_type === "impersonation_started" &&
+      (event.metadata as { session_id?: string })?.session_id === secondSessionId,
+    );
+    expect(firstEnded).toEqual(expect.objectContaining({
+      workspace_id: fixture.workspaceId,
+      actor_user_id: fixture.admin.id,
+    }));
+    expect(firstEnded?.metadata).toEqual(expect.objectContaining({
+      session_id: firstSessionId,
+      effective_user_id: fixture.worker.id,
+      reason: "replaced_by_new_session",
+    }));
+    expect(secondStarted?.metadata).toEqual(expect.objectContaining({
+      session_id: secondSessionId,
+      effective_user_id: fixture.restrictedMember.id,
+    }));
 
     const active = await adminClient.rpc("get_active_impersonation_authorized");
     expect(active.error).toBeNull();
@@ -318,6 +348,24 @@ describe("impersonation session lifecycle", () => {
 
     const rightEnd = await adminClient.rpc("end_impersonation_session_authorized", { p_session_id: sessionId });
     expect(rightEnd.error).toBeNull();
+
+    const endedEvent = await createSupabaseTestClient()
+      .from("workspace_events")
+      .select("workspace_id, actor_user_id, metadata")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("event_type", "impersonation_ended")
+      .contains("metadata", { session_id: sessionId })
+      .single();
+    expect(endedEvent.error).toBeNull();
+    expect(endedEvent.data).toEqual(expect.objectContaining({
+      workspace_id: fixture.workspaceId,
+      actor_user_id: fixture.admin.id,
+    }));
+    expect(endedEvent.data?.metadata).toEqual(expect.objectContaining({
+      session_id: sessionId,
+      effective_user_id: fixture.worker.id,
+      reason: "explicit_end",
+    }));
 
     const doubleEnd = await adminClient.rpc("end_impersonation_session_authorized", { p_session_id: sessionId });
     expect(doubleEnd.error?.message).toContain("not found or already ended");
@@ -344,6 +392,20 @@ describe("impersonation session lifecycle", () => {
 
     const activeAfter = await adminClient.rpc("get_active_impersonation_authorized");
     expect(activeAfter.data).toEqual([]);
+
+    const endedEvent = await serviceAdmin
+      .from("workspace_events")
+      .select("metadata")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("event_type", "impersonation_ended")
+      .contains("metadata", { session_id: started.data })
+      .single();
+    expect(endedEvent.error).toBeNull();
+    expect(endedEvent.data?.metadata).toEqual(expect.objectContaining({
+      session_id: started.data,
+      effective_user_id: target.id,
+      reason: "target_deactivated",
+    }));
 
     // Confirms the RPC actually ended the row (self-heal), not merely hid it.
     const secondCall = await adminClient.rpc("get_active_impersonation_authorized");

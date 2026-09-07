@@ -52,6 +52,7 @@ const capabilityLabels: Record<WorkspaceCapability, string> = {
   "workspace.impersonate_users": "Log in as other members",
   "workspace.manage_integrations": "Manage webhooks and integrations",
   "people_data.view_all": "View all sensitive people data",
+  "workspace.audit.read": "View Workspace Administrative History",
 };
 
 function ActionMessage({ state }: { state: WorkspaceRoleActionState }) {
