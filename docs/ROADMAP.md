@@ -208,6 +208,10 @@ This slice delivers append-only, record-context change history for create, updat
 
 **Status:** Complete. Migration `0126` is immutable. Team lifecycle, membership, and team-lead changes are captured as bounded, team-centric governance events with stable team subjects, frozen snapshots, one-event semantics, and no-op suppression. Existing 0125 impersonation, deactivated-assignment, active-visibility, cleanup, tenancy, and service-role fixture boundaries remain intact. Dedicated live verification passed 2/2; prior governance regressions passed 13/13; focused organization, Team Work, analytics, and impersonation E2E passed 9/9; static checks passed with 0 lint errors and 3 pre-existing warnings. Primary Manager Governance remains the next separately reviewed slice; people-sensitive governance and Workspace Audit Explorer remain deferred.
 
+### Phase 13.2B4b2 - Primary Manager Governance
+
+**Status:** Complete. Migration `0127` is immutable. Primary-manager set, replace, and clear operations use one `workspace_primary_manager_changed` event with `workspace_member` report subjects, frozen identity snapshots, semantic operation labels, and no-op suppression. Existing authority, impersonation, deactivation, visibility, tenancy, direct-DML, service-role, append-only, and teardown boundaries remain intact. Dedicated live verification passed 2/2; focused backend regressions passed 24/24 plus prior governance constraints 7/7; focused browser verification completed 9/9 after one isolated existing analytics-navigation flake rerun; static checks passed with 0 lint errors and 3 pre-existing warnings. Organizational governance B4b is complete. People-sensitive governance remains future-looking and Workspace Audit Explorer remains deferred pending privacy/read-policy review.
+
 ### Governance, Audit & Workspace Hygiene
 
 Design constraints:
