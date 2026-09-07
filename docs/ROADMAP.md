@@ -172,7 +172,7 @@ Explicitly out of scope for this phase (rejected or deferred, not simply unstart
 
 ## Phase 13 - Audit & Operational Trust
 
-**Status:** Active major direction. Phase 13.1 (Record Change History), Phase 13.2A (Workflow Execution-Log Durability), Phase 13.2B1 (Field + Choice Configuration Audit), and Phase 13.2B2 (EntityType Lifecycle Audit) are complete. The remaining governance families stay future-looking and require separate review.
+**Status:** Active major direction. Phase 13.1 (Record Change History), Phase 13.2A (Workflow Execution-Log Durability), Phase 13.2B1 (Field + Choice Configuration Audit), Phase 13.2B2 (EntityType Lifecycle Audit), Phase 13.2B3a/b (Workflow and Process Template Governance Audit), and Phase 13.2B4a (Membership and Role Access Governance) are complete. Remaining governance families stay future-looking and require separate review.
 
 ### Phase 13.1 - Record Change History
 
@@ -199,6 +199,10 @@ This slice delivers append-only, record-context change history for create, updat
 ### Phase 13.2B3b - Process Template Governance Audit
 
 **Status:** Complete. Migration `0122` is immutable. Process Template create, one-event-per-save grouped updates, archive, restore, and successful safe delete are captured at the outer authorized RPC boundaries using bounded normalized template, EntityType, node, and route snapshots. Safe delete now requires `automation.manage`; Process Run, Workflow `start_process`, and EntityType dependency blockers remain intact; runtime history remains separate; service-role fixture behavior and real-actor impersonation semantics remain unchanged. Dedicated live verification passed 2/2; focused governance/Process regressions passed 22/22; focused Process Template E2E passed 7/7; focused Process runtime and Workflow dependency E2E passed 29/29; static checks passed with 0 lint errors and 3 pre-existing warnings. Remaining governance families and Workspace Audit Explorer remain future-looking.
+
+### Phase 13.2B4a - Membership and Role Access Governance
+
+**Status:** Complete. Migrations `0123` and corrective `0124` are immutable. Invitation create/cancel, member activation/deactivation, direct role assignment, and custom role lifecycle/capability changes are captured in the append-only `governance_audit_events` store. Pre-membership invitation events use invitation UUID subjects; accepted members use stable auth user UUID subjects. Role deletion records both role lifecycle and consequential per-member reassignment history with a trusted correlation ID. The four-argument invitation RPC preserves optional email enqueue behavior, while transport history remains separate. Access administration remains capability-gated, real-actor-bound, unavailable through impersonation, and executable only by authenticated/service-role callers; service-role fixture behavior remains suppressed. Dedicated live governance verification passed 3/3; focused backend regressions passed 69/69; focused E2E passed 7/7 with 1 provider-disabled test skipped; static checks passed with 0 lint errors and 3 pre-existing warnings. Member hard removal is unsupported and deferred; Teams/Manager Relationships remain the next separately reviewed slice, and Workspace Audit Explorer remains deferred pending privacy/read-policy planning.
 
 ### Governance, Audit & Workspace Hygiene
 
