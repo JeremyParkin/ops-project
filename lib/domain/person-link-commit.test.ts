@@ -338,6 +338,28 @@ describe("set_person_entity_type_authorized", () => {
       .single();
     expect(workspaceRow.data?.person_entity_type_id).toBe(scratchTypeId);
 
+    const designationEvent = await admin
+      .from("governance_audit_events")
+      .select("event_type, subject_kind, subject_id, parent_entity_type_id, parent_field_id, changes")
+      .eq("workspace_id", fixture.workspaceId)
+      .eq("event_type", "person_entity_type_changed")
+      .eq("subject_id", fixture.workspaceId)
+      .contains("changes", { new_person_entity_type: { id: scratchTypeId } })
+      .single();
+    expect(designationEvent.error).toBeNull();
+    expect(designationEvent.data).toEqual(expect.objectContaining({
+      event_type: "person_entity_type_changed",
+      subject_kind: "workspace",
+      subject_id: fixture.workspaceId,
+      parent_entity_type_id: null,
+      parent_field_id: null,
+    }));
+    expect(designationEvent.data?.changes).toEqual(expect.objectContaining({
+      operation: "replace",
+      old_person_entity_type: expect.objectContaining({ id: fixture.personEntityTypeId }),
+      new_person_entity_type: expect.objectContaining({ id: scratchTypeId }),
+    }));
+
     // Restore the fixture's designation for subsequent tests.
     const restore = await setPersonEntityType(client, fixture.workspaceId, fixture.personEntityTypeId);
     expect(restore.error).toBeNull();
@@ -786,6 +808,10 @@ describe("person_linked / person_unlinked history", () => {
     expect(event.data?.metadata).toMatchObject({
       linked_user_id: target.id,
       linked_email: target.email,
+      person_record_id: recordId,
+      person_label_snapshot: `${recordId.slice(0, 8)}...`,
+      person_entity_type_id: fixture.personEntityTypeId,
+      person_entity_type_name_snapshot: expect.any(String),
     });
 
     const cleanup = await removePersonLink(client, fixture.workspaceId, recordId);
@@ -824,6 +850,10 @@ describe("person_linked / person_unlinked history", () => {
     expect(unlinkEvent.data?.metadata).toMatchObject({
       unlinked_user_id: target.id,
       unlinked_email: target.email,
+      person_record_id: recordId,
+      person_label_snapshot: `${recordId.slice(0, 8)}...`,
+      person_entity_type_id: fixture.personEntityTypeId,
+      person_entity_type_name_snapshot: expect.any(String),
     });
 
     // The earlier person_linked event row is untouched.

@@ -172,7 +172,7 @@ Explicitly out of scope for this phase (rejected or deferred, not simply unstart
 
 ## Phase 13 - Audit & Operational Trust
 
-**Status:** Active major direction. Phase 13.1 (Record Change History), Phase 13.2A (Workflow Execution-Log Durability), Phase 13.2B1 (Field + Choice Configuration Audit), Phase 13.2B2 (EntityType Lifecycle Audit), Phase 13.2B3a/b (Workflow and Process Template Governance Audit), Phase 13.2B4a/b (Membership, Role, Team, and Primary Manager Governance), and Phase 13.2C1/C2 (People-Sensitive Access and Quality Review Configuration Governance) are complete. Person identity governance and the Workspace Audit Explorer remain future-looking and require separate review.
+**Status:** Active major direction. Phase 13.1 (Record Change History), Phase 13.2A (Workflow Execution-Log Durability), Phase 13.2B1 (Field + Choice Configuration Audit), Phase 13.2B2 (EntityType Lifecycle Audit), Phase 13.2B3a/b (Workflow and Process Template Governance Audit), Phase 13.2B4a/b (Membership, Role, Team, and Primary Manager Governance), Phase 13.2C1/C2 (People-Sensitive Access and Quality Review Configuration Governance), and Phase 13.2D1 (Person Identity Governance Audit Coverage) are complete. Impersonation lifecycle durability and the Workspace Audit Explorer remain future-looking and require separate review.
 
 ### Phase 13.1 - Record Change History
 
@@ -218,7 +218,11 @@ This slice delivers append-only, record-context change history for create, updat
 
 ### Phase 13.2C2 - Quality Review Configuration Governance
 
-**Status:** Complete. Migration `0129` is immutable. Quality Review lifecycle and presentation configuration use separate authoritative RPC wrappers with bounded EntityType-subject snapshots, one event per meaningful save, grouped changes, and semantic no-op suppression. Runtime finalize/reopen history remains separate in `workspace_events`; generic EntityType and Field/Choice governance remain separate. Dedicated live verification passed 1/1; focused backend regressions passed 185/185 effective after isolated Auth-rate-limit reruns; focused browser verification passed 19/19; static checks passed with 0 lint errors and 3 pre-existing warnings. Person designation/identity-link governance and Workspace Audit Explorer remain future-looking and require separate review.
+**Status:** Complete. Migration `0129` is immutable. Quality Review lifecycle and presentation configuration use separate authoritative RPC wrappers with bounded EntityType-subject snapshots, one event per meaningful save, grouped changes, and semantic no-op suppression. Runtime finalize/reopen history remains separate in `workspace_events`; generic EntityType and Field/Choice governance remain separate. Dedicated live verification passed 1/1; focused backend regressions passed 185/185 effective after isolated Auth-rate-limit reruns; focused browser verification passed 19/19; static checks passed with 0 lint errors and 3 pre-existing warnings. Person identity governance and Workspace Audit Explorer remain future-looking and require separate review.
+
+### Phase 13.2D1 - Person Identity Governance Audit Coverage
+
+**Status:** Complete. Migration `0130` is immutable. Workspace Person-type designation emits one bounded `person_entity_type_changed` governance event for each meaningful designate, replace, or clear operation, using the workspace as the subject and suppressing same-value no-ops. Canonical `person_linked` and `person_unlinked` `workspace_events` retain their existing event names and fields while adding frozen Person label, member, and EntityType identity snapshots; no duplicate governance events are emitted. Designation remains `schema.manage`-gated, link/unlink remain `workspace.manage_members`-gated, all three reject active impersonation, service-role fixture behavior is preserved, and required link history is transactional. Dedicated identity verification passed 34/34; focused regressions passed 155/155, with 8 additional Person-dependent presentation checks passing; focused Person identity E2E passed 3/3; static checks passed with 0 lint errors and 3 pre-existing warnings. Impersonation lifecycle durability, restricted audit-read policy, and Workspace Audit Explorer remain future-looking.
 
 ### Governance, Audit & Workspace Hygiene
 
