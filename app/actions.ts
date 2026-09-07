@@ -67,7 +67,6 @@ import {
   listEntityTypes,
   restoreFieldDefinition,
   restoreEntityType,
-  setEntityDisplayField,
   setEntityTypeSensitiveAccessConfig,
   setEntityTypeQualityReviewLifecycleConfig,
   setEntityTypeQualityReviewPresentationConfig,
@@ -2444,10 +2443,6 @@ export async function updateEntityMetadata(
       entityTypeId: context.entityTypeId,
       name: validation.values.name,
       description: validation.values.description,
-    });
-    await setEntityDisplayField({
-      workspaceId: context.workspaceId,
-      entityTypeId: context.entityTypeId,
       displayFieldDefinitionId,
     });
   } catch {

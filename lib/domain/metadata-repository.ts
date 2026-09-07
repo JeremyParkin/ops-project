@@ -78,6 +78,7 @@ type UpdateEntityTypeMetadataInput = {
   entityTypeId: string;
   name: string;
   description: string;
+  displayFieldDefinitionId?: string;
 };
 
 type EntityTypeLifecycleInput = EntityContextInput;
@@ -388,26 +389,16 @@ export async function archiveFieldDefinition({
   fieldDefinitionId,
 }: FieldDefinitionLifecycleInput) {
   const supabase = await createServerSupabaseClient();
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from("field_definitions")
-    .update({
-      archived_at: now,
-      updated_at: now,
-    })
-    .eq("workspace_id", workspaceId)
-    .eq("entity_type_id", entityTypeId)
-    .eq("id", fieldDefinitionId)
-    .select("id")
-    .maybeSingle<{ id: string }>();
+  const { error } = await supabase.rpc("archive_field_definition_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_field_definition_id: fieldDefinitionId,
+  });
 
   if (error) {
     throw new Error(`Unable to archive field definition: ${error.message}`);
   }
 
-  if (!data) {
-    throw new Error("Unable to archive field definition: field not found.");
-  }
 }
 
 // field_definitions has a unique (entity_type_id, position) constraint (and
@@ -448,25 +439,16 @@ export async function restoreFieldDefinition({
   fieldDefinitionId,
 }: FieldDefinitionLifecycleInput) {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("field_definitions")
-    .update({
-      archived_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("workspace_id", workspaceId)
-    .eq("entity_type_id", entityTypeId)
-    .eq("id", fieldDefinitionId)
-    .select("id")
-    .maybeSingle<{ id: string }>();
+  const { error } = await supabase.rpc("restore_field_definition_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_field_definition_id: fieldDefinitionId,
+  });
 
   if (error) {
     throw new Error(`Unable to restore field definition: ${error.message}`);
   }
 
-  if (!data) {
-    throw new Error("Unable to restore field definition: field not found.");
-  }
 }
 
 export async function deleteFieldDefinition({
@@ -519,6 +501,7 @@ export async function updateEntityTypeMetadata({
   entityTypeId,
   name,
   description,
+  displayFieldDefinitionId,
 }: UpdateEntityTypeMetadataInput) {
   const supabase = await createServerSupabaseClient();
   const slug = await createUniqueEntitySlug({
@@ -526,25 +509,32 @@ export async function updateEntityTypeMetadata({
     entityTypeId,
     name,
   });
-  const { data, error } = await supabase
-    .from("entity_types")
-    .update({
-      name,
-      slug,
-      description: description || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("workspace_id", workspaceId)
-    .eq("id", entityTypeId)
-    .select("*")
-    .maybeSingle<EntityTypeRow>();
+  const { data: updatedId, error } = await supabase.rpc("update_entity_type_metadata_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_entity_name: name,
+    p_entity_slug: slug,
+    p_entity_description: description,
+    p_display_field_definition_id: displayFieldDefinitionId || null,
+  });
 
   if (error) {
     throw new Error(`Unable to update entity type: ${error.message}`);
   }
 
-  if (!data) {
+  if (typeof updatedId !== "string") {
     throw new Error("Unable to update entity type: entity not found.");
+  }
+
+  const { data, error: reloadError } = await supabase
+    .from("entity_types")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .eq("id", updatedId)
+    .single<EntityTypeRow>();
+
+  if (reloadError || !data) {
+    throw new Error(`Unable to reload updated entity type: ${reloadError?.message ?? "not found"}`);
   }
 
   return mapEntityType(data);
@@ -788,24 +778,13 @@ export async function archiveEntityType({
   entityTypeId,
 }: EntityTypeLifecycleInput) {
   const supabase = await createServerSupabaseClient();
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from("entity_types")
-    .update({
-      archived_at: now,
-      updated_at: now,
-    })
-    .eq("workspace_id", workspaceId)
-    .eq("id", entityTypeId)
-    .select("id")
-    .maybeSingle<{ id: string }>();
+  const { error } = await supabase.rpc("archive_entity_type_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+  });
 
   if (error) {
     throw new Error(`Unable to archive entity type: ${error.message}`);
-  }
-
-  if (!data) {
-    throw new Error("Unable to archive entity type: entity not found.");
   }
 }
 
@@ -814,23 +793,13 @@ export async function restoreEntityType({
   entityTypeId,
 }: EntityTypeLifecycleInput) {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("entity_types")
-    .update({
-      archived_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("workspace_id", workspaceId)
-    .eq("id", entityTypeId)
-    .select("id")
-    .maybeSingle<{ id: string }>();
+  const { error } = await supabase.rpc("restore_entity_type_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+  });
 
   if (error) {
     throw new Error(`Unable to restore entity type: ${error.message}`);
-  }
-
-  if (!data) {
-    throw new Error("Unable to restore entity type: entity not found.");
   }
 }
 

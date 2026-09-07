@@ -172,7 +172,7 @@ Explicitly out of scope for this phase (rejected or deferred, not simply unstart
 
 ## Phase 13 - Audit & Operational Trust
 
-**Status:** Active major direction. Phase 13.1 (Record Change History) and Phase 13.2A (Workflow Execution-Log Durability) are complete; governance/configuration audit remains open for review and is not automatically started.
+**Status:** Active major direction. Phase 13.1 (Record Change History), Phase 13.2A (Workflow Execution-Log Durability), Phase 13.2B1 (Field + Choice Configuration Audit), and Phase 13.2B2 (EntityType Lifecycle Audit) are complete. The remaining governance families stay future-looking and require separate review.
 
 ### Phase 13.1 - Record Change History
 
@@ -182,7 +182,15 @@ This slice delivers append-only, record-context change history for create, updat
 
 ### Phase 13.2A - Workflow Execution-Log Durability
 
-**Status:** Complete. Migration `0115` is immutable. Workflow execution logs retain the originating Workflow UUID as a historical soft ID and snapshot the Workflow name, trigger EntityType name, trigger type, watched fields, conditions, and ordered action context. `action_results` remains the authoritative execution outcome. Workflow hard deletion no longer deletes execution logs, and the existing log surface falls back to the snapshotted Automation name when the live definition is absent. Governance/configuration audit coverage and a Workspace Audit Explorer remain deferred for separate review.
+**Status:** Complete. Migration `0115` is immutable. Workflow execution logs retain the originating Workflow UUID as a historical soft ID and snapshot the Workflow name, trigger EntityType name, trigger type, watched fields, conditions, and ordered action context. `action_results` remains the authoritative execution outcome. Workflow hard deletion no longer deletes execution logs, and the existing log surface falls back to the snapshotted Automation name when the live Workflow is absent. Governance/configuration audit coverage is partially delivered by the separately reviewed 13.2B1 and 13.2B2 slices; a Workspace Audit Explorer remains future-looking.
+
+### Phase 13.2B1 - Field + Choice Configuration Audit
+
+**Status:** Complete. Migration `0116` is immutable. The append-only `governance_audit_events` store covers semantic Field create/meaningful grouped update/archive/restore/safe-delete events and Choice create/label-update/archive/restore events. Choice color-only and reorder-only noise is deliberately excluded. Existing `schema.manage` and impersonation boundaries remain intact, service-role fixture/bootstrap writes do not fabricate history, Field archive/restore uses authorized RPCs, and hard-deleted Field history survives through soft subject references. Dedicated live verification passed 1/1; focused backend regressions passed 30/30; the focused impersonation authority suite passed 16/16; focused UI smoke passed 4/4; static checks passed with 0 lint errors and 3 pre-existing warnings. EntityType audit and remaining governance families remain future-looking and require separate review.
+
+### Phase 13.2B2 - EntityType Lifecycle Audit
+
+**Status:** Complete. Migrations `0117`-`0120` are immutable. EntityType create, onboarding, grouped metadata update, archive, restore, and safe delete use authoritative audited boundaries. Direct RLS-protected metadata updates are captured by one narrow trigger; raw slug UPDATE is revoked; archive/restore remain RPC-only; and the private creation helper suppresses only the initial display-field setup update. Dedicated live verification passed 3/3; focused backend regressions passed 37/37; focused E2E smoke passed 24/24; impersonation passed 16/16; static checks passed with 0 lint errors and 3 pre-existing warnings. Workflow/Process Template, roles/organization, people-sensitive governance, and Workspace Audit Explorer remain future-looking.
 
 ### Governance, Audit & Workspace Hygiene
 
@@ -214,7 +222,7 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 - General workspace activity/audit explorer, including imports, workflow execution, process failures, administrative changes, richer actor/effective-actor history, and support/impersonation events.
 - Impersonation/support-mode evolution: effective-user-aware UI gating, effective-user-aware notifications, reason capture, optional read-only support access, and stronger production support traceability.
 - Hardening of remaining raw/schema mutation paths where retained `SECURITY INVOKER` behavior can bypass app-layer validation.
-- Governance/configuration audit coverage and semantic administrative history, pending a dedicated Phase 13.2 review.
+- Further governance/configuration audit coverage beyond 13.2B2, including Workflow/Process Template, roles/organization, and people-sensitive governance, remains future-looking and requires separate review.
 - Row-scoped visibility, team-based record visibility, ownership, and possibly multi-role membership if the permission model needs them.
 
 ### Process, Automation & Notifications
