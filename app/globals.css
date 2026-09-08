@@ -3,12 +3,26 @@
 :root {
   --background: #f4f1ea; /* paper */
   --foreground: #1a1b18; /* graphite */
+  --surface: #ffffff;
+  --border: #8a877f;
+  --muted: #55534d;
+  --accent: #c8913a;
+  --on-accent: #1a1b18;
+  --success: #3f5d3b;
+  --error: #a33f32;
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--success);
+  --color-error: var(--error);
 
   /* Kinema brand tokens. Graphite is the shell ground, Paper the content
      ground, Brass the one deliberate accent — see docs/PROJECT_CONTEXT.md
@@ -40,6 +54,70 @@
 
   --font-sans: Arial, Helvetica, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.theme-root[data-theme="dark"] {
+  --background: #171814;
+  --foreground: #eee9df;
+  --surface: #24251f;
+  --border: #8f8d83;
+  --muted: #c0baad;
+  --accent: #e0b573;
+  --on-accent: #171814;
+  --success: #a9c69a;
+  --error: #f09a86;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme-root[data-theme="system"] {
+    --background: #171814;
+    --foreground: #eee9df;
+    --surface: #24251f;
+    --border: #8f8d83;
+    --muted: #c0baad;
+    --accent: #e0b573;
+    --on-accent: #171814;
+    --success: #a9c69a;
+    --error: #f09a86;
+    color-scheme: dark;
+  }
+}
+
+.theme-root[data-theme="dark"] .bg-white,
+.theme-root[data-theme="dark"] .bg-paper,
+.theme-root[data-theme="dark"] .bg-background { background-color: var(--surface); }
+.theme-root[data-theme="dark"] .text-graphite,
+.theme-root[data-theme="dark"] .text-slate-950,
+.theme-root[data-theme="dark"] .text-slate-900 { color: var(--foreground); }
+.theme-root[data-theme="dark"] .text-stone,
+.theme-root[data-theme="dark"] .text-slate-700,
+.theme-root[data-theme="dark"] .text-slate-600 { color: var(--muted); }
+.theme-root[data-theme="dark"] .border-grit,
+.theme-root[data-theme="dark"] .border-slate-200,
+.theme-root[data-theme="dark"] .border-slate-300 { border-color: var(--border); }
+.theme-root[data-theme="dark"] input,
+.theme-root[data-theme="dark"] select,
+.theme-root[data-theme="dark"] textarea { background-color: var(--surface); color: var(--foreground); }
+.theme-root[data-theme="dark"] .text-red-700 { color: var(--error); }
+
+@media (prefers-color-scheme: dark) {
+  .theme-root[data-theme="system"] .bg-white,
+  .theme-root[data-theme="system"] .bg-paper,
+  .theme-root[data-theme="system"] .bg-background { background-color: var(--surface); }
+  .theme-root[data-theme="system"] .text-graphite,
+  .theme-root[data-theme="system"] .text-slate-950,
+  .theme-root[data-theme="system"] .text-slate-900 { color: var(--foreground); }
+  .theme-root[data-theme="system"] .text-stone,
+  .theme-root[data-theme="system"] .text-slate-700,
+  .theme-root[data-theme="system"] .text-slate-600 { color: var(--muted); }
+  .theme-root[data-theme="system"] .border-grit,
+  .theme-root[data-theme="system"] .border-slate-200,
+  .theme-root[data-theme="system"] .border-slate-300 { border-color: var(--border); }
+  .theme-root[data-theme="system"] input,
+  .theme-root[data-theme="system"] select,
+  .theme-root[data-theme="system"] textarea { background-color: var(--surface); color: var(--foreground); }
+  .theme-root[data-theme="system"] .text-red-700 { color: var(--error); }
 }
 
 body {

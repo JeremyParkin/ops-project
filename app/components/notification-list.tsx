@@ -1,33 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useSyncExternalStore } from "react";
+import { useActionState } from "react";
 import {
   markAllNotificationsReadAction,
   markNotificationReadAction,
   type NotificationActionState,
 } from "@/app/notification-actions";
 import type { WorkspaceNotification } from "@/lib/domain/notification-types";
-
-function formatTimestamp(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
+import { formatDisplayTimestamp } from "@/lib/domain/display-time";
+import { useHydrated, useUserDisplayPreferences } from "@/app/components/user-display-preferences";
 
 function NotificationTimestamp({ value }: { value: string }) {
   // No user timezone on the server -- delay local formatting until
   // hydration, matching ProcessDueAt's established pattern.
-  const isHydrated = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
+  const isHydrated = useHydrated();
+  const { timezone } = useUserDisplayPreferences();
 
-  return <time dateTime={value}>{isHydrated ? formatTimestamp(value) : ""}</time>;
+  return <time dateTime={value}>{isHydrated ? formatDisplayTimestamp(value, { timeZone: timezone }) : ""}</time>;
 }
 
 const initialState: NotificationActionState = { success: true, message: "" };

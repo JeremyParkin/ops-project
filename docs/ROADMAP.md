@@ -247,12 +247,9 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 
 ### Personal Settings & Preferences
 
-- User settings foundation separate from workspace-wide configuration and administrator controls.
-- Appearance/theme, including any future dark-mode support.
-- User timezone and date/time formatting preferences.
-- Notification preferences, channel toggles, digests, and due-soon thresholds.
-- Default landing page or navigation preferences such as favorites, pins, or recents.
-- Density and accessibility preferences where they materially improve everyday work.
+- **14.1 complete:** global typed personal preferences separate from workspace administration, with owner-controlled appearance (`System` / `Light` / `Dark`) and nullable display timezone. The implementation preserves workspace scheduling and analytics semantics; further details are recorded in `PROJECT_CONTEXT.md`.
+- **14.2 future work:** first classify current notification families as optional attention signals versus potentially mandatory operational signals. Do not assume assignment, reminder, mention, or input-request notifications are all user-disableable; any eventual suppression must occur at the authoritative notification-creation path, not only in UI presentation.
+- Further personalization remains uncommitted. Landing-page preferences, favorites, pins, recents, density controls, profile editing, arbitrary date-format preferences, and workspace-specific personal overrides are not promised roadmap work.
 
 ### Governance, Audit & Workspace Hygiene
 

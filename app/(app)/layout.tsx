@@ -8,16 +8,19 @@ import { resolveImpersonationContext } from "@/lib/auth/impersonation";
 import { listEntityTypes } from "@/lib/domain/metadata-repository";
 import { getUnreadNotificationCount } from "@/lib/domain/notification-repository";
 import { listManagedPeopleContext } from "@/lib/domain/workspace-organization-repository";
+import { getUserPreferences } from "@/lib/domain/user-preferences-repository";
+import { UserDisplayPreferences } from "@/app/components/user-display-preferences";
 
 const QUICK_JUMP_LIMIT = 6;
 
 export default async function AppShellLayout({ children }: { children: ReactNode }) {
   const { user, workspaceId, memberships } = await getActiveWorkspaceId();
-  const [permissions, entityTypes, unreadNotificationCount, impersonation] = await Promise.all([
+  const [permissions, entityTypes, unreadNotificationCount, impersonation, userPreferences] = await Promise.all([
     getWorkspacePermissionContext(workspaceId),
     listEntityTypes({ workspaceId }),
     getUnreadNotificationCount({ workspaceId }),
     resolveImpersonationContext(workspaceId),
+    getUserPreferences(),
   ]);
   const capabilities = permissions?.capabilities;
   // Configure (governance + builder capabilities) is unconditionally hidden
@@ -51,7 +54,7 @@ export default async function AppShellLayout({ children }: { children: ReactNode
     .map((entityType) => ({ id: entityType.id, name: entityType.name }));
 
   return (
-    <>
+    <UserDisplayPreferences preferences={userPreferences}>
       {impersonation.isImpersonating ? (
         <ImpersonationBanner
           effectiveEmail={impersonation.effectiveEmail}
@@ -78,6 +81,6 @@ export default async function AppShellLayout({ children }: { children: ReactNode
         signOutAction={signOut}
       />
       {children}
-    </>
+    </UserDisplayPreferences>
   );
 }

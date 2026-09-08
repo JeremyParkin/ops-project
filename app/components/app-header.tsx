@@ -285,6 +285,7 @@ export function AppHeader({
               </>
             ) : null}
             <MenuDivider />
+            <MenuLink href="/settings/personal">Personal settings</MenuLink>
             <form action={signOutAction}>
               <button
                 type="submit"

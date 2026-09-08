@@ -1,30 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useSyncExternalStore } from "react";
+import { useUserDisplayPreferences, useHydrated } from "@/app/components/user-display-preferences";
+import { formatDisplayTimestamp } from "@/lib/domain/display-time";
 import { CollapsibleSection } from "@/app/components/page-primitives";
 import { formatActivityEvent } from "@/lib/domain/activity-copy";
 import type { RecordActivityEvent } from "@/lib/domain/activity-types";
 
-function formatTimestamp(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
 function ActivityTimestamp({ value }: { value: string }) {
   // No user timezone on the server -- delay local formatting until
   // hydration, matching NotificationTimestamp/ProcessDueAt's pattern.
-  const isHydrated = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
+  const isHydrated = useHydrated();
+  const { timezone } = useUserDisplayPreferences();
 
-  return <time dateTime={value}>{isHydrated ? formatTimestamp(value) : ""}</time>;
+  return <time dateTime={value}>{isHydrated ? formatDisplayTimestamp(value, { timeZone: timezone }) : ""}</time>;
 }
 
 // Read-only, compact, newest-first -- no controls, no pagination (v1 caps

@@ -1,7 +1,9 @@
 "use client";
 
 import { Fragment, useState, useTransition } from "react";
+import { useUserDisplayPreferences } from "@/app/components/user-display-preferences";
 import { loadMoreAdministrativeHistory } from "@/app/workspace-administrative-history-actions";
+import { formatDisplayTimestamp } from "@/lib/domain/display-time";
 import {
   administrativeHistoryActorLabel,
   administrativeHistoryDetailLabel,
@@ -16,12 +18,6 @@ import type {
 const categories = ["Schema", "Access", "Organization", "People & Identity", "Sensitive Configuration", "Support / Impersonation"];
 const datePresets = ["7", "30", "90", "all"];
 
-function formatTimestamp(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown time";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
-}
-
 function displayDetail(value: unknown) {
   if (value === null || value === undefined || value === "") return "Not set";
   if (Array.isArray(value)) return value.length ? value.join(", ") : "None";
@@ -31,6 +27,7 @@ function displayDetail(value: unknown) {
 }
 
 function HistoryRow({ event }: { event: WorkspaceAdministrativeHistoryEvent }) {
+  const { timezone } = useUserDisplayPreferences();
   const copy = formatWorkspaceAdministrativeHistoryEvent(event);
   const detailEntries = Object.entries(event.details).filter(([, value]) => value !== null && value !== undefined);
   return (
@@ -42,7 +39,7 @@ function HistoryRow({ event }: { event: WorkspaceAdministrativeHistoryEvent }) {
         </div>
         <div className="shrink-0 text-right text-xs text-stone">
           <p>{event.category}</p>
-          <time dateTime={event.occurredAt}>{formatTimestamp(event.occurredAt)}</time>
+          <time dateTime={event.occurredAt}>{formatDisplayTimestamp(event.occurredAt, { timeZone: timezone, style: "full" })}</time>
         </div>
       </div>
       <details className="group mt-2">

@@ -8,10 +8,11 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { CollapsibleSection, SectionHeader } from "@/app/components/page-primitives";
 import { RECORD_COMMENT_BODY_MAX_LENGTH } from "@/lib/domain/record-comment-validation";
+import { formatDisplayTimestamp } from "@/lib/domain/display-time";
+import { useHydrated, useUserDisplayPreferences } from "@/app/components/user-display-preferences";
 
 export type DiscussionActionState = {
   success: boolean;
@@ -87,23 +88,11 @@ const initialCommentState: DiscussionActionState = {
   body: "",
 };
 
-function formatTimestamp(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
 function LocalTimestamp({ value }: { value: string }) {
-  const isHydrated = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
+  const isHydrated = useHydrated();
+  const { timezone } = useUserDisplayPreferences();
 
-  return <time dateTime={value}>{isHydrated ? formatTimestamp(value) : ""}</time>;
+  return <time dateTime={value}>{isHydrated ? formatDisplayTimestamp(value, { timeZone: timezone }) : ""}</time>;
 }
 
 function actorLine(label: string, realActorLabel?: string) {
