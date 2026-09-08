@@ -140,23 +140,23 @@ function RecordCreateFormContents({
       id="add-record"
       open={isOpen}
       onToggle={(event) => setOpen(event.currentTarget.open)}
-      className="mx-auto w-full max-w-6xl border border-slate-200 bg-white"
+      className="mx-auto w-full max-w-6xl border border-border bg-surface"
     >
-      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-800 marker:text-slate-500">
+      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-foreground marker:text-muted">
         Add {entityType.name}
       </summary>
-      <div className="border-t border-slate-200 p-5">
+      <div className="border-t border-border p-5">
         <div className="mb-5">
-          <h2 ref={headingRef} tabIndex={-1} className="text-xl font-semibold text-slate-950">
+          <h2 ref={headingRef} tabIndex={-1} className="text-xl font-semibold text-foreground">
             Add {entityType.name}
           </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Fields marked <span className="font-semibold text-red-700">*</span> are required.
+          <p className="mt-1 text-sm text-muted">
+            Fields marked <span className="font-semibold text-error">*</span> are required.
           </p>
           {state.message ? (
             <p
               className={`mt-2 text-sm ${
-                state.success ? "text-emerald-700" : "text-red-700"
+                state.success ? "text-success" : "text-error"
               }`}
               role="status"
             >
@@ -177,7 +177,7 @@ function RecordCreateFormContents({
                 <input type="hidden" name={field.key} value="false" />
                 <label
                   htmlFor={fieldId}
-                  className="flex items-center gap-3 text-sm font-medium text-slate-800"
+                  className="flex items-center gap-3 text-sm font-medium text-foreground"
                 >
                   <input
                     id={fieldId}
@@ -185,11 +185,11 @@ function RecordCreateFormContents({
                     type="checkbox"
                     value="true"
                     defaultChecked={fieldValue === "true"}
-                    className="h-4 w-4 border-slate-300 text-slate-950"
+                    className="h-4 w-4 border-border text-accent"
                   />
                   {field.name}
                   {field.required ? (
-                    <span className="text-red-700" aria-hidden="true">
+                    <span className="text-error" aria-hidden="true">
                       *
                     </span>
                   ) : null}
@@ -206,11 +206,11 @@ function RecordCreateFormContents({
               <div key={field.id}>
                 <label
                   htmlFor={fieldId}
-                  className="block text-sm font-medium text-slate-800"
+                  className="block text-sm font-medium text-foreground"
                 >
                   {field.name}
                   {field.required ? (
-                    <span className="ml-1 text-red-700" aria-hidden="true">
+                    <span className="ml-1 text-error" aria-hidden="true">
                       *
                     </span>
                   ) : null}
@@ -224,7 +224,7 @@ function RecordCreateFormContents({
                   aria-describedby={
                     state.errors[field.key] ? `${fieldId}-error` : undefined
                   }
-                  className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                  className="mt-1 block h-10 w-full border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-foreground"
                 >
                   <option value="">Choose an option</option>
                   {options.map((option) => (
@@ -256,11 +256,11 @@ function RecordCreateFormContents({
               <div key={field.id}>
                 <label
                   htmlFor={fieldId}
-                  className="block text-sm font-medium text-slate-800"
+                  className="block text-sm font-medium text-foreground"
                 >
                   {field.name}
                   {field.required ? (
-                    <span className="ml-1 text-red-700" aria-hidden="true">
+                    <span className="ml-1 text-error" aria-hidden="true">
                       *
                     </span>
                   ) : null}
@@ -274,7 +274,7 @@ function RecordCreateFormContents({
                   aria-describedby={
                     state.errors[field.key] ? `${fieldId}-error` : undefined
                   }
-                  className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                  className="mt-1 block h-10 w-full border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-foreground"
                 >
                   <option value="">
                     {relatedEntityName ? `Choose ${relatedEntityName}` : "Choose an option"}
@@ -286,7 +286,7 @@ function RecordCreateFormContents({
                   ))}
                 </select>
                 {relatedEntityName ? (
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-muted">
                     Related to {relatedEntityName}
                   </p>
                 ) : null}
@@ -301,11 +301,11 @@ function RecordCreateFormContents({
             <div key={field.id}>
               <label
                 htmlFor={fieldId}
-                className="block text-sm font-medium text-slate-800"
+                className="block text-sm font-medium text-foreground"
               >
                 {field.name}
                 {field.required ? (
-                  <span className="ml-1 text-red-700" aria-hidden="true">
+                  <span className="ml-1 text-error" aria-hidden="true">
                     *
                   </span>
                 ) : null}
@@ -320,7 +320,7 @@ function RecordCreateFormContents({
                 aria-describedby={
                   state.errors[field.key] ? `${fieldId}-error` : undefined
                 }
-                className="mt-1 block h-10 w-full border border-slate-300 px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                className="mt-1 block h-10 w-full border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-foreground"
               />
               <div id={`${fieldId}-error`}>
                 <FieldError message={state.errors[field.key]} />
@@ -329,18 +329,18 @@ function RecordCreateFormContents({
           );
         })}
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4 md:col-span-2">
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4 md:col-span-2">
           <button
             type="submit"
             disabled={pending}
-            className="inline-flex h-10 items-center justify-center bg-brass px-4 text-sm font-medium text-graphite disabled:cursor-not-allowed disabled:bg-chalk disabled:text-stone"
+            className="inline-flex h-10 items-center justify-center bg-accent px-4 text-sm font-medium text-on-accent disabled:cursor-not-allowed disabled:bg-muted disabled:text-foreground"
           >
             {pending ? "Adding..." : `Add ${entityType.name}`}
           </button>
           {cancelHref ? (
             <Link
               href={cancelHref}
-              className="ml-4 text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+              className="ml-4 text-sm font-medium text-muted underline-offset-4 hover:text-foreground hover:underline"
             >
               Cancel
             </Link>
@@ -348,7 +348,7 @@ function RecordCreateFormContents({
             <button
               type="button"
               onClick={closeForm}
-              className="h-10 px-2 text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+              className="h-10 px-2 text-sm font-medium text-muted underline-offset-4 hover:text-foreground hover:underline"
             >
               Cancel
             </button>
