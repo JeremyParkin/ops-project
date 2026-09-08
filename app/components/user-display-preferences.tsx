@@ -1,9 +1,9 @@
 "use client";
 
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from "react";
-import type { UserPreferences } from "@/lib/domain/user-preferences-types";
+import { DEFAULT_USER_PREFERENCES, type UserPreferences } from "@/lib/domain/user-preferences-types";
 
-const PreferencesContext = createContext<UserPreferences>({ theme: "system", timezone: null });
+const PreferencesContext = createContext<UserPreferences>(DEFAULT_USER_PREFERENCES);
 
 export function UserDisplayPreferences({ preferences, children }: { preferences: UserPreferences; children: ReactNode }) {
   return (

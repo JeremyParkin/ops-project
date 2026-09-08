@@ -248,7 +248,7 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 ### Personal Settings & Preferences
 
 - **14.1 complete:** global typed personal preferences separate from workspace administration, with owner-controlled appearance (`System` / `Light` / `Dark`) and nullable display timezone. The implementation preserves workspace scheduling and analytics semantics; further details are recorded in `PROJECT_CONTEXT.md`.
-- **14.2 future work:** first classify current notification families as optional attention signals versus potentially mandatory operational signals. Do not assume assignment, reminder, mention, or input-request notifications are all user-disableable; any eventual suppression must occur at the authoritative notification-creation path, not only in UI presentation.
+- **14.2 complete:** narrow global typed controls for comment mentions and Request-for-Input responded/cancelled status updates, enforced at authoritative notification-creation boundaries. Assignment, reassignment, due-soon, overdue, and newly-created Request-for-Input notifications remain mandatory and non-configurable for now. Any further notification configurability remains evidence-driven and must begin with product/authority classification rather than assuming every family is user-disableable.
 - Further personalization remains uncommitted. Landing-page preferences, favorites, pins, recents, density controls, profile editing, arbitrary date-format preferences, and workspace-specific personal overrides are not promised roadmap work.
 
 ### Governance, Audit & Workspace Hygiene

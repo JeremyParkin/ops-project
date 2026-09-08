@@ -14,6 +14,8 @@ export async function updatePersonalSettingsAction(
 ): Promise<PersonalSettingsActionState> {
   const theme = formData.get("theme");
   const timezone = formData.get("timezone");
+  const notifyCommentMentions = formData.get("notifyCommentMentions") === "on";
+  const notifyInputRequestStatusUpdates = formData.get("notifyInputRequestStatusUpdates") === "on";
   if (theme !== "system" && theme !== "light" && theme !== "dark") {
     return { success: false, message: "Choose a valid theme." };
   }
@@ -27,7 +29,12 @@ export async function updatePersonalSettingsAction(
     if (impersonation.isImpersonating) {
       return { success: false, message: "Exit impersonation before changing personal settings." };
     }
-    await updateUserPreferences({ theme: theme as UserTheme, timezone: timezone || null });
+    await updateUserPreferences({
+      theme: theme as UserTheme,
+      timezone: timezone || null,
+      notifyCommentMentions,
+      notifyInputRequestStatusUpdates,
+    });
     revalidatePath("/settings/personal");
     revalidatePath("/", "layout");
     return { success: true, message: "Personal settings updated." };

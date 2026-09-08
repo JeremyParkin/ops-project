@@ -37,6 +37,20 @@ export function PersonalSettingsForm({ preferences }: { preferences: UserPrefere
         </label>
       </div>
       <p className="mt-3 text-xs text-muted">Timezone changes display only. Workspace scheduling, due dates, waits, and analytics are unchanged.</p>
+      <section className="mt-6 border-t border-border pt-5">
+        <SectionHeader title="Notification preferences" description="Choose which optional in-app updates follow you across workspaces." />
+        <div className="mt-4 grid gap-3">
+          <label className="flex items-start gap-3 text-sm text-foreground">
+            <input type="checkbox" name="notifyCommentMentions" defaultChecked={preferences.notifyCommentMentions} className="mt-1" />
+            <span><span className="font-medium">Mentions</span><span className="block text-xs text-muted">Notify me when someone mentions me in a discussion.</span></span>
+          </label>
+          <label className="flex items-start gap-3 text-sm text-foreground">
+            <input type="checkbox" name="notifyInputRequestStatusUpdates" defaultChecked={preferences.notifyInputRequestStatusUpdates} className="mt-1" />
+            <span><span className="font-medium">Request-for-Input updates</span><span className="block text-xs text-muted">Notify me when a request I created is answered or cancelled.</span></span>
+          </label>
+        </div>
+        <p className="mt-4 text-xs text-muted">Assigned work, deadlines, and new Requests for Input remain enabled because they signal operational work.</p>
+      </section>
       <button type="submit" disabled={pending} className="mt-5 h-9 bg-accent px-3 text-sm font-medium text-on-accent disabled:cursor-not-allowed disabled:opacity-60">
         {pending ? "Saving..." : "Save"}
       </button>
