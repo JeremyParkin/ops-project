@@ -29,8 +29,18 @@ export async function proxy(request: NextRequest) {
   // /sign-in, an authenticated visitor must not be bounced away from it.
   const isSignInRoute = pathname === "/sign-in";
   const isAcceptInvitationRoute = pathname === "/accept-invitation";
+  // Password recovery is the same shape: /forgot-password and
+  // /reset-password must work for a signed-out visitor (the common case)
+  // and are harmless to also allow signed in (a signed-in user may still
+  // want to reset their password). /auth/confirm is the PKCE code-exchange
+  // route the emailed link redirects through *before* any recovery session
+  // cookie exists -- without this exclusion this proxy would bounce that
+  // request to /sign-in before the route handler ever got to run the
+  // exchange.
+  const isPasswordRecoveryRoute =
+    pathname === "/forgot-password" || pathname === "/reset-password" || pathname === "/auth/confirm";
 
-  if (!claims && !isSignInRoute && !isAcceptInvitationRoute) {
+  if (!claims && !isSignInRoute && !isAcceptInvitationRoute && !isPasswordRecoveryRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     return NextResponse.redirect(url);

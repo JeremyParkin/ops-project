@@ -215,3 +215,9 @@ body {
   background: #8a5e1e;
   color: #f4f1ea;
 }
+
+.auth-form a {
+  color: #8a5e1e;
+  text-decoration: underline;
+  text-align: center;
+}

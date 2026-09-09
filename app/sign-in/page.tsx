@@ -1,43 +1,23 @@
 import { redirect } from "next/navigation";
 
 import { getCurrentUser } from "@/lib/auth/workspace";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { PASSWORD_RESET_SUCCESS_PARAM } from "@/lib/auth/password-recovery";
+import { SignInForm } from "@/app/components/sign-in-form";
 
-export default async function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await getCurrentUser();
   if (user) redirect("/");
 
-  async function signIn(formData: FormData) {
-    "use server";
-
-    const email = String(formData.get("email") ?? "").trim();
-    const password = String(formData.get("password") ?? "");
-    const supabase = await createServerSupabaseClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) redirect("/sign-in?error=invalid-credentials");
-    redirect("/");
-  }
+  const params = await searchParams;
+  const passwordResetSuccess = params[PASSWORD_RESET_SUCCESS_PARAM] === "1";
 
   return (
     <main className="auth-page">
-      <form action={signIn} className="auth-form">
-        <img
-          src="/branding/kinema-L3-black-text.svg"
-          alt="Kinema"
-          className="h-16 w-auto self-center"
-        />
-        <h1>Sign in</h1>
-        <label>
-          Email
-          <input name="email" type="email" autoComplete="email" required />
-        </label>
-        <label>
-          Password
-          <input name="password" type="password" autoComplete="current-password" required />
-        </label>
-        <button type="submit">Sign in</button>
-      </form>
+      <SignInForm passwordResetSuccess={passwordResetSuccess} />
     </main>
   );
 }
