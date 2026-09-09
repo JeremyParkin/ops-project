@@ -8,7 +8,9 @@ import {
   createEntityRecord,
   createSupabaseTestClient,
   createTestRun,
+  deleteE2eUsers,
   DEMO_WORKSPACE_ID,
+  getE2eWorkspaceAdministratorRoleId,
   type TestRun,
 } from "./helpers/supabase-test-data";
 import { loadE2eEnv, requireE2eEnv } from "./helpers/env";
@@ -16,6 +18,7 @@ import { loadE2eEnv, requireE2eEnv } from "./helpers/env";
 test.describe.configure({ mode: "serial" });
 
 const runs: TestRun[] = [];
+const createdUserIds: string[] = [];
 const E2E_RUNNER_EMAIL = "e2e-runner@ops-project.test";
 const E2E_RUNNER_PASSWORD = "E2E-runner-password-2026";
 
@@ -179,9 +182,102 @@ function localParts(timestamp: string, timeZone: string) {
   );
 }
 
+// Mirrors notification-commit.test.ts's createTestMember/createTemplateWith
+// AssignedStep/startRun (RPC-level due-soon/overdue coverage already lives
+// there) -- trimmed to what a scheduler-route-level test needs: a single
+// assigned human_task step with a due rule, no signed-in client required
+// since nothing here acts as the assignee.
+async function createDueRuleFixture({
+  run,
+  dueRule,
+}: {
+  run: TestRun;
+  dueRule: { amount: number; unit: "hours" | "days" };
+}) {
+  const admin = createSupabaseTestClient();
+  const email = `e2e-duesoon-${randomUUID()}@example.test`;
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password: `E2E-duesoon-${randomUUID()}!`,
+    email_confirm: true,
+  });
+  if (error || !data.user) throw new Error(error?.message ?? "Unable to create assignee.");
+  createdUserIds.push(data.user.id);
+
+  const roleId = await getE2eWorkspaceAdministratorRoleId(admin, DEMO_WORKSPACE_ID);
+  const { error: membershipError } = await admin
+    .from("workspace_memberships")
+    .insert({ workspace_id: DEMO_WORKSPACE_ID, user_id: data.user.id, role_id: roleId });
+  if (membershipError) throw new Error(membershipError.message);
+
+  const entity = await createEntity(admin, run, "Deadline case", [
+    { slug: "name", name: "Name", type: "text", required: true },
+  ]);
+  const recordId = await createEntityRecord({
+    entity,
+    valuesBySlug: { name: `${run.label} deadline record` },
+  });
+  const templateId = randomUUID();
+  const nodeId = randomUUID();
+
+  const { error: templateError } = await admin.from("process_templates").insert({
+    id: templateId,
+    workspace_id: DEMO_WORKSPACE_ID,
+    name: `${run.label} deadline template`,
+    applies_to_entity_type_id: entity.id,
+  });
+  if (templateError) throw new Error(templateError.message);
+
+  const { error: nodeError } = await admin.from("process_nodes").insert({
+    id: nodeId,
+    workspace_id: DEMO_WORKSPACE_ID,
+    process_template_id: templateId,
+    node_type: "human_task",
+    name: "Deadline step",
+    position: 1,
+    assignee_user_id: data.user.id,
+    config: { due_rule: dueRule },
+  });
+  if (nodeError) throw new Error(nodeError.message);
+
+  const admin2 = createSupabaseTestClient();
+  const { data: runId, error: startError } = await admin2.rpc("start_process_run_authorized", {
+    p_workspace_id: DEMO_WORKSPACE_ID,
+    p_process_template_id: templateId,
+    p_origin_entity_type_id: entity.id,
+    p_origin_record_id: recordId,
+  });
+  if (startError || typeof runId !== "string") {
+    throw new Error(startError?.message ?? "Unable to start deadline run");
+  }
+
+  const { data: stepRow, error: stepError } = await admin2
+    .from("process_step_runs")
+    .select("id")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("process_run_id", runId)
+    .single<{ id: string }>();
+  if (stepError || !stepRow) throw new Error(stepError?.message ?? "Unable to load deadline step");
+
+  return { stepRunId: stepRow.id };
+}
+
+async function notificationsForStep(stepRunId: string, eventType: "step_due_soon" | "step_overdue") {
+  const admin = createSupabaseTestClient();
+  const { data, error } = await admin
+    .from("notifications")
+    .select("id")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("process_step_run_id", stepRunId)
+    .eq("event_type", eventType);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 test.beforeAll(async () => cleanupStaleE2eData());
 test.afterAll(async () => {
   for (const run of runs) await cleanupE2eRun(run);
+  if (createdUserIds.length > 0) await deleteE2eUsers(createdUserIds);
 });
 
 test("snapshots duration and calendar wait rules, with no premature pending resume time", async () => {
@@ -303,4 +399,66 @@ test("waits preserve branch tokens and resolve their join only after sibling app
   const after = await stepsForRun(runId);
   expect(after.find((step) => step.source_node_id === fixture.waitNodeId)?.status).toBe("completed");
   expect(after.find((step) => step.source_node_id === fixture.nextNodeId)?.status).toBe("active");
+});
+
+// The RPC-level correctness of due-soon/overdue generation (window
+// boundary, dedup key shape, authority) is already covered by
+// notification-commit.test.ts. What was missing -- and what this proves --
+// is that invoking the actual scheduler route (not just the bare RPC) now
+// produces those notifications, without disturbing the route's other
+// unrelated maintenance work or duplicating on rerun.
+test("scheduler route now generates due-soon and overdue notifications, leaves non-qualifying steps alone, and does not duplicate on rerun", async ({
+  request,
+}) => {
+  loadE2eEnv();
+  const secret = process.env.PROCESS_WAIT_SCHEDULER_SECRET;
+  expect(secret).toBeTruthy();
+
+  const dueSoon = await createDueRuleFixture({
+    run: createScenarioRun(),
+    dueRule: { amount: 1, unit: "hours" },
+  });
+  const notDueSoon = await createDueRuleFixture({
+    run: createScenarioRun(),
+    dueRule: { amount: 30, unit: "days" },
+  });
+  const overdue = await createDueRuleFixture({
+    run: createScenarioRun(),
+    dueRule: { amount: 1, unit: "hours" },
+  });
+  const admin = createSupabaseTestClient();
+  const pastDue = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const { error: backdateError } = await admin
+    .from("process_step_runs")
+    .update({ due_at: pastDue })
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("id", overdue.stepRunId);
+  expect(backdateError).toBeNull();
+
+  const first = await request.post("/api/internal/process-waits", {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  expect(first.ok()).toBeTruthy();
+  const firstBody = await first.json();
+  expect(firstBody.result.dueSoonNotifications.error).toBeUndefined();
+  expect(firstBody.result.overdueNotifications.error).toBeUndefined();
+  expect(firstBody.result.dueSoonNotifications.created).toBeGreaterThanOrEqual(1);
+  expect(firstBody.result.overdueNotifications.created).toBeGreaterThanOrEqual(1);
+  // Unrelated maintenance concerns still report their normal shape --
+  // proves the new calls didn't replace or crowd out the existing result.
+  expect(typeof firstBody.result.resumed).toBe("number");
+  expect(typeof firstBody.result.conditions.processed).toBe("number");
+  expect(typeof firstBody.result.recurrence.started).toBe("number");
+
+  expect(await notificationsForStep(dueSoon.stepRunId, "step_due_soon")).toHaveLength(1);
+  expect(await notificationsForStep(notDueSoon.stepRunId, "step_due_soon")).toHaveLength(0);
+  expect(await notificationsForStep(overdue.stepRunId, "step_overdue")).toHaveLength(1);
+
+  const second = await request.post("/api/internal/process-waits", {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  expect(second.ok()).toBeTruthy();
+
+  expect(await notificationsForStep(dueSoon.stepRunId, "step_due_soon")).toHaveLength(1);
+  expect(await notificationsForStep(overdue.stepRunId, "step_overdue")).toHaveLength(1);
 });
