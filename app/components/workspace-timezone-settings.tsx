@@ -28,6 +28,18 @@ const initialState: WorkspaceSettingsActionState = { success: false, message: ""
 
 export function WorkspaceTimezoneSettings({ currentTimezone }: { currentTimezone: string }) {
   const [state, formAction, pending] = useActionState(setWorkspaceTimezoneAction, initialState);
+  // A `<select>` always shows every option on open, regardless of the
+  // current value -- unlike the previous `<input list>`/`<datalist>`
+  // combobox, whose suggestions were filtered against the field's existing
+  // text. Every workspace defaults to "UTC", so that filtering silently hid
+  // every other option the moment a user opened the control (found via real
+  // hosted dogfood, not a hypothetical). Defensively including the current
+  // value here (if a workspace was ever set to something outside this
+  // curated list some other way) means switching to a constrained <select>
+  // can never silently misrepresent an already-stored valid timezone.
+  const timezoneOptions = COMMON_TIMEZONES.includes(currentTimezone)
+    ? COMMON_TIMEZONES
+    : [currentTimezone, ...COMMON_TIMEZONES];
 
   return (
     <section className="mx-auto w-full max-w-6xl border border-grit bg-paper p-5">
@@ -38,18 +50,17 @@ export function WorkspaceTimezoneSettings({ currentTimezone }: { currentTimezone
       <form action={formAction} className="mt-4 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-sm text-graphite">
           Timezone
-          <input
-            type="text"
+          <select
             name="timezone"
-            list="workspace-timezone-options"
             defaultValue={currentTimezone}
             className="h-9 w-72 border border-grit bg-white px-2 text-sm text-graphite"
-          />
-          <datalist id="workspace-timezone-options">
-            {COMMON_TIMEZONES.map((zone) => (
-              <option key={zone} value={zone} />
+          >
+            {timezoneOptions.map((zone) => (
+              <option key={zone} value={zone}>
+                {zone}
+              </option>
             ))}
-          </datalist>
+          </select>
         </label>
         <button
           type="submit"
