@@ -258,5 +258,19 @@ If a member-reference field is introduced, separately decide whether and how it 
 Additional product evidence:
 Jeremy compared this to Salesforce-style record relationships: an Account can have an internal Account Owner who is a Salesforce user, while also relating to external Contact records and potentially additional internal team members in other roles. Kinema likely needs the same conceptual separation. Internal workspace-member references should be available as configurable fields alongside ordinary business-object Relations, with multiple independently named member fields possible on one EntityType (for example Owner, Account Manager, Reviewer, or Internal Team). External/business participants such as client contacts should remain ordinary relations to configurable business objects rather than being conflated with workspace identities.
 
+Current product direction from dogfood:
+Treat this as a strong candidate for a core field primitive rather than as a magical reserved ownership concept. The likely abstraction is a configurable `Workspace Member` reference field type that can be added to any metadata-defined EntityType, alongside Text, Number, Date, Boolean, Choice, and Relation. The builder chooses the field name and therefore its business meaning; Kinema should not reserve or special-case `Owner`.
+
+Examples:
+- Owner — Workspace Member
+- Account Manager — Workspace Member
+- Reviewer — Workspace Member
+- Responsible Analyst — Workspace Member
+- Internal Sponsor — Workspace Member
+
+The field should reference stable same-workspace member identity, not copy names/emails as strings, and should support multiple independently named member-reference fields on the same EntityType. Evaluate single-member vs multi-member cardinality as part of the eventual design.
+
+Keep later operational semantics explicit and separately configured. Merely adding a Workspace Member field must not automatically mean the record appears in My Work, changes record permissions, confers process authority, or triggers notifications. Those behaviors can be layered deliberately later if justified.
+
 Status:
 Open
