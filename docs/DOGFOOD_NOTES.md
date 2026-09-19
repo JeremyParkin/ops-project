@@ -232,24 +232,28 @@ Open
 ### [2026-09-19] Builders cannot define a user-assignment field while modeling ordinary objects
 
 Context:
-Jeremy was designing the first Household objects and wanted Household Task to carry an owner/assignee tied to an actual workspace user.
+Jeremy was designing the first Household objects and wanted Household Task to carry an owner/assignee tied to an actual workspace user. This felt especially confusing because Kinema has previously supported visible user assignment in dogfood.
 
 What I was trying to do:
-Add a field to a configurable business object that references a real workspace member, so a Task can be assigned to Jeremy, Natalie, or another user.
+Add a field to a configurable business object that references a real workspace member, so a Task record can be assigned to Jeremy, Natalie, or another user.
 
 What happened:
-The generic field model exposes business-object Relation fields, but there is no field type that directly references workspace members/users. A Relation can only point to an existing EntityType, which makes the obvious "assign this Task to a user" modeling need unavailable during schema setup.
+The generic field model exposes business-object Relation fields, but there is no field type that directly references workspace members/users. A Relation can only point to an existing EntityType.
+
+Current architecture confirms that user assignment already exists elsewhere: Process Template human-task/approval nodes may carry a fixed `assigneeUserId` tied structurally to a same-workspace membership, and resulting StepRuns feed My Work. That is Process work assignment, not a generic EntityRecord field. Kinema also supports an optional configurable Person EntityType linked explicitly to workspace-member identity, but ordinary business-object relations target Person records rather than workspace memberships directly.
 
 Why it matters:
-Assignment to a person is a basic expectation in many operational objects. Requiring builders to model around the absence of a user/member reference feels counterintuitive, especially before any Person business object exists. A plain Choice field with user names would be static, would not preserve identity, and would not integrate naturally with user-based operational features.
+From a builder's perspective, Kinema visibly supports "assigned to a user" in one part of the product but offers no equivalent field while modeling an ordinary Task record. That makes it difficult to know whether the capability is missing or merely configured somewhere non-obvious. A plain Choice field with user names would be static, would not preserve identity, and would not naturally integrate with user-based operational features.
 
 Initial classification:
-Missing primitive / UX friction
+Missing primitive / UX and conceptual consistency issue
 
 Possible direction:
-Investigate whether Kinema needs a first-class workspace-member reference field (or similarly bounded identity-reference primitive) for metadata-defined business objects. Do not assume the right answer is to auto-create a default Users EntityType: the existing architecture intentionally keeps authentication/workspace membership separate from configurable business data, and Person EntityTypes are optional business records linked explicitly to workspace identities. Any solution should preserve that boundary and stable user identity while making ordinary "Owner", "Assignee", or "Requested by" fields easy to configure.
+First investigate the intended product distinction between record ownership/assignment and Process step assignment, and make that distinction understandable in the builder experience. Evaluate whether Kinema needs a first-class workspace-member reference field (or similarly bounded identity-reference primitive) for metadata-defined business objects.
 
-Also evaluate how such a field should relate to existing user-keyed features such as Process step assignment and My Work, without silently coupling ordinary record fields to process authority or inventing a broad ownership/permission model.
+Do not assume the answer is to auto-create a default Users EntityType: the existing architecture intentionally separates authentication/workspace membership from configurable business data, and Person EntityTypes are optional business records linked explicitly to workspace identities. Any solution should preserve that boundary and stable identity.
+
+If a member-reference field is introduced, separately decide whether and how it can drive My Work, notifications, dynamic Process assignment, filtering, or permissions. Do not silently make an ordinary record field confer process authority or row-level ownership semantics.
 
 Status:
 Open
