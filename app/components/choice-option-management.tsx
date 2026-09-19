@@ -141,7 +141,7 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
           name="optionLabel"
           key={state.success ? "reset" : "value"}
           defaultValue={state.success ? "" : state.values.label}
-          className="mt-1 h-8 border border-grit px-2 text-sm text-graphite"
+          className="mt-1 h-8 border border-grit bg-white px-2 text-sm text-graphite"
           placeholder="Label"
         />
         <FieldError message={state.errors.optionLabel} />

@@ -625,53 +625,21 @@ export default async function EntityPage({
           </CollapsibleSection>
         ) : null}
         {isManaging && !isArchivedEntity ? (
-          <>
-            <FieldManagementList
-              workspaceId={context.workspaceId}
-              entityTypeId={entityType.id}
-              fields={fieldManagementContext.fields}
-              entityNameById={entityNameById}
-              workflowReferenceCountByFieldId={workflowReferenceCountByFieldId}
-              viewReferenceCountByFieldId={viewReferenceCountByFieldId}
-              choiceOptionsByFieldId={choiceOptionsByFieldId}
-              addFieldForm={
-                <FieldCreateForm
-                  entityTypes={activeEntityTypes}
-                  addFieldDefinitionAction={addEntityField}
-                />
-              }
-            />
-            {/* Both archive-visibility toggles grouped in one place while
-                managing -- previously "Show archived fields" sat here and
-                "Show archived records" sat below the entire records table,
-                reading as unrelated controls despite both being
-                archive-visibility toggles for this same object (dogfood).
-                Each link's text still names exactly what it shows/hides. */}
-            <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-1">
-              <Link
-                href={
-                  showArchivedFields
-                    ? hideArchivedFieldsHref
-                    : showArchivedFieldsHref
-                }
-                className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
-              >
-                {showArchivedFields
-                  ? "Hide archived fields"
-                  : "Show archived fields"}
-              </Link>
-              <Link
-                href={
-                  showArchivedRecords
-                    ? hideArchivedRecordsHref
-                    : showArchivedRecordsHref
-                }
-                className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
-              >
-                {showArchivedRecords ? "Hide archived records" : "Show archived records"}
-              </Link>
-            </div>
-          </>
+          <FieldManagementList
+            workspaceId={context.workspaceId}
+            entityTypeId={entityType.id}
+            fields={fieldManagementContext.fields}
+            entityNameById={entityNameById}
+            workflowReferenceCountByFieldId={workflowReferenceCountByFieldId}
+            viewReferenceCountByFieldId={viewReferenceCountByFieldId}
+            choiceOptionsByFieldId={choiceOptionsByFieldId}
+            addFieldForm={
+              <FieldCreateForm
+                entityTypes={activeEntityTypes}
+                addFieldDefinitionAction={addEntityField}
+              />
+            }
+          />
         ) : null}
         {!isArchivedEntity && !isManaging ? (
           <EntityViewsPanel
@@ -744,7 +712,38 @@ export default async function EntityPage({
           sortPositionByFieldId={sortPositionByFieldId}
           sortFieldCount={effectiveSorts.length}
         />
-        {!isManaging ? (
+        {isManaging && !isArchivedEntity ? (
+          // Both archive-visibility toggles grouped immediately below the
+          // field-preview/table block they affect, rather than "Show
+          // archived fields" sitting up by Manage Fields while "Show
+          // archived records" sat below the table (dogfood). Each link's
+          // text still names exactly what it shows/hides; hrefs/behavior
+          // are unchanged from before this relocation.
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-1">
+            <Link
+              href={
+                showArchivedFields
+                  ? hideArchivedFieldsHref
+                  : showArchivedFieldsHref
+              }
+              className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+            >
+              {showArchivedFields
+                ? "Hide archived fields"
+                : "Show archived fields"}
+            </Link>
+            <Link
+              href={
+                showArchivedRecords
+                  ? hideArchivedRecordsHref
+                  : showArchivedRecordsHref
+              }
+              className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+            >
+              {showArchivedRecords ? "Hide archived records" : "Show archived records"}
+            </Link>
+          </div>
+        ) : !isManaging ? (
           <div className="mx-auto w-full max-w-6xl">
             <Link
               href={

@@ -281,18 +281,36 @@ export function AppHeader({
           <NavMenu
             key={`account-${pathname}`}
             label={
-              <span className="max-w-[3.5rem] truncate sm:max-w-[6rem] md:max-w-[9rem] lg:max-w-[14rem]">
-                {workspaceName || "Account"}
-              </span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 20c0-4 3.5-6 8-6s8 2 8 6" />
+              </svg>
             }
-            triggerAriaLabel="Account menu"
+            triggerAriaLabel={`${workspaceName || "Account"}, account menu`}
+            showCaret={false}
             align="right"
-            triggerClassName="flex min-w-0 items-center gap-1 px-2 py-2 text-sm font-medium text-grit-light hover:bg-slab hover:text-chalk sm:px-3"
+            triggerClassName="flex items-center px-2 py-2 text-sm font-medium text-grit-light hover:bg-slab hover:text-chalk sm:px-3"
           >
-            <MenuLabel>{userEmail}</MenuLabel>
+            {/* Workspace/environment name is not headline navigation
+                context -- it lives here, inside the menu, rather than as
+                persistent header text (dogfood direction after ab6629c). */}
+            <div className="px-4 py-2">
+              <div className="text-sm font-medium text-chalk">{workspaceName || "Account"}</div>
+              <div className="mt-0.5 text-xs text-grit-light">{userEmail}</div>
+            </div>
+            <MenuDivider />
             {memberships.length > 1 ? (
               <>
-                <MenuDivider />
                 <MenuLabel>Switch workspace</MenuLabel>
                 {memberships.map((membership) => (
                   <form key={membership.workspaceId} action={switchActiveWorkspaceAction}>
@@ -307,9 +325,9 @@ export function AppHeader({
                     </button>
                   </form>
                 ))}
+                <MenuDivider />
               </>
             ) : null}
-            <MenuDivider />
             <MenuLink href="/settings/personal">Personal settings</MenuLink>
             <form action={signOutAction}>
               <button
