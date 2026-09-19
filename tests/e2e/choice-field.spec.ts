@@ -195,8 +195,64 @@ test("builder creates a Choice field and configures options through the real UI"
   // A successful archive immediately swaps the row to its archived-only
   // branch (a Restore button, no editable label input) -- that branch swap
   // is itself the confirmation; the "Option archived." status text is
-  // replaced by it before it would ever become visible.
+  // replaced by it before it would ever become visible. Archived options
+  // are hidden behind "Show archived options" by default, so open it.
+  await fieldRow.getByText("Show archived options", { exact: false }).click();
   await expectAfterMutation(fieldRow.getByRole("button", { name: "Restore" }));
+});
+
+test("archived Choice options are hidden behind Show archived options, and support Restore and Permanent delete", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const admin = createSupabaseTestClient();
+  const entity = await createEntity(admin, run, "Ticket", [
+    { slug: "title", name: "Title", type: "text", required: true },
+  ]);
+  const field = await addChoiceField({ entity, slug: "priority", name: "Priority" });
+  const mistakenId = await addChoiceOption({ fieldId: field.id, label: "Mistaken", color: "gray", position: 1 });
+
+  await gotoEntity(page, entity, true);
+
+  const fieldRow = page
+    .locator("form")
+    .filter({ has: page.locator(`input[name="fieldName"][value="Priority"]`) })
+    .locator("..");
+  const showArchivedToggle = fieldRow.getByText("Show archived options", { exact: false });
+
+  // No archived options yet -- the disclosure doesn't render at all.
+  await expect(showArchivedToggle).toHaveCount(0);
+
+  const mistakenRow = fieldRow.getByText("Mistaken", { exact: true }).locator("..").locator("..");
+  await mistakenRow.getByRole("button", { name: "Archive" }).click();
+  await expectAfterMutation(showArchivedToggle);
+
+  // Hidden by default: the Restore/Permanent delete controls exist but are
+  // not visible until the disclosure is opened.
+  await expect(fieldRow.getByRole("button", { name: "Restore" })).not.toBeVisible();
+  await showArchivedToggle.click();
+  await expect(fieldRow.getByRole("button", { name: "Restore" })).toBeVisible();
+  await expect(fieldRow.getByRole("button", { name: "Permanent delete" })).toBeVisible();
+
+  // Restore returns it to the active (collapsed-by-default) list.
+  await fieldRow.getByRole("button", { name: "Restore" }).click();
+  await expectAfterMutation(fieldRow.getByRole("button", { name: "Edit" }));
+  await expect(showArchivedToggle).toHaveCount(0);
+
+  // Archive again, then permanently delete -- this option has never been
+  // referenced by a record, a saved view, or Quality Review, so it
+  // succeeds outright.
+  await mistakenRow.getByRole("button", { name: "Archive" }).click();
+  await expectAfterMutation(showArchivedToggle);
+  await showArchivedToggle.click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await fieldRow.getByRole("button", { name: "Permanent delete" }).click();
+  await expectAfterMutation(page.getByText("Option permanently deleted."));
+  await expect(fieldRow.getByText("Mistaken", { exact: true })).toHaveCount(0);
+
+  const admin2 = createSupabaseTestClient();
+  const { data: remaining } = await admin2.from("field_choice_options").select("id").eq("id", mistakenId);
+  expect(remaining).toEqual([]);
 });
 
 test("record create/edit/inline-edit through the Choice picker, with colored pill rendering", async ({

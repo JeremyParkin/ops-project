@@ -100,32 +100,21 @@ export async function createEntityView({
   isDefault,
 }: ViewMutationInput) {
   const supabase = await createServerSupabaseClient();
-  const { data: views, error: viewsError } = await supabase
-    .from("entity_views")
-    .select("position")
-    .eq("workspace_id", workspaceId)
-    .eq("entity_type_id", entityTypeId)
-    .returns<Array<{ position: number }>>();
-
-  if (viewsError) {
-    throw new Error(`Unable to inspect entity views: ${viewsError.message}`);
-  }
-
-  const nextPosition =
-    views.reduce((max, view) => Math.max(max, view.position), 0) + 1;
+  // Locked + validated at the database boundary (create_entity_view_
+  // authorized, migration 0137): takes the same entity-type advisory lock
+  // record writes and Choice-option deletion use, and confirms every
+  // Choice filter value still references an existing option before
+  // writing -- closing the race where a concurrent option delete could
+  // otherwise leave a dangling reference in a brand-new view.
   const { data, error } = await supabase
-    .from("entity_views")
-    .insert({
-      workspace_id: workspaceId,
-      entity_type_id: entityTypeId,
-      name,
-      position: nextPosition,
-      is_default: false,
-      filters,
-      sorts,
-      column_field_definition_ids: columnFieldDefinitionIds,
+    .rpc("create_entity_view_authorized", {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_name: name,
+      p_filters: filters,
+      p_sorts: sorts,
+      p_column_field_definition_ids: columnFieldDefinitionIds,
     })
-    .select("*")
     .single<EntityViewRow>();
 
   if (error) {
@@ -161,19 +150,17 @@ export async function updateEntityView({
   }
 
   const supabase = await createServerSupabaseClient();
+  // Same locking/validation guarantee as create, see above.
   const { data, error } = await supabase
-    .from("entity_views")
-    .update({
-      name,
-      filters,
-      sorts,
-      column_field_definition_ids: columnFieldDefinitionIds,
-      updated_at: new Date().toISOString(),
+    .rpc("update_entity_view_authorized", {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_view_id: viewId,
+      p_name: name,
+      p_filters: filters,
+      p_sorts: sorts,
+      p_column_field_definition_ids: columnFieldDefinitionIds,
     })
-    .eq("workspace_id", workspaceId)
-    .eq("entity_type_id", entityTypeId)
-    .eq("id", viewId)
-    .select("*")
     .single<EntityViewRow>();
 
   if (error) {

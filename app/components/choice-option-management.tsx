@@ -26,6 +26,7 @@ export type ChoiceOptionRowActions = {
   updateAction: OptionFormAction;
   archiveAction?: LifecycleAction;
   restoreAction?: LifecycleAction;
+  deleteAction?: LifecycleAction;
   moveUpAction?: LifecycleAction;
   moveDownAction?: LifecycleAction;
 };
@@ -177,7 +178,7 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
 }
 
 function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
-  const { option, updateAction, archiveAction, restoreAction, moveUpAction, moveDownAction } = row;
+  const { option, updateAction, archiveAction, restoreAction, deleteAction, moveUpAction, moveDownAction } = row;
   const [state, formAction, pending] = useActionState(
     updateAction,
     createInitialChoiceOptionFormState({ label: option.label, color: option.color ?? "" }),
@@ -188,6 +189,10 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
   );
   const [restoreState, restoreFormAction, restorePending] = useActionState(
     restoreAction ?? (async (s: FieldLifecycleActionState) => s),
+    { success: false, message: "" },
+  );
+  const [deleteState, deleteFormAction, deletePending] = useActionState(
+    deleteAction ?? (async (s: FieldLifecycleActionState) => s),
     { success: false, message: "" },
   );
   const [moveUpState, moveUpFormAction, moveUpPending] = useActionState(
@@ -218,21 +223,50 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
         <span className="text-sm text-stone line-through decoration-grit">
           {option.label}
         </span>
-        {restoreAction ? (
-          <form action={restoreFormAction}>
-            <button
-              type="submit"
-              disabled={restorePending}
-              className="h-8 border border-grit bg-white px-3 text-xs font-medium text-stone disabled:text-grit"
+        <div className="flex flex-wrap items-center gap-2">
+          {restoreAction ? (
+            <form action={restoreFormAction}>
+              <button
+                type="submit"
+                disabled={restorePending}
+                className="h-8 border border-grit bg-white px-3 text-xs font-medium text-stone disabled:text-grit"
+              >
+                {restorePending ? "Restoring..." : "Restore"}
+              </button>
+            </form>
+          ) : null}
+          {deleteAction ? (
+            <form
+              action={deleteFormAction}
+              onSubmit={(event) => {
+                if (
+                  !window.confirm(
+                    `Permanently delete "${option.label}"? This cannot be undone, and only succeeds if this option has never been used on a record, a saved view filter, or a Quality Review status designation.`,
+                  )
+                ) {
+                  event.preventDefault();
+                }
+              }}
             >
-              {restorePending ? "Restoring..." : "Restore"}
-            </button>
-            {restoreState.message ? (
-              <span className={`ml-2 text-xs ${restoreState.success ? "text-status-sage" : "text-status-oxide"}`}>
-                {restoreState.message}
-              </span>
-            ) : null}
-          </form>
+              <button
+                type="submit"
+                disabled={deletePending}
+                className="h-8 border border-status-oxide bg-white px-3 text-xs font-medium text-status-oxide disabled:cursor-not-allowed disabled:border-grit disabled:text-grit"
+              >
+                {deletePending ? "Deleting..." : "Permanent delete"}
+              </button>
+            </form>
+          ) : null}
+        </div>
+        {restoreState.message ? (
+          <p className={`w-full text-xs ${restoreState.success ? "text-status-sage" : "text-status-oxide"}`}>
+            {restoreState.message}
+          </p>
+        ) : null}
+        {deleteState.message ? (
+          <p className={`w-full text-xs ${deleteState.success ? "text-status-sage" : "text-status-oxide"}`}>
+            {deleteState.message}
+          </p>
         ) : null}
       </div>
     );
@@ -355,19 +389,46 @@ export function ChoiceOptionManagement({
   addOptionAction: OptionFormAction;
 }) {
   const orderedRows = [...rows].sort((left, right) => left.option.position - right.option.position);
+  // Archived options are hidden behind a disclosure by default, rather
+  // than interleaved with active ones (dogfood): the active set is what
+  // builders scan and maintain day to day, and an inactive option mixed
+  // in with Restore/Archive controls made that harder to read. A native
+  // <details> is safe here -- unlike the per-option row, its own summary
+  // has no interactive controls; Restore/Permanent delete live in the
+  // body, one level below the toggle.
+  const activeRows = orderedRows.filter((row) => !row.option.archivedAt);
+  const archivedRows = orderedRows.filter((row) => row.option.archivedAt);
 
   return (
     <div className="grid gap-2 border-t border-grit pt-3">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-stone">Options</h3>
-      {orderedRows.length === 0 ? (
+      {activeRows.length === 0 ? (
         <p className="text-sm text-stone">No options yet.</p>
       ) : (
         <div className="grid gap-2">
-          {orderedRows.map((row) => (
+          {activeRows.map((row) => (
             <OptionRow key={row.option.id} row={row} />
           ))}
         </div>
       )}
+      {archivedRows.length > 0 ? (
+        <details className="group border border-grit [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-stone hover:bg-chalk">
+            <span>Show archived options ({archivedRows.length})</span>
+            <span
+              aria-hidden="true"
+              className="shrink-0 text-xs text-stone transition-transform group-open:rotate-90"
+            >
+              ▸
+            </span>
+          </summary>
+          <div className="grid gap-2 border-t border-grit p-3">
+            {archivedRows.map((row) => (
+              <OptionRow key={row.option.id} row={row} />
+            ))}
+          </div>
+        </details>
+      ) : null}
       <AddOptionForm addOptionAction={addOptionAction} />
     </div>
   );

@@ -30,6 +30,7 @@ import {
   addChoiceOption,
   archiveChoiceOption,
   choiceOptionExists,
+  deleteChoiceOption,
   listChoiceOptions,
   restoreChoiceOption,
   swapChoiceOptionPositions,
@@ -2041,6 +2042,113 @@ export async function restoreChoiceOptionAction(
   return {
     success: true,
     message: "Option restored.",
+  };
+}
+
+function formatChoiceOptionDeleteBlockMessage({
+  fieldName,
+  optionLabel,
+  recordValueCount,
+  viewReferenceCount,
+  qualityReviewReferenceCount,
+}: {
+  fieldName: string;
+  optionLabel: string;
+  recordValueCount: number;
+  viewReferenceCount: number;
+  qualityReviewReferenceCount: number;
+}) {
+  const reasons: string[] = [];
+
+  if (recordValueCount > 0) {
+    reasons.push(
+      `${recordValueCount} record value${recordValueCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (viewReferenceCount > 0) {
+    reasons.push(
+      `${viewReferenceCount} saved view reference${viewReferenceCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (qualityReviewReferenceCount > 0) {
+    reasons.push("its Quality Review Draft/Finalized designation");
+  }
+
+  return `Cannot permanently delete ${fieldName} → ${optionLabel} because it is referenced by ${reasons.join(", ")}.`;
+}
+
+// Archive-first: this pre-check exists for fast, friendly UX (matching
+// deleteField's identical pattern), not as the only enforcement -- the
+// database itself refuses to permanently delete an option that is not
+// archived, even on a direct authorized-RPC call that bypasses this
+// action entirely (migration 0137).
+export async function deleteChoiceOptionAction(
+  context: UpdateChoiceOptionContext,
+  previousState: FieldLifecycleActionState,
+  formData: FormData,
+): Promise<FieldLifecycleActionState> {
+  void previousState;
+  void formData;
+
+  const editable = await requireEditableChoiceField(context);
+
+  if ("error" in editable) {
+    return { success: false, message: editable.error };
+  }
+
+  const options = await listChoiceOptions({
+    workspaceId: context.workspaceId,
+    fieldDefinitionId: context.fieldDefinitionId,
+  });
+  const option = options.find((candidate) => candidate.id === context.optionId);
+
+  if (!option) {
+    return {
+      success: false,
+      message: "Unable to delete the option. Please try again.",
+    };
+  }
+
+  if (!option.archivedAt) {
+    return {
+      success: false,
+      message: "Archive this option before permanently deleting it.",
+    };
+  }
+
+  try {
+    const result = await deleteChoiceOption({
+      workspaceId: context.workspaceId,
+      fieldDefinitionId: context.fieldDefinitionId,
+      optionId: context.optionId,
+    });
+
+    if (!result.deleted) {
+      return {
+        success: false,
+        message: formatChoiceOptionDeleteBlockMessage({
+          fieldName: editable.field.name,
+          optionLabel: option.label,
+          recordValueCount: result.recordValueCount,
+          viewReferenceCount: result.viewReferenceCount,
+          qualityReviewReferenceCount: result.qualityReviewReferenceCount,
+        }),
+      };
+    }
+  } catch {
+    return {
+      success: false,
+      message: "Unable to delete the option. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Option permanently deleted.",
   };
 }
 

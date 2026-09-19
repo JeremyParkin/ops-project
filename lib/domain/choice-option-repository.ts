@@ -210,6 +210,61 @@ export async function restoreChoiceOption({
   }
 }
 
+export type ChoiceOptionDeleteResult = {
+  deleted: boolean;
+  recordValueCount: number;
+  viewReferenceCount: number;
+  qualityReviewReferenceCount: number;
+};
+
+// Permanent deletion, archive-first: the RPC itself refuses an option
+// that is not already archived (not just this repository/the app action),
+// and refuses one that is still referenced by record values, a saved-view
+// filter, or a Quality Review draft/finalized designation -- returning a
+// truthful count for each rather than a generic rejection.
+export async function deleteChoiceOption({
+  workspaceId,
+  fieldDefinitionId,
+  optionId,
+}: {
+  workspaceId: string;
+  fieldDefinitionId: string;
+  optionId: string;
+}): Promise<ChoiceOptionDeleteResult> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc(
+    "delete_field_choice_option_if_safe_authorized",
+    {
+      p_workspace_id: workspaceId,
+      p_field_definition_id: fieldDefinitionId,
+      p_option_id: optionId,
+    },
+  );
+
+  if (error) {
+    throw new Error(`Unable to delete choice option: ${error.message}`);
+  }
+
+  const resultRows = data as Array<{
+    deleted: boolean;
+    record_value_count: number;
+    view_reference_count: number;
+    quality_review_reference_count: number;
+  }> | null;
+  const result = resultRows?.[0];
+
+  if (!result) {
+    throw new Error("Unable to delete choice option: unexpected RPC response.");
+  }
+
+  return {
+    deleted: result.deleted,
+    recordValueCount: result.record_value_count,
+    viewReferenceCount: result.view_reference_count,
+    qualityReviewReferenceCount: result.quality_review_reference_count,
+  };
+}
+
 export async function swapChoiceOptionPositions({
   workspaceId,
   fieldDefinitionId,

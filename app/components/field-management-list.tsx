@@ -3,6 +3,7 @@ import {
   addChoiceOptionAction,
   archiveChoiceOptionAction,
   archiveField,
+  deleteChoiceOptionAction,
   deleteField,
   moveChoiceOptionAction,
   moveFieldDefinition,
@@ -127,6 +128,14 @@ export function FieldManagementList({
                       }),
                   restoreAction: option.archivedAt
                     ? restoreChoiceOptionAction.bind(null, {
+                        workspaceId,
+                        entityTypeId,
+                        fieldDefinitionId: field.id,
+                        optionId: option.id,
+                      })
+                    : undefined,
+                  deleteAction: option.archivedAt
+                    ? deleteChoiceOptionAction.bind(null, {
                         workspaceId,
                         entityTypeId,
                         fieldDefinitionId: field.id,
