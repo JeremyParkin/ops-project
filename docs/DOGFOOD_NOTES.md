@@ -75,9 +75,11 @@ Initial classification:
 UX friction
 
 Possible direction:
-Keep the add-field action available near the user's current working position. Options could include a sticky Fields toolbar, a persistent/floating Add Field action, or an additional Add Field action at the bottom of the field list.
+Move the primary `+ Add Field` action to the bottom of the current field list, following the same append-at-the-end interaction model now used successfully for Choice `+ Add option`. The builder is most likely to decide they need another field while working at the end of the existing list, so the action should be available at that list terminus rather than requiring a scroll back to the section header.
 
-Avoid introducing multiple competing controls unless testing shows that is clearer than a sticky action.
+Prefer one clear bottom-of-list append action over duplicate top-and-bottom controls, a sticky toolbar, or a floating button unless later testing shows those are necessary. Keep the treatment consistent with `+ Add option` where practical.
+
+Continued hosted dogfood on 2026-09-19 confirmed this remains visible after the Create Object Choice improvements: the top-positioned Add Field control still requires the builder to move away from the current field list to append another field.
 
 Status:
 Open
