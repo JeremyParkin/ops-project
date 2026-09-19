@@ -624,3 +624,24 @@ The Choice Label input now reads as editable in the compact new-option editor.
 
 Status:
 Fixed
+
+### [2026-09-19] Primary gold buttons should keep dark text in light and dark themes
+
+Context:
+Jeremy compared the same primary Business Objects action in light and dark mode during Household dogfood.
+
+What happened:
+Gold/brass primary buttons are used in both themes. Dark text on the gold surface reads more clearly and provides better contrast than switching to light text in dark mode.
+
+Why it matters:
+Primary actions should preserve consistent, accessible contrast across themes. Theme inversion should not automatically invert button text when the brand surface itself remains a bright gold.
+
+Initial classification:
+Accessibility / visual-system consistency
+
+Possible direction:
+Keep dark text on Kinema's gold/brass primary-action buttons in both light and dark themes, provided contrast checks continue to pass for the canonical button background states. Treat the gold surface as a stable brand token with its own foreground token rather than deriving its text color from the surrounding page theme. Verify hover, focus, disabled, and any darker/lighter gold variants separately rather than assuming one foreground works for every state.
+
+Status:
+Open
+
