@@ -307,3 +307,27 @@ Do not make AI a prerequisite for basic usability. Manual configuration should r
 
 Status:
 Open
+
+
+### [2026-09-19] Archived-field and archived-record toggles look visually unfinished
+
+Context:
+Jeremy was reviewing the Household Asset object in the hosted workspace.
+
+What I was trying to do:
+Use the ordinary object-management/table surface and understand the controls for revealing archived fields and records.
+
+What happened:
+The "Show archived fields" and "Show archived records" controls render as plain white horizontal blocks with essentially no internal padding or visible border treatment, leaving the text visually pressed against the edge. They look inconsistent with the otherwise structured panel/table styling around them.
+
+Why it matters:
+This is minor compared with the larger builder-flow issues, but these controls are part of the core schema/record-management surface. Their unfinished visual treatment makes the product feel less polished and can make them read more like stray text on a white strip than deliberate interactive controls.
+
+Initial classification:
+Minor UX / visual polish
+
+Possible direction:
+Give these disclosure/toggle rows consistent container treatment with the rest of the UI: appropriate padding, border/background treatment, hover/focus state, and clear affordance that they are interactive. Prefer reusing an existing disclosure/control primitive if one already exists rather than introducing one-off styling.
+
+Status:
+Open
