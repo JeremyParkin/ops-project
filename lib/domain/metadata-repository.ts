@@ -53,6 +53,10 @@ type CreateEntityTypeWithFieldsInput = {
     type: FieldType;
     relatedEntityTypeId: string;
     required: boolean;
+    choiceOptions?: Array<{
+      label: string;
+      color?: string;
+    }>;
   }>;
 };
 
@@ -223,7 +227,7 @@ function createUniqueFieldSlugs(fields: CreateEntityTypeWithFieldsInput["fields"
     const slug = createUniqueSlug(baseSlug, slugs);
     slugs.add(slug);
 
-    return {
+    const payload = {
       ...field,
       slug,
       key: createFieldKey(),
@@ -231,6 +235,19 @@ function createUniqueFieldSlugs(fields: CreateEntityTypeWithFieldsInput["fields"
       related_entity_type_id:
         field.type === "relation" ? field.relatedEntityTypeId : null,
     };
+
+    if (field.type === "choice") {
+      return {
+        ...payload,
+        choice_options:
+          field.choiceOptions?.map((option) => ({
+            label: option.label,
+            color: option.color ?? null,
+          })) ?? [],
+      };
+    }
+
+    return payload;
   });
 }
 

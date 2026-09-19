@@ -105,6 +105,65 @@ async function createAuthenticatedClient(email: string, password: string) {
   return client;
 }
 
+async function createRelationTargetEntity(workspaceId: string) {
+  const admin = createSupabaseTestClient();
+  const entityTypeId = randomUUID();
+  const fieldDefinitionId = randomUUID();
+  const { error: entityError } = await admin.from("entity_types").insert({
+    id: entityTypeId,
+    workspace_id: workspaceId,
+    name: "Person",
+    slug: `person-${entityTypeId.slice(0, 8)}`,
+  });
+  if (entityError) throw new Error(entityError.message);
+
+  const { error: fieldError } = await admin.from("field_definitions").insert({
+    id: fieldDefinitionId,
+    workspace_id: workspaceId,
+    entity_type_id: entityTypeId,
+    key: `fld_person_name_${entityTypeId.slice(0, 8).replace(/-/g, "_")}`,
+    name: "Name",
+    slug: "name",
+    type: "text",
+    required: true,
+    position: 1,
+  });
+  if (fieldError) throw new Error(fieldError.message);
+
+  const { error: displayFieldError } = await admin
+    .from("entity_types")
+    .update({ display_field_definition_id: fieldDefinitionId })
+    .eq("id", entityTypeId);
+  if (displayFieldError) throw new Error(displayFieldError.message);
+
+  return entityTypeId;
+}
+
+async function openCreateObjectFromScratch(page: Page, workspaceId: string) {
+  await activateWorkspace(page, workspaceId);
+  await page.getByRole("link", { name: "Start from scratch" }).click();
+  await expect(page.getByRole("heading", { name: "Create object" })).toBeVisible();
+}
+
+async function setCreateObjectField(
+  page: Page,
+  rowId: string,
+  {
+    name,
+    type,
+    relatedEntityTypeId,
+  }: { name: string; type: string; relatedEntityTypeId?: string },
+) {
+  await page.locator(`[name="fieldName:${rowId}"]`).fill(name);
+  await page.locator(`[name="fieldType:${rowId}"]`).selectOption(type);
+
+  if (relatedEntityTypeId) {
+    await page
+      .locator(`[name="fieldRelatedEntityTypeId:${rowId}"]`)
+      .selectOption(relatedEntityTypeId);
+  }
+}
+
 test.afterAll(async () => {
   const admin = createSupabaseTestClient();
   if (workspaceIds.length > 0) {
@@ -226,6 +285,168 @@ test("standalone structures omit unavailable relations and custom setup uses the
     .eq("workspace_id", workspaceId);
   expect(error).toBeNull();
   expect(fields?.some((field) => field.type === "relation")).toBe(false);
+});
+
+test("custom object creation supports Choice options without placeholder Text fields", async ({
+  page,
+}) => {
+  const workspaceId = await createWorkspaceForUser(await getRunnerUserId());
+  await openCreateObjectFromScratch(page, workspaceId);
+
+  await expect(page.locator('[name="fieldType:field-1"]')).toContainText("Choice");
+
+  await page.locator('[name="entityName"]').fill("Household Task");
+  await setCreateObjectField(page, "field-1", { name: "Title", type: "text" });
+
+  for (const [index, fieldName] of ["Due date", "Priority", "Effort", "Active"].entries()) {
+    await page.getByRole("button", { name: "Add Field" }).click();
+    await page.locator(`[name="fieldName:field-${index + 2}"]`).fill(fieldName);
+  }
+
+  await page.locator('[name="fieldType:field-2"]').selectOption("date");
+  await page.locator('[name="fieldType:field-3"]').selectOption("choice");
+  await page.getByLabel("Option 1 label").fill("Low");
+  await page.getByLabel("Option 2 label").fill("High");
+  await page.getByRole("button", { name: "Add option" }).click();
+  await page.getByLabel("Option 3 label").fill("Urgent");
+  await page.locator('[name^="choiceOptionColor:field-3"]').nth(2).selectOption("red");
+  await page.locator('[name="fieldType:field-4"]').selectOption("number");
+  await page.locator('[name="fieldType:field-5"]').selectOption("boolean");
+
+  await page.getByRole("button", { name: "Create object" }).click();
+  await expect(page.getByRole("heading", { name: "Household Task", exact: true })).toBeVisible();
+
+  const admin = createSupabaseTestClient();
+  const { data: entities, error: entityError } = await admin
+    .from("entity_types")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("name", "Household Task")
+    .single();
+  expect(entityError).toBeNull();
+
+  const { data: fields, error: fieldError } = await admin
+    .from("field_definitions")
+    .select("id, name, type")
+    .eq("workspace_id", workspaceId)
+    .eq("entity_type_id", entities!.id)
+    .order("position", { ascending: true });
+  expect(fieldError).toBeNull();
+  expect(fields).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: "Title", type: "text" }),
+      expect.objectContaining({ name: "Due date", type: "date" }),
+      expect.objectContaining({ name: "Priority", type: "choice" }),
+      expect.objectContaining({ name: "Effort", type: "number" }),
+      expect.objectContaining({ name: "Active", type: "boolean" }),
+    ]),
+  );
+
+  const priority = fields?.find((field) => field.name === "Priority");
+  expect(priority?.type).toBe("choice");
+  const { data: options, error: optionError } = await admin
+    .from("field_choice_options")
+    .select("label, color, position")
+    .eq("workspace_id", workspaceId)
+    .eq("field_definition_id", priority!.id)
+    .order("position", { ascending: true });
+  expect(optionError).toBeNull();
+  expect(options).toEqual([
+    { label: "Low", color: "gray", position: 1 },
+    { label: "High", color: "gray", position: 2 },
+    { label: "Urgent", color: "red", position: 3 },
+  ]);
+
+  await page.getByRole("link", { name: "Manage", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Entity Settings" })).toBeVisible();
+  const priorityRow = page
+    .locator("form")
+    .filter({ has: page.locator('input[name="fieldName"][value="Priority"]') })
+    .locator("..");
+  await expect(priorityRow.getByText("Low", { exact: true })).toBeVisible();
+  await expect(priorityRow.getByText("High", { exact: true })).toBeVisible();
+  await expect(priorityRow.getByText("Urgent", { exact: true })).toBeVisible();
+});
+
+test("custom object creation preserves Relation field behavior", async ({ page }) => {
+  const workspaceId = await createWorkspaceForUser(await getRunnerUserId());
+  const relatedEntityTypeId = await createRelationTargetEntity(workspaceId);
+
+  await activateWorkspace(page, workspaceId, "Person");
+  await page.goto("/entities/new");
+  await expect(page.getByRole("heading", { name: "Create object" })).toBeVisible();
+  await page.locator('[name="entityName"]').fill("Assignment");
+  await setCreateObjectField(page, "field-1", { name: "Title", type: "text" });
+  await page.getByRole("button", { name: "Add Field" }).click();
+  await setCreateObjectField(page, "field-2", {
+    name: "Assignee",
+    type: "relation",
+    relatedEntityTypeId,
+  });
+
+  await page.getByRole("button", { name: "Create object" }).click();
+  await expect(page.getByRole("heading", { name: "Assignment", exact: true })).toBeVisible();
+
+  const admin = createSupabaseTestClient();
+  const { data: field, error } = await admin
+    .from("field_definitions")
+    .select("type, related_entity_type_id")
+    .eq("workspace_id", workspaceId)
+    .eq("name", "Assignee")
+    .single();
+  expect(error).toBeNull();
+  expect(field).toEqual({
+    type: "relation",
+    related_entity_type_id: relatedEntityTypeId,
+  });
+});
+
+test("custom object creation rejects incomplete and duplicate Choice options truthfully", async ({
+  page,
+}) => {
+  const workspaceId = await createWorkspaceForUser(await getRunnerUserId());
+  await openCreateObjectFromScratch(page, workspaceId);
+
+  await page.locator('[name="entityName"]').fill("Priority Test");
+  await setCreateObjectField(page, "field-1", { name: "Priority", type: "choice" });
+  await page.getByRole("button", { name: "Create object" }).click();
+  await expect(page.getByText("Option label is required.")).toHaveCount(2);
+
+  await page.getByLabel("Option 1 label").fill("Low");
+  await page.getByLabel("Option 2 label").fill("low");
+  await page.getByRole("button", { name: "Create object" }).click();
+  await expect(page.getByText("Option labels must be unique.")).toBeVisible();
+
+  const admin = createSupabaseTestClient();
+  const { data: entities, error } = await admin
+    .from("entity_types")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("name", "Priority Test");
+  expect(error).toBeNull();
+  expect(entities).toHaveLength(0);
+});
+
+test("custom object creation Choice options remain usable at narrow viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  const workspaceId = await createWorkspaceForUser(await getRunnerUserId());
+  await openCreateObjectFromScratch(page, workspaceId);
+
+  await page.locator('[name="entityName"]').fill("Narrow Choice");
+  await setCreateObjectField(page, "field-1", { name: "Status", type: "choice" });
+  await expect(page.getByText("Choice options")).toBeVisible();
+  await page.getByLabel("Option 1 label").fill("Open");
+  await page.getByLabel("Option 2 label").fill("Closed");
+  await page.locator('[name^="choiceOptionColor:field-1"]').first().selectOption("emerald");
+  const choiceEditorFits = await page.getByText("Choice options").locator("..").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= window.innerWidth;
+  });
+  expect(choiceEditorFits).toBe(true);
+  await page.getByRole("button", { name: "Create object" }).click();
+  await expect(page.getByRole("heading", { name: "Narrow Choice", exact: true })).toBeVisible();
 });
 
 test.describe("empty workspace authority boundary", () => {

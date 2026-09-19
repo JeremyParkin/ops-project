@@ -2,10 +2,16 @@
 
 import { useActionState, useState } from "react";
 import type {
+  EntityChoiceOptionFormRow,
   EntityDefinitionFormState,
   EntityFieldFormRow,
 } from "@/lib/domain/entity-definition-validation";
 import { initialEntityDefinitionFormState } from "@/lib/domain/entity-definition-validation";
+import {
+  CHOICE_OPTION_COLORS,
+  CHOICE_OPTION_COLOR_LABELS,
+  CHOICE_OPTION_SWATCH_CLASSES,
+} from "@/lib/domain/choice-colors";
 import type { EntityType, FieldType } from "@/lib/domain/types";
 
 type EntityCreateFormProps = {
@@ -22,7 +28,7 @@ type EntityCreateFormFieldsProps = {
   pending: boolean;
 };
 
-const primitiveFieldTypes: Array<{
+const fieldTypes: Array<{
   label: string;
   value: FieldType;
 }> = [
@@ -31,7 +37,16 @@ const primitiveFieldTypes: Array<{
   { label: "Date", value: "date" },
   { label: "Boolean", value: "boolean" },
   { label: "Relation", value: "relation" },
+  { label: "Choice", value: "choice" },
 ];
+
+function createEmptyChoiceOption(rowId: string): EntityChoiceOptionFormRow {
+  return {
+    rowId,
+    label: "",
+    color: "gray",
+  };
+}
 
 function createEmptyField(rowNumber: number): EntityFieldFormRow {
   return {
@@ -40,7 +55,12 @@ function createEmptyField(rowNumber: number): EntityFieldFormRow {
     type: "text",
     relatedEntityTypeId: "",
     required: false,
+    choiceOptions: [],
   };
+}
+
+function createChoiceOptionRowId() {
+  return `option-${crypto.randomUUID()}`;
 }
 
 function FieldError({ message }: { message?: string }) {
@@ -134,6 +154,13 @@ function EntityCreateFormFields({
           type,
           relatedEntityTypeId:
             type === "relation" ? row.relatedEntityTypeId : "",
+          choiceOptions:
+            type === "choice" && row.choiceOptions.length === 0
+              ? [
+                  createEmptyChoiceOption(createChoiceOptionRowId()),
+                  createEmptyChoiceOption(createChoiceOptionRowId()),
+                ]
+              : row.choiceOptions,
         };
       }),
     );
@@ -149,6 +176,83 @@ function EntityCreateFormFields({
         return {
           ...row,
           relatedEntityTypeId,
+        };
+      }),
+    );
+  }
+
+  function addChoiceOption(fieldRowId: string) {
+    setFieldRows((currentRows) =>
+      currentRows.map((row) => {
+        if (row.rowId !== fieldRowId) {
+          return row;
+        }
+
+        return {
+          ...row,
+          choiceOptions: [
+            ...row.choiceOptions,
+            createEmptyChoiceOption(createChoiceOptionRowId()),
+          ],
+        };
+      }),
+    );
+  }
+
+  function removeChoiceOption(fieldRowId: string, optionRowId: string) {
+    setFieldRows((currentRows) =>
+      currentRows.map((row) => {
+        if (row.rowId !== fieldRowId) {
+          return row;
+        }
+
+        return {
+          ...row,
+          choiceOptions: row.choiceOptions.filter(
+            (option) => option.rowId !== optionRowId,
+          ),
+        };
+      }),
+    );
+  }
+
+  function updateChoiceOptionColor(
+    fieldRowId: string,
+    optionRowId: string,
+    color: string,
+  ) {
+    setFieldRows((currentRows) =>
+      currentRows.map((row) => {
+        if (row.rowId !== fieldRowId) {
+          return row;
+        }
+
+        return {
+          ...row,
+          choiceOptions: row.choiceOptions.map((option) =>
+            option.rowId === optionRowId ? { ...option, color } : option,
+          ),
+        };
+      }),
+    );
+  }
+
+  function updateChoiceOptionLabel(
+    fieldRowId: string,
+    optionRowId: string,
+    label: string,
+  ) {
+    setFieldRows((currentRows) =>
+      currentRows.map((row) => {
+        if (row.rowId !== fieldRowId) {
+          return row;
+        }
+
+        return {
+          ...row,
+          choiceOptions: row.choiceOptions.map((option) =>
+            option.rowId === optionRowId ? { ...option, label } : option,
+          ),
         };
       }),
     );
@@ -251,7 +355,7 @@ function EntityCreateFormFields({
                     }
                     className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
                   >
-                    {primitiveFieldTypes.map((fieldType) => (
+                    {fieldTypes.map((fieldType) => (
                       <option key={fieldType.value} value={fieldType.value}>
                         {fieldType.label}
                       </option>
@@ -331,6 +435,123 @@ function EntityCreateFormFields({
                     Remove
                   </button>
                 </div>
+
+                {field.type === "choice" ? (
+                  <div className="md:col-span-5">
+                    <div className="border border-slate-200 bg-slate-50 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-slate-800">
+                          Choice options
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => addChoiceOption(field.rowId)}
+                          className="inline-flex h-8 items-center justify-center border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                        >
+                          Add option
+                        </button>
+                      </div>
+                      <FieldError
+                        message={state.errors[`choiceOptions:${field.rowId}`]}
+                      />
+                      <div className="flex flex-col gap-2">
+                        {field.choiceOptions.map((option, optionIndex) => (
+                          <div
+                            key={option.rowId}
+                            className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px_auto]"
+                          >
+                            <input
+                              type="hidden"
+                              name={`choiceOptionRowId:${field.rowId}`}
+                              value={option.rowId}
+                            />
+                            <div>
+                              <label
+                                htmlFor={`choiceOptionLabel:${field.rowId}:${option.rowId}`}
+                                className="sr-only"
+                              >
+                                Option {optionIndex + 1} label
+                              </label>
+                              <input
+                                id={`choiceOptionLabel:${field.rowId}:${option.rowId}`}
+                                name={`choiceOptionLabel:${field.rowId}:${option.rowId}`}
+                                value={option.label}
+                                onChange={(event) =>
+                                  updateChoiceOptionLabel(
+                                    field.rowId,
+                                    option.rowId,
+                                    event.currentTarget.value,
+                                  )
+                                }
+                                placeholder={`Option ${optionIndex + 1}`}
+                                className="block h-9 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                              />
+                              <FieldError
+                                message={
+                                  state.errors[
+                                    `choiceOptionLabel:${field.rowId}:${option.rowId}`
+                                  ]
+                                }
+                              />
+                            </div>
+                            <div>
+                              <label
+                                htmlFor={`choiceOptionColor:${field.rowId}:${option.rowId}`}
+                                className="sr-only"
+                              >
+                                Option {optionIndex + 1} color
+                              </label>
+                              <select
+                                id={`choiceOptionColor:${field.rowId}:${option.rowId}`}
+                                name={`choiceOptionColor:${field.rowId}:${option.rowId}`}
+                                value={option.color}
+                                onChange={(event) =>
+                                  updateChoiceOptionColor(
+                                    field.rowId,
+                                    option.rowId,
+                                    event.currentTarget.value,
+                                  )
+                                }
+                                className="block h-9 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                              >
+                                <option value="">No color</option>
+                                {CHOICE_OPTION_COLORS.map((color) => (
+                                  <option key={color} value={color}>
+                                    {CHOICE_OPTION_COLOR_LABELS[color]}
+                                  </option>
+                                ))}
+                              </select>
+                              <FieldError
+                                message={
+                                  state.errors[
+                                    `choiceOptionColor:${field.rowId}:${option.rowId}`
+                                  ]
+                                }
+                              />
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span
+                                className={`mt-1 h-7 w-7 border ${CHOICE_OPTION_SWATCH_CLASSES[
+                                  option.color as keyof typeof CHOICE_OPTION_SWATCH_CLASSES
+                                ] ?? CHOICE_OPTION_SWATCH_CLASSES.gray}`}
+                                aria-hidden="true"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removeChoiceOption(field.rowId, option.rowId)
+                                }
+                                className="inline-flex h-9 items-center justify-center border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

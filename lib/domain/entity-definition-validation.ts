@@ -1,4 +1,5 @@
 import type { FieldType } from "./types";
+import { isChoiceOptionColor } from "./choice-colors";
 
 const fieldTypes = new Set<FieldType>([
   "text",
@@ -6,7 +7,14 @@ const fieldTypes = new Set<FieldType>([
   "date",
   "boolean",
   "relation",
+  "choice",
 ]);
+
+export type EntityChoiceOptionFormRow = {
+  rowId: string;
+  label: string;
+  color: string;
+};
 
 export type EntityFieldFormRow = {
   rowId: string;
@@ -14,6 +22,7 @@ export type EntityFieldFormRow = {
   type: FieldType;
   relatedEntityTypeId: string;
   required: boolean;
+  choiceOptions: EntityChoiceOptionFormRow[];
 };
 
 export type EntityDefinitionFormState = {
@@ -50,6 +59,7 @@ export const initialEntityDefinitionFormState: EntityDefinitionFormState = {
       type: "text",
       relatedEntityTypeId: "",
       required: false,
+      choiceOptions: [],
     },
   ],
 };
@@ -73,6 +83,14 @@ function getFieldRows(formData: FormData) {
     .filter((value): value is string => typeof value === "string")
     .map((rowId) => {
       const type = getString(formData, `fieldType:${rowId}`);
+      const choiceOptions = formData
+        .getAll(`choiceOptionRowId:${rowId}`)
+        .filter((value): value is string => typeof value === "string")
+        .map((optionRowId) => ({
+          rowId: optionRowId,
+          label: getString(formData, `choiceOptionLabel:${rowId}:${optionRowId}`),
+          color: getString(formData, `choiceOptionColor:${rowId}:${optionRowId}`),
+        }));
 
       return {
         rowId,
@@ -82,6 +100,7 @@ function getFieldRows(formData: FormData) {
           : "text",
         relatedEntityTypeId: getString(formData, `fieldRelatedEntityTypeId:${rowId}`),
         required: getLastString(formData, `fieldRequired:${rowId}`) === "true",
+        choiceOptions,
         submittedType: type,
       };
     });
@@ -112,6 +131,7 @@ export function validateEntityDefinitionFormData(
       type: field.type,
       relatedEntityTypeId: field.relatedEntityTypeId,
       required: field.required,
+      choiceOptions: field.type === "choice" ? field.choiceOptions : [],
     };
   });
 
@@ -137,12 +157,36 @@ export function validateEntityDefinitionFormData(
         "Choose a related entity.";
     }
 
+    if (field.type === "choice") {
+      const labels = new Set<string>();
+
+      field.choiceOptions.forEach((option) => {
+        const normalizedLabel = option.label.toLocaleLowerCase();
+
+        if (!option.label) {
+          errors[`choiceOptionLabel:${field.rowId}:${option.rowId}`] =
+            "Option label is required.";
+        } else if (labels.has(normalizedLabel)) {
+          errors[`choiceOptionLabel:${field.rowId}:${option.rowId}`] =
+            "Option labels must be unique.";
+        } else {
+          labels.add(normalizedLabel);
+        }
+
+        if (option.color !== "" && !isChoiceOptionColor(option.color)) {
+          errors[`choiceOptionColor:${field.rowId}:${option.rowId}`] =
+            "Choose one of the available colors.";
+        }
+      });
+    }
+
     fields[index] = {
       rowId: field.rowId,
       name: field.name,
       type: field.type,
       relatedEntityTypeId: field.relatedEntityTypeId,
       required: field.required,
+      choiceOptions: field.type === "choice" ? field.choiceOptions : [],
     };
   });
 

@@ -1407,6 +1407,10 @@ export async function createEntityDefinition(
         type: field.type,
         relatedEntityTypeId: field.relatedEntityTypeId,
         required: field.required,
+        choiceOptions: field.choiceOptions.map((option) => ({
+          label: option.label,
+          color: option.color || undefined,
+        })),
       })),
     });
   } catch {
