@@ -61,12 +61,12 @@ test("Move up/down reorders fields, persists, and updates the records table colu
   await gotoEntity(page, entity, true);
 
   // First field can't move up; last field can't move down.
-  await expect(fieldRow(page, "Alpha").getByRole("button", { name: "Move Up" })).toBeDisabled();
+  await expect(fieldRow(page, "Alpha").getByRole("button", { name: "Move Alpha up" })).toBeDisabled();
   await expect(
-    fieldRow(page, "Charlie").getByRole("button", { name: "Move Down" }),
+    fieldRow(page, "Charlie").getByRole("button", { name: "Move Charlie down" }),
   ).toBeDisabled();
 
-  await fieldRow(page, "Alpha").getByRole("button", { name: "Move Down" }).click();
+  await fieldRow(page, "Alpha").getByRole("button", { name: "Move Alpha down" }).click();
   await expectAfterMutation(page.getByText("Field order updated."));
 
   const nameInputs = page.locator('input[id^="field-edit-name-"]');
@@ -94,4 +94,62 @@ test("Move up/down reorders fields, persists, and updates the records table colu
   await expect(headers.nth(0)).toContainText("Bravo");
   await expect(headers.nth(1)).toContainText("Alpha");
   await expect(headers.nth(2)).toContainText("Charlie");
+});
+
+test("compact Manage Fields row preserves rename, required, archive, and narrow layout", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const entity = await createReorderScenario(run);
+  const admin = createSupabaseTestClient();
+
+  await gotoEntity(page, entity, true);
+
+  const bravoRow = fieldRow(page, "Bravo");
+  await bravoRow.getByLabel("Name").fill("Bravo renamed");
+  await bravoRow.getByLabel("Required").check();
+  await bravoRow.getByRole("button", { name: "Save" }).click();
+  await expectAfterMutation(page.getByText("Field updated."));
+
+  const { data: updatedField, error } = await admin
+    .from("field_definitions")
+    .select("name, required")
+    .eq("id", entity.fields.bravo.id)
+    .single();
+  if (error) throw new Error(error.message);
+  expect(updatedField).toEqual({ name: "Bravo renamed", required: true });
+
+  const renamedRow = fieldRow(page, "Bravo renamed");
+  await expect(renamedRow.getByText("Text", { exact: true })).toBeVisible();
+  await expect(renamedRow.getByRole("button", { name: "Move Bravo renamed up" })).toBeVisible();
+  await expect(renamedRow.getByRole("button", { name: "Move Bravo renamed down" })).toBeVisible();
+
+  await renamedRow.getByRole("button", { name: "Archive" }).click();
+  await expect(page.locator('input[name="fieldName"][value="Bravo renamed"]')).toHaveCount(0);
+
+  const { data: archivedField, error: archiveError } = await admin
+    .from("field_definitions")
+    .select("archived_at")
+    .eq("id", entity.fields.bravo.id)
+    .single();
+  if (archiveError) throw new Error(archiveError.message);
+  expect(archivedField?.archived_at).not.toBeNull();
+
+  await page.setViewportSize({ width: 390, height: 800 });
+  await gotoEntity(page, entity, true);
+  const manageFieldsOverflow = await page.evaluate(() => {
+    const heading = Array.from(document.querySelectorAll("h2")).find(
+      (candidate) => candidate.textContent?.trim() === "Manage Fields",
+    );
+    const section = heading?.closest("section");
+
+    if (!section) {
+      throw new Error("Manage Fields section not found.");
+    }
+
+    return section.scrollWidth > section.clientWidth;
+  });
+  expect(manageFieldsOverflow).toBe(false);
+  await expect(fieldRow(page, "Alpha").getByRole("button", { name: "Move Alpha down" })).toBeVisible();
+  await expect(fieldRow(page, "Charlie").getByRole("button", { name: "Archive" })).toBeVisible();
 });

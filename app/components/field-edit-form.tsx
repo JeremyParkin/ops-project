@@ -203,12 +203,12 @@ export function FieldEditForm({
     <div className="grid gap-3">
       <form
         action={formAction}
-        className="grid gap-3 md:grid-cols-[1fr_auto_auto]"
+        className="flex flex-wrap items-end gap-2"
       >
-        <div>
+        <div className="min-w-52 flex-[1_1_18rem]">
           <label
             htmlFor={`field-edit-name-${field.id}`}
-            className="block text-xs font-medium uppercase tracking-wide text-slate-500"
+            className="sr-only"
           >
             Name
           </label>
@@ -222,14 +222,17 @@ export function FieldEditForm({
           <FieldError message={state.errors.fieldName} />
         </div>
 
-        <div className="min-w-36">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Type
+        <div className="min-w-32">
+          <p
+            aria-label={`Type: ${typeDescription}`}
+            title={typeDescription}
+            className="flex min-h-10 items-center border border-slate-300 bg-transparent px-3 text-sm font-medium text-slate-700"
+          >
+            {typeDescription}
           </p>
-          <p className="mt-2 text-sm text-slate-800">{typeDescription}</p>
         </div>
 
-        <div className="flex items-end gap-4">
+        <div className="flex flex-wrap items-end gap-2">
           <input name="fieldRequired" type="hidden" value="false" />
           <label className="flex h-10 items-center gap-2 text-sm font-medium text-slate-800">
             <input
@@ -250,7 +253,39 @@ export function FieldEditForm({
           </button>
         </div>
 
-        <div className="md:col-span-3">
+        <div className="flex h-10 items-end gap-1">
+          <button
+            form={`field-move-up-${field.id}`}
+            type="submit"
+            aria-label={`Move ${field.name} up`}
+            title="Move up"
+            disabled={isFirst || moveUpPending}
+            className="inline-flex h-10 w-10 items-center justify-center border border-slate-300 text-base font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <span aria-hidden="true">↑</span>
+          </button>
+          <button
+            form={`field-move-down-${field.id}`}
+            type="submit"
+            aria-label={`Move ${field.name} down`}
+            title="Move down"
+            disabled={isLast || moveDownPending}
+            className="inline-flex h-10 w-10 items-center justify-center border border-slate-300 text-base font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <span aria-hidden="true">↓</span>
+          </button>
+        </div>
+
+        <button
+          form={`field-archive-${field.id}`}
+          type="submit"
+          disabled={archivePending}
+          className="inline-flex h-10 items-center justify-center border border-slate-300 px-3 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400"
+        >
+          {archivePending ? "Archiving..." : "Archive"}
+        </button>
+
+        <div className="basis-full">
           {state.message ? (
             <p
               className={`text-sm ${
@@ -265,36 +300,19 @@ export function FieldEditForm({
           <FieldError message={state.errors._form} />
         </div>
       </form>
-      <div className="flex flex-wrap items-center gap-2">
-        <form action={moveUpAction}>
-          <button
-            type="submit"
-            disabled={isFirst || moveUpPending}
-            className="inline-flex h-9 items-center justify-center border border-slate-300 px-3 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Move Up
-          </button>
-        </form>
-        <form action={moveDownAction}>
-          <button
-            type="submit"
-            disabled={isLast || moveDownPending}
-            className="inline-flex h-9 items-center justify-center border border-slate-300 px-3 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Move Down
-          </button>
-        </form>
-        {moveMessage ? (
-          <p
-            className={`text-sm ${moveSuccess ? "text-emerald-700" : "text-red-700"}`}
-            role="status"
-          >
-            {moveMessage}
-          </p>
-        ) : null}
-      </div>
+      <form id={`field-move-up-${field.id}`} action={moveUpAction} />
+      <form id={`field-move-down-${field.id}`} action={moveDownAction} />
+      {moveMessage ? (
+        <p
+          className={`text-sm ${moveSuccess ? "text-emerald-700" : "text-red-700"}`}
+          role="status"
+        >
+          {moveMessage}
+        </p>
+      ) : null}
       {field.type === "choice" ? choiceOptionManagement : null}
       <form
+        id={`field-archive-${field.id}`}
         action={archiveAction}
         onSubmit={(event) => {
           if (workflowReferenceCount === 0 && viewReferenceCount === 0) {
@@ -320,15 +338,7 @@ export function FieldEditForm({
             event.preventDefault();
           }
         }}
-      >
-        <button
-          type="submit"
-          disabled={archivePending}
-          className="inline-flex h-10 w-fit items-center justify-center border border-slate-300 px-4 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400"
-        >
-          {archivePending ? "Archiving..." : "Archive Field"}
-        </button>
-      </form>
+      />
       {archiveState.message ? (
         <p
           className={`text-sm ${
