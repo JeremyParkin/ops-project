@@ -111,6 +111,14 @@ Residual friction remains in the new-option editor:
 - the persistent success text ("Option added.") remains visible beside "New option (unsaved)" and "Save option", creating contradictory-looking state after the save. Treat success confirmation as transient feedback or otherwise clear/reset it after the action;
 - when several saved options need maintenance, repeatedly opening each row may become tedious. Explore small, accessible quick-action affordances on the collapsed row (for example Edit and Archive). Avoid destructive trash semantics if the actual lifecycle is Archive rather than delete, and avoid putting interactive controls directly inside a native <summary> if cross-browser semantics are unreliable.
 
+Hosted verification after commit `ab6629c`:
+The swatch-only picker is materially more compact, transient success feedback works, and the Edit/Archive quick actions on collapsed live options are convenient without feeling cluttered.
+
+Residual polish:
+- the Label input in the new-option editor visually blends into the khaki/gray unsaved-state container and can look disabled; a normal white input surface would read more clearly as editable;
+- archived options remain interleaved in their original position among active options. For management UX, consider separating archived options from the active list or moving them to a clearly labeled archived subsection/bottom area while preserving their underlying stable identity and historical position semantics;
+- icon-first quick actions may be cleaner for dense option rows, but any icon treatment should retain accessible names/tooltips and should not imply hard deletion where the actual lifecycle is Archive.
+
 Status:
 Partially improved
 
@@ -241,6 +249,9 @@ The compact header is materially better overall, but some near-mobile widths sti
 
 The next pass should test breakpoint behavior continuously rather than only at a few canonical widths. At narrow widths, give controls minimum usable tap/input dimensions and truncate or collapse workspace text before allowing the header to wrap.
 
+Hosted verification after commit `ab6629c`:
+The intermediate-width behavior is better and the previous wrapping/tapability failures are substantially reduced. A remaining product question is whether the workspace/account switcher should become an icon-first control at narrower widths instead of continuing to reserve horizontal space for the workspace name. If pursued, preserve an accessible label and make current-workspace context available in the menu rather than relying on an unexplained icon.
+
 Status:
 Partially improved
 
@@ -352,6 +363,9 @@ Prefer reusing one consistent disclosure/control style across Kinema where possi
 Hosted verification after commit `139e7d6`:
 The white-strip styling problem is materially improved. The remaining question is information architecture: "Show archived fields" and "Show archived records" are separated by the field-preview/table surface, even though they are conceptually related archive-visibility controls. Consider whether they belong together in one compact archive-controls area.
 
+Hosted verification after commit `ab6629c`:
+Grouping the two controls is more coherent. Their current position is still debatable: if the field-preview table remains on the Manage Object page, placing the archive-visibility controls immediately below that preview may better communicate that they affect what is shown there.
+
 Status:
 Partially improved
 
@@ -392,8 +406,11 @@ The page is substantially better: specialized sections now collapse appropriatel
 
 One residual issue emerged: the collapsed "Add field" control is easy to overlook inside the Manage Fields card. It belongs in the right place, but should have slightly stronger visual affordance than an ordinary row/disclosure so builders can quickly find the primary schema-expansion action.
 
+Hosted verification after commit `ab6629c`:
+The strengthened Add field treatment is easy to find without becoming oversized. The original Manage Object density/Add Field placement problem is now resolved enough to close this finding; remaining Choice and archive-control polish is tracked separately.
+
 Status:
-Partially improved
+Fixed
 
 ### [2026-09-19] Field-type immutability has no builder recovery path
 
@@ -451,8 +468,11 @@ Minor UX / navigation polish
 Possible direction:
 Remove the explicit Home navigation item and keep the Kinema logo linked to Home. Preserve an accessible label on the logo link so its destination is unambiguous to assistive technology.
 
+Hosted verification after commit `ab6629c`:
+The explicit Home item is gone, the Kinema logo still returns Home, and the result feels cleaner.
+
 Status:
-Open
+Fixed
 
 ### [2026-09-19] Search button is redundant
 
@@ -471,8 +491,13 @@ Minor UX / responsive polish
 Possible direction:
 Remove the visible Search button at all widths and rely on native Enter/Return submission. Keep the input clearly identifiable as Search and preserve keyboard/focus behavior.
 
+Hosted verification after commit `ab6629c`:
+The visible Search button is gone and Enter/Return submission works as intended.
+
+Separate observation: the current Household workspace has no records yet, so searches returning no results are expected under the existing search model, which searches active text fields on active records rather than object/schema names.
+
 Status:
-Open
+Fixed
 
 ### [2026-09-19] Entity archive/delete actions are visually heavy for secondary lifecycle controls
 
@@ -490,6 +515,70 @@ Minor UX / action hierarchy
 
 Possible direction:
 Explore a lower-emphasis treatment such as icon + text or compact text actions, while preserving a clear destructive distinction for Delete and an adequate confirmation/safety flow. Do not make destructive actions visually ambiguous or easy to trigger accidentally.
+
+Hosted verification after commit `ab6629c`:
+The lower-emphasis icon + text treatment is clearer and appropriately de-emphasized while Delete remains visibly destructive.
+
+Status:
+Fixed
+
+
+### [2026-09-19] Iconography could reduce repeated action-label clutter in dense builder surfaces
+
+Context:
+During hosted verification of the second builder-polish slice, compact icon + text treatment improved Entity lifecycle actions, and Choice option rows still showed repeated Edit/Archive labels on every row.
+
+What happened:
+Several dense builder surfaces repeat short action labels many times. The repeated text is understandable but adds visual noise as schemas grow.
+
+Why it matters:
+Kinema is beginning to accumulate enough builder controls that a consistent icon vocabulary could improve scanability and responsive behavior. However, icon-only controls can reduce discoverability if introduced indiscriminately.
+
+Initial classification:
+Visual-system opportunity / UX polish
+
+Possible direction:
+Develop a small, consistent icon vocabulary for obvious repeated actions such as Edit, Archive, Restore, Move, Notifications, and Menu. Prefer icons where the meaning is conventional and repeated density is a real problem. Preserve accessible names/tooltips and use text where meaning is less obvious or consequences are significant. Do not launch a broad icon-replacement sweep without checking each surface.
+
+Status:
+Open
+
+### [2026-09-19] Archived Choice options are interleaved with active options
+
+Context:
+Jeremy reviewed Choice option management after commit `ab6629c`.
+
+What happened:
+An archived option remains in its original list position between active options, rendered with Restore while surrounding options remain editable/live.
+
+Why it matters:
+Preserving historical option identity and position is correct at the data layer, but interleaving inactive options with live configuration makes the active option set harder to scan and maintain.
+
+Initial classification:
+UX friction / management presentation
+
+Possible direction:
+Keep archived option identity/history unchanged, but present archived options separately from active options in the management UI — for example in a compact "Archived options" subsection below the active list. Restoring should return the option to its preserved configured position among active options.
+
+Status:
+Open
+
+### [2026-09-19] New Choice option Label input reads visually disabled
+
+Context:
+Jeremy reviewed the compact new-option editor after commit `ab6629c`.
+
+What happened:
+The Label input inherits/blends with the khaki-gray unsaved-state container, making the editable field look somewhat grayed out or unavailable.
+
+Why it matters:
+The editor is now compact, but the primary input should look clearly interactive. Disabled-looking styling introduces hesitation in a high-frequency configuration action.
+
+Initial classification:
+Minor UX / visual polish
+
+Possible direction:
+Give the Label input a normal high-contrast editable surface (for example white) while retaining the distinct unsaved-state container around the new-option editor.
 
 Status:
 Open
