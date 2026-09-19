@@ -335,3 +335,76 @@ Prefer reusing one consistent disclosure/control style across Kinema where possi
 
 Status:
 Open
+
+
+### [2026-09-19] Manage Object page is too vertically dense and exposes too many expanded configuration sections
+
+Context:
+Jeremy was managing the Household Task object in the hosted workspace after initial creation.
+
+What I was trying to do:
+Review and refine the object's configuration, add fields, and manage existing fields.
+
+What happened:
+The Manage Object page presents Entity Settings, Sensitive people data, Quality Review lifecycle, Add Field, and the full Manage Fields list as separate, fully expanded vertical sections. Even a modest five-field object produces a very long page before any Choice options or additional advanced configuration are involved.
+
+The standalone Add Field section also consumes permanent vertical space even when the builder is not actively adding a field, despite being conceptually part of field management.
+
+Why it matters:
+The page mixes basic object configuration, advanced optional features, field creation, and field management into one continuously expanded surface. This increases scanning cost and makes routine schema work feel heavier than it needs to be. The problem compounds on objects with many fields or Choice options.
+
+Initial classification:
+UX friction / information architecture
+
+Possible direction:
+Reduce default vertical density by making optional/advanced sections collapsible and collapsed by default where appropriate, while keeping core identity/configuration easy to find.
+
+Consider folding Add Field into Manage Fields as an explicit "Add field" action that reveals the input UI only when invoked, instead of reserving a permanent standalone panel.
+
+Be deliberate about what stays open by default:
+- core Entity Settings may merit remaining visible;
+- Sensitive people data and Quality Review are specialized capabilities and strong candidates for collapsed-by-default sections unless active;
+- Manage Fields should remain prominent but use a denser layout and progressive disclosure for per-field actions.
+
+Prefer a coherent reusable section/disclosure pattern rather than independent one-off collapsible implementations.
+
+Status:
+Open
+
+### [2026-09-19] Field-type immutability has no builder recovery path
+
+Context:
+Jeremy created several Household Task fields as Text because Choice was unavailable during initial object creation. After discovering Choice was available only from the later Manage Fields surface, he attempted to correct those fields.
+
+What I was trying to do:
+Change existing fields such as Category, Status, or Priority from Text to Choice after realizing the initial field type was wrong.
+
+What happened:
+Field type cannot be changed after creation. The Manage Fields UI exposes name and required-state edits, but no type change.
+
+This is not merely a missing UI control: current architecture intentionally treats field type as immutable. `update_field_definition` has never accepted a type parameter, and stored record values, relation rows, Choice option identity, filters, workflows, imports, and other references depend on stable field semantics.
+
+Why it matters:
+The integrity rationale is sound, but the builder experience provides no obvious recovery path after an understandable setup mistake. That is particularly painful when another UX limitation caused the mistake in the first place: Choice was unavailable during initial object creation, so Text was the only practical placeholder.
+
+A first-time builder should not need to understand immutable schema internals to recover from choosing the wrong field type.
+
+Initial classification:
+UX friction / missing safe schema-evolution workflow
+
+Possible direction:
+Do not simply make field type mutable in place; that risks reinterpretation or corruption of existing data and dependent configuration.
+
+Investigate an explicit safe replacement/conversion workflow instead. Depending on field state and compatibility, this could:
+- explain why type cannot be directly edited;
+- create a replacement field of the desired type;
+- optionally preview and migrate compatible values where a deterministic mapping exists;
+- surface dependent views, workflows, processes, imports, or other references that need review;
+- preserve/archive the original field rather than silently rewriting history.
+
+For a brand-new empty field with no records or dependencies, a narrower safe type-change path may be possible, but that should be proven from actual dependency rules rather than assumed.
+
+This finding is also linked to the separate "Choice field unavailable during initial object creation" issue; fixing that creation inconsistency would prevent some of these recovery cases.
+
+Status:
+Open
