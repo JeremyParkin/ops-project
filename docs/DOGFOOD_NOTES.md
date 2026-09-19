@@ -81,3 +81,118 @@ Avoid introducing multiple competing controls unless testing shows that is clear
 
 Status:
 Open
+
+### [2026-09-18] Choice-field configuration consumes excessive vertical space
+
+Context:
+Jeremy was configuring the Choice field for Household Asset Category in the live hosted workspace.
+
+What I was trying to do:
+Define and manage a small set of category options.
+
+What happened:
+Each saved option renders as a large expanded block. Color choices span multiple rows for every option, and option controls such as Save, Up, Down, and Archive wrap across multiple rows. Even a modest list of choices makes the Manage Fields page extremely tall.
+
+Why it matters:
+Choice configuration scales poorly as option count grows and makes ordinary schema editing feel visually heavy and slow. More sophisticated objects with several Choice fields would amplify the problem substantially.
+
+Initial classification:
+UX friction
+
+Possible direction:
+Explore a denser option-management layout, likely with saved options collapsed or summarized by default and editing controls revealed on demand. Preserve clear labels, colors, ordering, and archive behavior without rendering every control for every option at full size all the time.
+
+Status:
+Open
+
+### [2026-09-18] New Choice option state and action are ambiguous
+
+Context:
+Jeremy was adding Choice options while configuring Household Asset Category.
+
+What I was trying to do:
+Enter and save a new option.
+
+What happened:
+The unsaved option editor looks very similar to already-created options, but its primary button says "Add Option" while existing options show "Save". It was unclear whether "Add Option" commits the option currently being edited or adds another blank option after it.
+
+Why it matters:
+The UI does not clearly distinguish draft/new state from persisted state, making a basic builder action feel uncertain.
+
+Initial classification:
+UX friction
+
+Possible direction:
+Make the unsaved state visually distinct and use action copy that clearly describes what will happen, such as "Save option" for committing the current draft and a separate, unambiguous control for creating another option if needed.
+
+Status:
+Open
+
+### [2026-09-18] Choice field unavailable during initial object creation
+
+Context:
+Jeremy created the Household Asset object through the initial Create object flow.
+
+What I was trying to do:
+Define Category as a Choice field while creating the object.
+
+What happened:
+The Create object field-type selector offered Text, Number, Date, Boolean, and Relation, but not Choice. After the object was created, Choice was available through the Manage Fields surface.
+
+Why it matters:
+The same schema capability is available immediately after creation but not during creation, forcing an artificial two-stage workflow and making builders wonder whether Choice must be configured somewhere else.
+
+Initial classification:
+UX friction / feature-surface inconsistency
+
+Possible direction:
+Make supported field types consistent between initial object creation and later field management unless there is a genuine product or integrity reason for a difference.
+
+Status:
+Open
+
+### [2026-09-18] Object configuration is too slow and repetitive for multi-field schemas
+
+Context:
+Jeremy was building the first real Household object through the hosted builder UI.
+
+What I was trying to do:
+Configure a modest Household Asset schema with several ordinary fields and one Choice field.
+
+What happened:
+Before even completing the first object, the workflow already required repeated add-configure-save interactions, substantial scrolling, and separate management steps for capabilities not available in the initial creation flow. Building each field one at a time felt disproportionately slow for a small schema.
+
+Why it matters:
+Kinema's value depends on builders being able to configure useful operational structures efficiently. If a basic object feels laborious, larger real-world schemas may become prohibitively tedious even when each individual control technically works.
+
+Initial classification:
+UX friction / opportunity
+
+Possible direction:
+Treat this as broader builder-workflow evidence rather than immediately adding bulk-edit infrastructure. First identify which friction comes from layout, inconsistent creation/manage capabilities, save mechanics, and excessive per-field controls; then simplify the highest-cost interactions before considering larger schema-authoring abstractions.
+
+Status:
+Open
+
+### [2026-09-18] Relation setup forces target-object creation order and context switching
+
+Context:
+Jeremy was configuring the first Household object and considering fields that should reference another business object.
+
+What I was trying to do:
+Define a relation before the intended target object had been created.
+
+What happened:
+A Relation field requires an existing target object, so the relation cannot be completed until the target object is created elsewhere first. This forces the builder to plan object creation order or leave the current setup flow and return later.
+
+Why it matters:
+Real data models are often designed together rather than strictly one object at a time. Requiring all relation targets to pre-exist creates avoidable sequencing friction and interrupts schema-building flow.
+
+Initial classification:
+UX friction / opportunity
+
+Possible direction:
+Explore a lightweight "Create new object..." path from the relation-target control that can create a minimal target object and allow the current relation to be completed, with fuller configuration deferred. Avoid embedding a full nested object builder unless real use justifies that complexity.
+
+Status:
+Open
