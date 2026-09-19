@@ -265,3 +265,43 @@ test("the table's horizontal-scroll region is keyboard-focusable and labeled", a
   await region.focus();
   await expect(region).toBeFocused();
 });
+
+test("the archived-records and archived-fields toggles preserve manage=true while managing (previously dropped the caller back to the plain records view)", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const admin = createSupabaseTestClient();
+  const entity = await createEntity(admin, run, "ManageArchiveToggle", [
+    { slug: "title", name: "Title", type: "text", required: true },
+  ]);
+
+  await gotoEntity(page, entity, true);
+  await expect(page).toHaveURL(/manage=true/);
+
+  // page.url() is a synchronous snapshot, not a retrying web-first
+  // assertion -- it can read stale state before a client-side navigation
+  // lands, so every check here waits for the SPECIFIC resulting URL
+  // (manage=true together with the expected presence/absence of the
+  // archived-visibility param), not just "contains manage=true" (already
+  // true before the click, so on its own it can't prove a new navigation
+  // actually happened).
+  await page.getByRole("link", { name: "Show archived records" }).click();
+  await page.waitForURL(
+    (url) => url.searchParams.get("manage") === "true" && url.searchParams.get("showArchived") === "true",
+  );
+
+  await page.getByRole("link", { name: "Hide archived records" }).click();
+  await page.waitForURL(
+    (url) => url.searchParams.get("manage") === "true" && !url.searchParams.has("showArchived"),
+  );
+
+  await page.getByRole("link", { name: "Show archived fields" }).click();
+  await page.waitForURL(
+    (url) => url.searchParams.get("manage") === "true" && url.searchParams.get("showArchivedFields") === "true",
+  );
+
+  await page.getByRole("link", { name: "Hide archived fields" }).click();
+  await page.waitForURL(
+    (url) => url.searchParams.get("manage") === "true" && !url.searchParams.has("showArchivedFields"),
+  );
+});

@@ -6,6 +6,8 @@
 // NOTE: this suite requires migration 0137 to be applied before it can run
 // against the live database -- written ahead of application per the
 // explicit "implement now, verify later" instruction for this slice.
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, describe, expect, it } from "vitest";
@@ -166,6 +168,73 @@ async function attemptDelete(client: SupabaseClient, workspaceId: string, fieldI
 }
 
 describe("Choice option safe deletion (archive-first, dependency-checked)", () => {
+  // Concurrency is verified three ways in this file, deliberately NOT
+  // including black-box HTTP wall-clock timing. A timing-based proof (fire
+  // batches of concurrent RPC calls sharing vs. not sharing the advisory
+  // lock key, and assert the shared-key batch takes measurably longer) was
+  // built and run repeatedly against development. It was discarded: across
+  // five repeated runs the "same entity type" (must-serialize) batch was
+  // sometimes FASTER than the "different entity types" (must-not-serialize)
+  // batch. Each RPC's real in-transaction work is a few milliseconds; the
+  // PostgREST/Supavisor/network round-trip per call is tens of milliseconds
+  // and varies by more than the lock's own contribution, so wall-clock
+  // timing over HTTP cannot isolate the lock's effect from that noise in
+  // this environment (no direct pg_locks/pg_stat_activity introspection is
+  // available here either -- no psql, no information_schema/pg_catalog over
+  // PostgREST). Tuning thresholds until a timing test passes would prove
+  // nothing real, so instead:
+  //   1. "takes the identical lock, before any dependency read or write"
+  //      below inspects the actual deployed SQL text structurally.
+  //   2. "closes the delete-vs-view-write race" (further down) fires a
+  //      genuine concurrent pair of real transactions and asserts the
+  //      invariant holds under BOTH possible commit orderings.
+  //   3. The raw-DELETE/raw-INSERT-UPDATE refusal tests (further down)
+  //      confirm no caller can reach entity_views or field_choice_options
+  //      outside the locked RPC paths at all, so those two orderings are
+  //      exhaustive -- there is no third, lock-bypassing path to race.
+  it("takes the identical entity-type advisory lock, before any dependency read or write, in delete_field_choice_option_if_safe and both entity-view write RPCs", () => {
+    const migrationPath = path.join(
+      import.meta.dirname,
+      "../../supabase/migrations/0137_choice_option_safe_delete.sql",
+    );
+    const migrationSql = readFileSync(migrationPath, "utf8");
+
+    function functionBody(name: string) {
+      const start = migrationSql.indexOf(`create function ${name}(`);
+      expect(start, `function ${name} not found in 0137`).toBeGreaterThan(-1);
+      const end = migrationSql.indexOf("\n$$;", start);
+      expect(end, `end of function ${name} not found in 0137`).toBeGreaterThan(start);
+      return migrationSql.slice(start, end);
+    }
+
+    const lockCall = "pg_advisory_xact_lock(hashtextextended(";
+
+    for (const name of [
+      "delete_field_choice_option_if_safe",
+      "create_entity_view_authorized",
+      "update_entity_view_authorized",
+    ]) {
+      const body = functionBody(name);
+      const lockIndex = body.indexOf(lockCall);
+      expect(lockIndex, `${name} must call pg_advisory_xact_lock`).toBeGreaterThan(-1);
+
+      // Same lock key shape as record create/update (migration 0080) and
+      // every other entity-type-scoped writer in this codebase: hashed on
+      // entity_type_id specifically (optionally variable-qualified, e.g.
+      // v_field.entity_type_id), not some other id.
+      expect(body.slice(lockIndex, lockIndex + lockCall.length + 40)).toMatch(/entity_type_id::text, 0\)\)/);
+
+      // Nothing that reads a dependency count, locks a row, or writes
+      // happens before the lock is acquired -- an existence check on the
+      // caller-supplied id is fine (both functions do this), but no
+      // "for update" row lock, INSERT, UPDATE, or DELETE.
+      const beforeLock = body.slice(0, lockIndex);
+      expect(beforeLock, `${name} must not lock rows or write before taking the advisory lock`).not.toMatch(
+        /for update|insert into|delete from|update\s+\w+\s+set/i,
+      );
+    }
+  });
+
   it("refuses to delete an active (never-archived) option, via direct authorized-RPC invocation, and leaves the row intact", async () => {
     const workspaceId = await createWorkspace("Choice Delete Active");
     const builder = await memberWithCapabilities(workspaceId, "builder", ["schema.manage", "records.operate"]);
@@ -203,12 +272,16 @@ describe("Choice option safe deletion (archive-first, dependency-checked)", () =
 
     expect(await optionExists(workspaceId, optionId)).toBe(false);
 
+    // subject_id is a soft reference reused across this option's whole
+    // lifecycle (created -> archived -> deleted), so it alone does not
+    // identify the delete event -- filter by event_type too.
     const admin = createSupabaseTestClient();
     const { data: events, error: eventsError } = await admin
       .from("governance_audit_events")
       .select("event_type, subject_id, subject_name_snapshot")
       .eq("workspace_id", workspaceId)
-      .eq("subject_id", optionId);
+      .eq("subject_id", optionId)
+      .eq("event_type", "choice_option_deleted");
     expect(eventsError).toBeNull();
     expect(events).toEqual([
       expect.objectContaining({ event_type: "choice_option_deleted", subject_id: optionId, subject_name_snapshot: "Mistaken Option" }),
@@ -301,6 +374,12 @@ describe("Choice option safe deletion (archive-first, dependency-checked)", () =
     });
     const draftOptionId = await addOption(builderClient, workspaceId, statusFieldId, "Draft");
     const finalizedOptionId = await addOption(builderClient, workspaceId, statusFieldId, "Finalized");
+    // A third option, never the live designation -- freely archivable,
+    // since field_choice_options_reject_qr_archive (0105) only blocks
+    // archiving whichever option is *currently* the Draft/Finalized
+    // designation, not options in general on a Quality Review's status
+    // field.
+    const staleOptionId = await addOption(builderClient, workspaceId, statusFieldId, "Stale Draft");
 
     const enableSensitive = await builderClient.rpc("set_entity_type_people_sensitive_access_authorized", {
       p_workspace_id: workspaceId, p_entity_type_id: reviewEntityTypeId, p_people_sensitive: true,
@@ -315,17 +394,37 @@ describe("Choice option safe deletion (archive-first, dependency-checked)", () =
     });
     expect(enableLifecycle.error).toBeNull();
 
-    await archiveOption(builderClient, workspaceId, statusFieldId, draftOptionId);
-    const draftAttempt = await attemptDelete(builderClient, workspaceId, statusFieldId, draftOptionId);
-    expect(draftAttempt.error).toBeNull();
-    expect(draftAttempt.data?.[0]).toMatchObject({ deleted: false, quality_review_reference_count: 1 });
-    expect(await optionExists(workspaceId, draftOptionId)).toBe(true);
+    // The live designation genuinely cannot be archived while Quality
+    // Review is active -- confirm that pre-existing trigger-level guard is
+    // still in force (it is the primary defense; the delete RPC's own
+    // check is a deliberate second, independent layer, not the only one).
+    // It fires even for a direct service-role UPDATE, not just the RPC.
+    const admin = createSupabaseTestClient();
+    const blockedArchive = await admin
+      .from("field_choice_options")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", draftOptionId);
+    expect(blockedArchive.error?.message).toMatch(/cannot be archived while Quality Review is active/i);
 
-    await archiveOption(builderClient, workspaceId, statusFieldId, finalizedOptionId);
-    const finalizedAttempt = await attemptDelete(builderClient, workspaceId, statusFieldId, finalizedOptionId);
-    expect(finalizedAttempt.error).toBeNull();
-    expect(finalizedAttempt.data?.[0]).toMatchObject({ deleted: false, quality_review_reference_count: 1 });
-    expect(await optionExists(workspaceId, finalizedOptionId)).toBe(true);
+    // Construct the specific state the delete RPC's own check exists to
+    // catch as a backstop: archive an option freely (it's not the live
+    // designation, so the trigger above doesn't apply to it), then point
+    // the entity type's designation at it directly -- bypassing
+    // set_entity_type_quality_review_lifecycle_authorized's own validation
+    // (which requires an active option), the same way the real composite
+    // FK alone would also permit this, since an FK only requires the row
+    // to exist, not to be active.
+    await archiveOption(builderClient, workspaceId, statusFieldId, staleOptionId);
+    const { error: pointAtStaleError } = await admin
+      .from("entity_types")
+      .update({ quality_review_draft_option_id: staleOptionId })
+      .eq("id", reviewEntityTypeId);
+    expect(pointAtStaleError).toBeNull();
+
+    const staleAttempt = await attemptDelete(builderClient, workspaceId, statusFieldId, staleOptionId);
+    expect(staleAttempt.error).toBeNull();
+    expect(staleAttempt.data?.[0]).toMatchObject({ deleted: false, quality_review_reference_count: 1 });
+    expect(await optionExists(workspaceId, staleOptionId)).toBe(true);
   });
 
   it("enforces the schema.manage boundary: a records.operate-only caller cannot delete", async () => {

@@ -242,12 +242,20 @@ test("archived Choice options are hidden behind Show archived options, and suppo
   // Archive again, then permanently delete -- this option has never been
   // referenced by a record, a saved view, or Quality Review, so it
   // succeeds outright.
+  //
+  // The success confirmation itself is never assertable here: it lives in
+  // the same OptionRow instance the deletion removes from archivedRows, so
+  // that row (and its just-rendered message) unmounts in the very update
+  // that would show it -- the same reason the Restore step above asserts
+  // on the resulting list state ("Edit" button reappearing), not on
+  // restoreState's message, rather than a gap specific to delete.
   await mistakenRow.getByRole("button", { name: "Archive" }).click();
   await expectAfterMutation(showArchivedToggle);
   await showArchivedToggle.click();
   page.once("dialog", (dialog) => dialog.accept());
   await fieldRow.getByRole("button", { name: "Permanent delete" }).click();
-  await expectAfterMutation(page.getByText("Option permanently deleted."));
+  await expectAfterMutation(fieldRow.getByText("No options yet.", { exact: true }));
+  await expect(showArchivedToggle).toHaveCount(0);
   await expect(fieldRow.getByText("Mistaken", { exact: true })).toHaveCount(0);
 
   const admin2 = createSupabaseTestClient();

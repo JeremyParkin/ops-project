@@ -487,19 +487,27 @@ export default async function EntityPage({
   const archivedFieldsQuery = showArchivedFields
     ? "showArchivedFields=true"
     : "";
+  // Each carries manage=true when currently managing, so toggling archived
+  // visibility from the Manage view doesn't silently drop the caller back
+  // to the plain records view.
+  const managingQuery = isManaging ? "manage=true" : "";
   const showArchivedRecordsHref = entityPageHref(entityType.id, [
     "showArchived=true",
     archivedFieldsQuery,
+    managingQuery,
   ]);
   const hideArchivedRecordsHref = entityPageHref(entityType.id, [
     archivedFieldsQuery,
+    managingQuery,
   ]);
   const showArchivedFieldsHref = entityPageHref(entityType.id, [
     "showArchivedFields=true",
     showArchivedRecords ? "showArchived=true" : "",
+    managingQuery,
   ]);
   const hideArchivedFieldsHref = entityPageHref(entityType.id, [
     showArchivedRecords ? "showArchived=true" : "",
+    managingQuery,
   ]);
   const manageEntityHref = entityPageHref(entityType.id, [
     "manage=true",
