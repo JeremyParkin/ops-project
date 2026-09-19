@@ -102,8 +102,17 @@ UX friction
 Possible direction:
 Explore a denser option-management layout, likely with saved options collapsed or summarized by default and editing controls revealed on demand. Preserve clear labels, colors, ordering, and archive behavior without rendering every control for every option at full size all the time.
 
+Hosted verification after commit `139e7d6`:
+Saved options collapsing to compact rows is a clear improvement and should be preserved.
+
+Residual friction remains in the new-option editor:
+- the color chooser is still very tall because every color renders as a chip plus text label;
+- consider a compact spectral swatch-only chooser with accessible labels/tooltips, or a single compact color dropdown on the same row as Label;
+- the persistent success text ("Option added.") remains visible beside "New option (unsaved)" and "Save option", creating contradictory-looking state after the save. Treat success confirmation as transient feedback or otherwise clear/reset it after the action;
+- when several saved options need maintenance, repeatedly opening each row may become tedious. Explore small, accessible quick-action affordances on the collapsed row (for example Edit and Archive). Avoid destructive trash semantics if the actual lifecycle is Archive rather than delete, and avoid putting interactive controls directly inside a native <summary> if cross-browser semantics are unreliable.
+
 Status:
-Open
+Partially improved
 
 ### [2026-09-18] New Choice option state and action are ambiguous
 
@@ -225,8 +234,15 @@ Revisit the compact-header composition rather than simply stacking the desktop c
 
 Do not assume icons alone are sufficient; any compact controls still need accessible labels/tooltips and understandable state.
 
+Hosted verification after commit `139e7d6`:
+The compact header is materially better overall, but some near-mobile widths still break down:
+- the search input can become too narrow to be practically tappable;
+- a long workspace/environment name can wrap to a second line and increase header height.
+
+The next pass should test breakpoint behavior continuously rather than only at a few canonical widths. At narrow widths, give controls minimum usable tap/input dimensions and truncate or collapse workspace text before allowing the header to wrap.
+
 Status:
-Open
+Partially improved
 
 
 ### [2026-09-19] Builders cannot define a user-assignment field while modeling ordinary objects
@@ -333,8 +349,11 @@ Choose one intentional interaction treatment rather than the current halfway sta
 
 Prefer reusing one consistent disclosure/control style across Kinema where possible rather than solving these two rows with one-off CSS.
 
+Hosted verification after commit `139e7d6`:
+The white-strip styling problem is materially improved. The remaining question is information architecture: "Show archived fields" and "Show archived records" are separated by the field-preview/table surface, even though they are conceptually related archive-visibility controls. Consider whether they belong together in one compact archive-controls area.
+
 Status:
-Open
+Partially improved
 
 
 ### [2026-09-19] Manage Object page is too vertically dense and exposes too many expanded configuration sections
@@ -368,8 +387,13 @@ Be deliberate about what stays open by default:
 
 Prefer a coherent reusable section/disclosure pattern rather than independent one-off collapsible implementations.
 
+Hosted verification after commit `139e7d6`:
+The page is substantially better: specialized sections now collapse appropriately and Add Field has been folded into Manage Fields. The overall vertical-density problem is improved enough to continue dogfood.
+
+One residual issue emerged: the collapsed "Add field" control is easy to overlook inside the Manage Fields card. It belongs in the right place, but should have slightly stronger visual affordance than an ordinary row/disclosure so builders can quickly find the primary schema-expansion action.
+
 Status:
-Open
+Partially improved
 
 ### [2026-09-19] Field-type immutability has no builder recovery path
 
@@ -405,6 +429,67 @@ Investigate an explicit safe replacement/conversion workflow instead. Depending 
 For a brand-new empty field with no records or dependencies, a narrower safe type-change path may be possible, but that should be proven from actual dependency rules rather than assumed.
 
 This finding is also linked to the separate "Choice field unavailable during initial object creation" issue; fixing that creation inconsistency would prevent some of these recovery cases.
+
+Status:
+Open
+
+
+### [2026-09-19] Desktop navigation includes a redundant Home item
+
+Context:
+Jeremy reviewed the live hosted header after the responsive-header cleanup.
+
+What happened:
+The desktop navigation still includes a text "Home" item even though the Kinema logo already serves as the conventional Home affordance.
+
+Why it matters:
+Persistent navigation space is scarce, especially as the header approaches tablet/mobile widths. Keeping both the logo-home affordance and a separate Home label adds clutter without adding meaningful discoverability.
+
+Initial classification:
+Minor UX / navigation polish
+
+Possible direction:
+Remove the explicit Home navigation item and keep the Kinema logo linked to Home. Preserve an accessible label on the logo link so its destination is unambiguous to assistive technology.
+
+Status:
+Open
+
+### [2026-09-19] Search button is redundant
+
+Context:
+Jeremy reviewed the live hosted header after the responsive-header cleanup.
+
+What happened:
+The desktop header still renders a dedicated Search button next to the search field, even though Enter/Return already submits the search form.
+
+Why it matters:
+The button consumes valuable horizontal space and contributes to responsive pressure without providing unique functionality.
+
+Initial classification:
+Minor UX / responsive polish
+
+Possible direction:
+Remove the visible Search button at all widths and rely on native Enter/Return submission. Keep the input clearly identifiable as Search and preserve keyboard/focus behavior.
+
+Status:
+Open
+
+### [2026-09-19] Entity archive/delete actions are visually heavy for secondary lifecycle controls
+
+Context:
+Jeremy reviewed Entity Settings in the hosted Manage Object screen after the first builder-UX cleanup.
+
+What happened:
+"Archive Entity" and "Delete Entity" remain full rectangular buttons directly beneath the core entity settings form.
+
+Why it matters:
+These are infrequent lifecycle/destructive actions rather than primary configuration actions. Their current button treatment gives them more visual weight than their expected frequency warrants and contributes to the page feeling administratively heavy.
+
+Initial classification:
+Minor UX / action hierarchy
+
+Possible direction:
+Explore a lower-emphasis treatment such as icon + text or compact text actions, while preserving a clear destructive distinction for Delete and an adequate confirmation/safety flow. Do not make destructive actions visually ambiguous or easy to trigger accidentally.
 
 Status:
 Open
