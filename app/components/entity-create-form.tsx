@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import type {
   EntityChoiceOptionFormRow,
   EntityDefinitionFormState,
@@ -73,6 +73,178 @@ function FieldError({ message }: { message?: string }) {
     <p className="mt-1 text-sm text-red-700" role="alert">
       {message}
     </p>
+  );
+}
+
+const NO_COLOR_VALUE = "";
+const choiceColorSelectOptions: Array<{ value: string; label: string }> = [
+  { value: NO_COLOR_VALUE, label: "No color" },
+  ...CHOICE_OPTION_COLORS.map((color) => ({
+    value: color,
+    label: CHOICE_OPTION_COLOR_LABELS[color],
+  })),
+];
+
+function ChoiceColorSwatch({ color }: { color: string }) {
+  const swatchColor = isChoiceOptionColor(color) ? color : undefined;
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
+        swatchColor ? CHOICE_OPTION_SWATCH_CLASSES[swatchColor] : "border-dashed border-slate-400"
+      }`}
+    >
+      {!swatchColor ? <span className="text-[8px] leading-none text-slate-400">×</span> : null}
+    </span>
+  );
+}
+
+// A native <select> can't reliably show a swatch beside each <option>'s
+// text in its OPEN list cross-browser (confirmed in hosted dogfood: only
+// the closed trigger could be visually augmented, the open native list
+// stayed text-only) -- so this control replaces it entirely with a real
+// listbox button. Modeled on NavMenu's disclosure mechanics (click-outside
+// closes, Escape closes) but, unlike NavMenu's deliberate `role="group"`
+// (a navigation disclosure, not a value picker), this implements the
+// actual ARIA listbox-button pattern: aria-activedescendant keeps DOM
+// focus on the trigger the whole time (never moving focus into the list),
+// with arrow keys/Enter/Escape handled on the trigger itself.
+function ChoiceColorSelect({
+  id,
+  labelId,
+  name,
+  value,
+  onChange,
+}: {
+  id: string;
+  labelId: string;
+  name: string;
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxId = `${id}-listbox`;
+  const selectedOption =
+    choiceColorSelectOptions.find((option) => option.value === value) ??
+    choiceColorSelectOptions[0];
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [open]);
+
+  function openList() {
+    const currentIndex = choiceColorSelectOptions.findIndex((option) => option.value === value);
+    setHighlightedIndex(Math.max(currentIndex, 0));
+    setOpen(true);
+  }
+
+  function selectHighlighted() {
+    const option = choiceColorSelectOptions[highlightedIndex];
+    if (option) {
+      onChange(option.value);
+    }
+    setOpen(false);
+  }
+
+  function handleTriggerKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (!open) {
+        openList();
+      } else {
+        setHighlightedIndex((current) =>
+          Math.min(current + 1, choiceColorSelectOptions.length - 1),
+        );
+      }
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!open) {
+        openList();
+      } else {
+        setHighlightedIndex((current) => Math.max(current - 1, 0));
+      }
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (!open) {
+        openList();
+      } else {
+        selectHighlighted();
+      }
+    } else if (event.key === "Escape" && open) {
+      event.preventDefault();
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <input type="hidden" name={name} value={value} />
+      <button
+        ref={triggerRef}
+        type="button"
+        id={id}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        aria-labelledby={`${labelId} ${id}`}
+        aria-activedescendant={open ? `${listboxId}-option-${highlightedIndex}` : undefined}
+        onClick={() => (open ? setOpen(false) : openList())}
+        onKeyDown={handleTriggerKeyDown}
+        className="flex h-9 w-full items-center gap-2 border border-slate-300 bg-white px-3 text-left text-sm text-slate-950 outline-none focus:border-slate-950"
+      >
+        <ChoiceColorSwatch color={selectedOption.value} />
+        <span className="flex-1 truncate">{selectedOption.label}</span>
+        <span aria-hidden="true" className="shrink-0 text-[10px] text-slate-500">
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <ul
+          id={listboxId}
+          role="listbox"
+          aria-labelledby={labelId}
+          tabIndex={-1}
+          className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto border border-slate-300 bg-white py-1 shadow-md"
+        >
+          {choiceColorSelectOptions.map((option, index) => (
+            <li
+              key={option.value || "none"}
+              id={`${listboxId}-option-${index}`}
+              role="option"
+              aria-selected={option.value === value}
+              onMouseEnter={() => setHighlightedIndex(index)}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+                triggerRef.current?.focus();
+              }}
+              className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-950 ${
+                index === highlightedIndex ? "bg-slate-100" : ""
+              }`}
+            >
+              <ChoiceColorSwatch color={option.value} />
+              <span>{option.label}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -449,10 +621,6 @@ function EntityCreateFormFields({
                       />
                       <div className="flex flex-col gap-2">
                         {field.choiceOptions.map((option, optionIndex) => {
-                          const swatchColor = isChoiceOptionColor(option.color)
-                            ? option.color
-                            : undefined;
-
                           return (
                             <div
                               key={option.rowId}
@@ -494,54 +662,25 @@ function EntityCreateFormFields({
                               </div>
                               <div>
                                 <label
+                                  id={`choiceOptionColorLabel:${field.rowId}:${option.rowId}`}
                                   htmlFor={`choiceOptionColor:${field.rowId}:${option.rowId}`}
                                   className="sr-only"
                                 >
                                   Option {optionIndex + 1} color
                                 </label>
-                                {/* Native <select> for full keyboard/screen-reader
-                                    support -- a swatch can't reliably render inside
-                                    the closed state cross-browser, so a decorative
-                                    overlay swatch sits over the select's own text
-                                    (already reading the color name), giving the
-                                    "[ swatch  Name  v ]" look without a custom
-                                    listbox widget. */}
-                                <div className="relative">
-                                  <span
-                                    aria-hidden="true"
-                                    className={`pointer-events-none absolute left-2 top-1/2 flex h-3.5 w-3.5 -translate-y-1/2 items-center justify-center rounded-sm border ${
-                                      swatchColor
-                                        ? CHOICE_OPTION_SWATCH_CLASSES[swatchColor]
-                                        : "border-dashed border-slate-400"
-                                    }`}
-                                  >
-                                    {!swatchColor ? (
-                                      <span className="text-[8px] leading-none text-slate-400">
-                                        ×
-                                      </span>
-                                    ) : null}
-                                  </span>
-                                  <select
-                                    id={`choiceOptionColor:${field.rowId}:${option.rowId}`}
-                                    name={`choiceOptionColor:${field.rowId}:${option.rowId}`}
-                                    value={option.color}
-                                    onChange={(event) =>
-                                      updateChoiceOptionColor(
-                                        field.rowId,
-                                        option.rowId,
-                                        event.currentTarget.value,
-                                      )
-                                    }
-                                    className="block h-9 w-full border border-slate-300 bg-white py-0 pl-8 pr-3 text-sm text-slate-950 outline-none focus:border-slate-950"
-                                  >
-                                    <option value="">No color</option>
-                                    {CHOICE_OPTION_COLORS.map((color) => (
-                                      <option key={color} value={color}>
-                                        {CHOICE_OPTION_COLOR_LABELS[color]}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
+                                <ChoiceColorSelect
+                                  id={`choiceOptionColor:${field.rowId}:${option.rowId}`}
+                                  labelId={`choiceOptionColorLabel:${field.rowId}:${option.rowId}`}
+                                  name={`choiceOptionColor:${field.rowId}:${option.rowId}`}
+                                  value={option.color}
+                                  onChange={(color) =>
+                                    updateChoiceOptionColor(
+                                      field.rowId,
+                                      option.rowId,
+                                      color,
+                                    )
+                                  }
+                                />
                                 <FieldError
                                   message={
                                     state.errors[
