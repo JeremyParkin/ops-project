@@ -327,7 +327,11 @@ Initial classification:
 Minor UX / visual polish
 
 Possible direction:
-Give these disclosure/toggle rows consistent container treatment with the rest of the UI: appropriate padding, border/background treatment, hover/focus state, and clear affordance that they are interactive. Prefer reusing an existing disclosure/control primitive if one already exists rather than introducing one-off styling.
+Choose one intentional interaction treatment rather than the current halfway state:
+- if these are meant to behave like lightweight disclosure/text links, remove the large white background strip and style them clearly as links/disclosures;
+- if they are meant to be full-width controls, give them deliberate padding, border/background treatment, spacing, and hover/focus states.
+
+Prefer reusing one consistent disclosure/control style across Kinema where possible rather than solving these two rows with one-off CSS.
 
 Status:
 Open
