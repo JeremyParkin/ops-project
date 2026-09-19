@@ -47,9 +47,14 @@ export function FieldManagementList({
       </div>
 
       {addFieldForm ? (
-        <details className="group mb-5 border border-slate-200 [&::-webkit-details-marker]:hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50">
-            <span>Add field</span>
+        <details className="group mb-5 border border-brass/60 bg-brass/5 [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border-l-4 border-brass px-4 py-2.5 text-sm font-semibold text-graphite hover:bg-brass/10">
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="text-base leading-none text-brass-deep">
+                +
+              </span>
+              <span>Add field</span>
+            </span>
             <span
               aria-hidden="true"
               className="shrink-0 text-sm text-slate-500 transition-transform group-open:rotate-90"
@@ -57,7 +62,7 @@ export function FieldManagementList({
               ▸
             </span>
           </summary>
-          <div className="border-t border-slate-200 p-4">{addFieldForm}</div>
+          <div className="border-t border-brass/40 bg-white p-4">{addFieldForm}</div>
         </details>
       ) : null}
 

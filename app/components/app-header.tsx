@@ -87,7 +87,6 @@ export function AppHeader({
   // combination ever produces an empty dropdown.
   const canConfigure =
     canManageWorkspace || canManageAutomation || canManageSchema || canManageSettings || canManageIntegrations || canViewAdministrativeHistory;
-  const isHome = pathname === "/";
   const isWork = pathname.startsWith("/my-work") || pathname.startsWith("/team-work");
   const isBusiness = pathname.startsWith("/entities");
   const isAnalytics = pathname.startsWith("/analytics");
@@ -99,8 +98,8 @@ export function AppHeader({
 
   return (
     <header className="bg-graphite">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-2 px-4 py-2 sm:px-8 lg:flex-nowrap lg:px-10">
-        <Link href="/" className="mr-2 shrink-0">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-nowrap items-center gap-1.5 px-4 py-2 sm:gap-2 sm:px-8 lg:px-10">
+        <Link href="/" aria-label="Kinema home" className="mr-2 shrink-0">
           <img
             src="/branding/kinema-L1-white-text.svg"
             alt="Kinema"
@@ -112,10 +111,6 @@ export function AppHeader({
           className="hidden flex-wrap items-center gap-1 lg:flex"
           aria-label="Primary navigation"
         >
-          <Link href="/" className={topLinkClass(isHome)}>
-            Home
-          </Link>
-
           {canViewManagerPortfolio ? (
             <NavMenu key={`work-${pathname}`} label="Work" active={isWork}>
               <MenuLink href="/my-work">My Work</MenuLink>
@@ -173,7 +168,7 @@ export function AppHeader({
 
         {/* Narrow-window fallback: everything above collapses into one menu
             rather than wrapping or overflowing the header row. */}
-        <div className="lg:hidden">
+        <div className="shrink-0 lg:hidden">
           <NavMenu
             key={`mobile-${pathname}`}
             label={
@@ -233,7 +228,7 @@ export function AppHeader({
         <form
           action="/search"
           method="get"
-          className="flex min-w-0 flex-1 items-center gap-2 lg:ml-4 lg:max-w-56 lg:flex-none"
+          className="flex min-w-[5rem] flex-1 items-center lg:ml-4 lg:max-w-56 lg:flex-none"
         >
           <label className="sr-only" htmlFor="header-record-search">
             Search
@@ -242,15 +237,9 @@ export function AppHeader({
             id="header-record-search"
             name="q"
             type="search"
-            className="h-9 min-w-0 flex-1 border border-slab bg-paper px-2 text-sm text-graphite placeholder:text-stone"
+            className="h-9 w-full min-w-0 border border-slab bg-paper px-2 text-sm text-graphite placeholder:text-stone"
             placeholder="Search"
           />
-          <button
-            type="submit"
-            className="hidden h-9 shrink-0 border border-slab px-3 text-sm font-medium text-grit-light hover:bg-slab hover:text-chalk lg:inline-flex"
-          >
-            Search
-          </button>
         </form>
 
         <Link
@@ -260,7 +249,7 @@ export function AppHeader({
               ? `Notifications, ${unreadNotificationCount} unread`
               : "Notifications"
           }
-          className={`relative ml-auto flex shrink-0 items-center px-3 py-2 text-sm font-medium ${
+          className={`relative ml-auto flex shrink-0 items-center px-2 py-2 text-sm font-medium sm:px-3 ${
             isNotifications ? "bg-brass text-graphite" : "text-grit-light hover:bg-slab hover:text-chalk"
           }`}
         >
@@ -291,10 +280,14 @@ export function AppHeader({
         <div className="shrink-0">
           <NavMenu
             key={`account-${pathname}`}
-            label={<span className="max-w-[8rem] truncate sm:max-w-[14rem]">{workspaceName || "Account"}</span>}
+            label={
+              <span className="max-w-[3.5rem] truncate sm:max-w-[6rem] md:max-w-[9rem] lg:max-w-[14rem]">
+                {workspaceName || "Account"}
+              </span>
+            }
             triggerAriaLabel="Account menu"
             align="right"
-            triggerClassName="flex min-w-0 items-center gap-1 px-3 py-2 text-sm font-medium text-grit-light hover:bg-slab hover:text-chalk"
+            triggerClassName="flex min-w-0 items-center gap-1 px-2 py-2 text-sm font-medium text-grit-light hover:bg-slab hover:text-chalk sm:px-3"
           >
             <MenuLabel>{userEmail}</MenuLabel>
             {memberships.length > 1 ? (

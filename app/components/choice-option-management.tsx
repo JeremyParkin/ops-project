@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
 import type { ChoiceOptionFormState } from "@/lib/domain/choice-option-validation";
 import { createInitialChoiceOptionFormState } from "@/lib/domain/choice-option-validation";
 import {
@@ -46,9 +46,16 @@ function FieldError({ message }: { message?: string }) {
 // field name and values as the select it replaces, so the server action and
 // validateChoiceOptionFormData need no changes. Radios give keyboard
 // support for free (arrow keys move within the group by `name`, independent
-// of DOM adjacency) -- no JS behavior beyond ordinary form submission. Each
-// swatch always pairs the color chip with its literal text label, so color
-// is never the only carrier of which option is selected.
+// of DOM adjacency) -- no JS behavior beyond ordinary form submission.
+//
+// Swatch-only, not chip+label: rendering every color as both a color chip
+// and its full text label was the single biggest contributor to the
+// new-option editor's height (dogfood, hosted verification after 139e7d6).
+// Color is still never the *only* signal of which is selected -- every
+// swatch keeps a literal accessible name (via aria-label on the input,
+// since there's no visible text for the label to derive one from) plus a
+// native `title` tooltip, and the checked swatch gets a visible ring, not
+// just a color difference.
 function ColorSwatchPicker({
   legendId,
   defaultValue,
@@ -57,32 +64,37 @@ function ColorSwatchPicker({
   defaultValue: string;
 }) {
   return (
-    <div role="radiogroup" aria-labelledby={legendId} className="flex flex-wrap gap-1.5">
-      <label className="flex cursor-pointer items-center gap-1.5 border border-grit px-2 py-1 text-xs text-stone has-[:checked]:border-graphite has-[:checked]:bg-chalk has-[:checked]:font-medium has-[:checked]:text-graphite has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-brass">
-        <input type="radio" name="optionColor" value="" defaultChecked={defaultValue === ""} className="sr-only" />
-        <span
-          className="h-3.5 w-3.5 shrink-0 rounded-sm border border-dashed border-grit"
-          aria-hidden="true"
+    <div role="radiogroup" aria-labelledby={legendId} className="flex flex-wrap gap-1">
+      <label
+        title="No color"
+        className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-sm border border-dashed border-grit has-[:checked]:ring-2 has-[:checked]:ring-graphite has-[:checked]:ring-offset-1 has-[:checked]:ring-offset-white has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-brass"
+      >
+        <input
+          type="radio"
+          name="optionColor"
+          value=""
+          defaultChecked={defaultValue === ""}
+          aria-label="No color"
+          className="sr-only"
         />
-        No color
+        <span aria-hidden="true" className="text-[10px] leading-none text-grit">
+          ×
+        </span>
       </label>
       {CHOICE_OPTION_COLORS.map((color) => (
         <label
           key={color}
-          className="flex cursor-pointer items-center gap-1.5 border border-grit px-2 py-1 text-xs text-stone has-[:checked]:border-graphite has-[:checked]:bg-chalk has-[:checked]:font-medium has-[:checked]:text-graphite has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-brass"
+          title={CHOICE_OPTION_COLOR_LABELS[color]}
+          className={`h-6 w-6 shrink-0 cursor-pointer rounded-sm border ${CHOICE_OPTION_SWATCH_CLASSES[color]} has-[:checked]:ring-2 has-[:checked]:ring-graphite has-[:checked]:ring-offset-1 has-[:checked]:ring-offset-white has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-brass`}
         >
           <input
             type="radio"
             name="optionColor"
             value={color}
             defaultChecked={defaultValue === color}
+            aria-label={CHOICE_OPTION_COLOR_LABELS[color]}
             className="sr-only"
           />
-          <span
-            className={`h-3.5 w-3.5 shrink-0 rounded-sm border ${CHOICE_OPTION_SWATCH_CLASSES[color]}`}
-            aria-hidden="true"
-          />
-          {CHOICE_OPTION_COLOR_LABELS[color]}
         </label>
       ))}
     </div>
@@ -96,6 +108,24 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
   );
   const domId = useId();
   const colorLegendId = `${domId}-color-legend`;
+
+  // Success confirmation is transient -- once shown beside the now-reset
+  // "New option (unsaved)" editor it reads as contradictory state, unlike a
+  // failure, which stays visible until the builder can see and fix it.
+  // `hiddenForState` tracks *which* state object has already timed out,
+  // rather than a plain boolean: since useActionState hands back a new
+  // object reference on every completion, a fresh success is automatically
+  // "not yet hidden" (no synchronous setState-on-mount/reset needed here --
+  // only the deferred setTimeout callback below updates state).
+  const [hiddenForState, setHiddenForState] = useState<typeof state | null>(null);
+  useEffect(() => {
+    if (!state.success || !state.message) {
+      return;
+    }
+    const timer = setTimeout(() => setHiddenForState(state), 4000);
+    return () => clearTimeout(timer);
+  }, [state]);
+  const showMessage = Boolean(state.message) && (!state.success || hiddenForState !== state);
 
   return (
     <form
@@ -134,7 +164,7 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
       >
         {pending ? "Saving..." : "Save option"}
       </button>
-      {state.message ? (
+      {showMessage ? (
         <p
           className={`text-xs ${state.success ? "text-status-sage" : "text-status-oxide"}`}
           role="status"
@@ -172,6 +202,15 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
   const moveSuccess = moveUpState.message ? moveUpState.success : moveDownState.success;
   const domId = useId();
   const colorLegendId = `${domId}-color-legend`;
+  const bodyId = `${domId}-body`;
+  // Saved options render collapsed by default (dogfood: Choice configuration
+  // was excessively tall with every option always expanded). A plain
+  // client-toggled div, not <details>/<summary>, because the collapsed row
+  // needs its own interactive Edit/Archive controls alongside the toggle --
+  // nested interactive controls inside a native <summary> are unreliable
+  // cross-browser (see page-primitives.tsx's CollapsibleSection, which
+  // avoids this for the same reason).
+  const [open, setOpen] = useState(false);
 
   if (option.archivedAt) {
     return (
@@ -204,102 +243,107 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
     : "border-dashed border-grit";
 
   return (
-    <details className="group border border-grit">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+    <div className="border border-grit">
+      <div className="flex items-center gap-2 px-3 py-2">
         <span className={`h-3.5 w-3.5 shrink-0 rounded-sm border ${swatchClass}`} aria-hidden="true" />
-        <span className="text-sm text-graphite">{option.label}</span>
-        <span
-          aria-hidden="true"
-          className="ml-auto shrink-0 text-xs text-stone transition-transform group-open:rotate-90"
-        >
-          ▸
-        </span>
-      </summary>
-      <div className="grid gap-2 border-t border-grit p-3">
-      <form action={formAction} className="flex flex-wrap items-end gap-2">
-        <div>
-          <label htmlFor={`option-label-${option.id}`} className="block text-xs font-medium text-stone">
-            Label
-          </label>
-          <input
-            id={`option-label-${option.id}`}
-            name="optionLabel"
-            defaultValue={state.values.label}
-            className="mt-1 h-8 border border-grit px-2 text-sm text-graphite"
-          />
-          <FieldError message={state.errors.optionLabel} />
-        </div>
-        <div>
-          <span id={colorLegendId} className="block text-xs font-medium text-stone">
-            Color
-          </span>
-          <div className="mt-1">
-            <ColorSwatchPicker legendId={colorLegendId} defaultValue={state.values.color} />
-          </div>
-        </div>
+        <span className="min-w-0 flex-1 truncate text-sm text-graphite">{option.label}</span>
         <button
-          type="submit"
-          disabled={pending}
-          className="h-8 border border-grit px-3 text-xs font-medium text-stone disabled:text-grit"
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          className="h-7 shrink-0 border border-grit px-2 text-xs font-medium text-stone hover:bg-chalk"
         >
-          {pending ? "Saving..." : "Save"}
+          {open ? "Close" : "Edit"}
         </button>
-      </form>
-      {state.message ? (
-        <p
-          className={`text-xs ${state.success ? "text-status-sage" : "text-status-oxide"}`}
-          role="status"
-        >
-          {state.message}
-        </p>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        {moveUpAction ? (
-          <form action={moveUpFormAction}>
-            <button
-              type="submit"
-              disabled={moveUpPending}
-              className="h-8 border border-grit px-2 text-xs disabled:text-grit"
-            >
-              Up
-            </button>
-          </form>
-        ) : null}
-        {moveDownAction ? (
-          <form action={moveDownFormAction}>
-            <button
-              type="submit"
-              disabled={moveDownPending}
-              className="h-8 border border-grit px-2 text-xs disabled:text-grit"
-            >
-              Down
-            </button>
-          </form>
-        ) : null}
         {archiveAction ? (
           <form action={archiveFormAction}>
             <button
               type="submit"
               disabled={archivePending}
-              className="h-8 border border-grit px-3 text-xs font-medium text-stone disabled:text-grit"
+              className="h-7 shrink-0 border border-grit px-2 text-xs font-medium text-stone hover:bg-chalk disabled:text-grit"
             >
               {archivePending ? "Archiving..." : "Archive"}
             </button>
           </form>
         ) : null}
-        {moveMessage ? (
-          <span className={`text-xs ${moveSuccess ? "text-status-sage" : "text-status-oxide"}`}>
-            {moveMessage}
-          </span>
-        ) : null}
-        {archiveState.message ? (
-          <span className={`text-xs ${archiveState.success ? "text-status-sage" : "text-status-oxide"}`}>
-            {archiveState.message}
-          </span>
-        ) : null}
       </div>
-      </div>
-    </details>
+      {archiveState.message ? (
+        <p className={`px-3 pb-2 text-xs ${archiveState.success ? "text-status-sage" : "text-status-oxide"}`}>
+          {archiveState.message}
+        </p>
+      ) : null}
+      {open ? (
+        <div id={bodyId} className="grid gap-2 border-t border-grit p-3">
+          <form action={formAction} className="flex flex-wrap items-end gap-2">
+            <div>
+              <label htmlFor={`option-label-${option.id}`} className="block text-xs font-medium text-stone">
+                Label
+              </label>
+              <input
+                id={`option-label-${option.id}`}
+                name="optionLabel"
+                defaultValue={state.values.label}
+                className="mt-1 h-8 border border-grit px-2 text-sm text-graphite"
+              />
+              <FieldError message={state.errors.optionLabel} />
+            </div>
+            <div>
+              <span id={colorLegendId} className="block text-xs font-medium text-stone">
+                Color
+              </span>
+              <div className="mt-1">
+                <ColorSwatchPicker legendId={colorLegendId} defaultValue={state.values.color} />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={pending}
+              className="h-8 border border-grit px-3 text-xs font-medium text-stone disabled:text-grit"
+            >
+              {pending ? "Saving..." : "Save"}
+            </button>
+          </form>
+          {state.message ? (
+            <p
+              className={`text-xs ${state.success ? "text-status-sage" : "text-status-oxide"}`}
+              role="status"
+            >
+              {state.message}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {moveUpAction ? (
+              <form action={moveUpFormAction}>
+                <button
+                  type="submit"
+                  disabled={moveUpPending}
+                  className="h-8 border border-grit px-2 text-xs disabled:text-grit"
+                >
+                  Up
+                </button>
+              </form>
+            ) : null}
+            {moveDownAction ? (
+              <form action={moveDownFormAction}>
+                <button
+                  type="submit"
+                  disabled={moveDownPending}
+                  className="h-8 border border-grit px-2 text-xs disabled:text-grit"
+                >
+                  Down
+                </button>
+              </form>
+            ) : null}
+            {moveMessage ? (
+              <span className={`text-xs ${moveSuccess ? "text-status-sage" : "text-status-oxide"}`}>
+                {moveMessage}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

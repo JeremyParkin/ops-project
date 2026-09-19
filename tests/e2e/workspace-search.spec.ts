@@ -69,8 +69,11 @@ test("search groups active records by entity and links to their details", async 
   });
 
   await page.goto("/");
-  await page.getByRole("searchbox", { name: "Search", exact: true }).fill("  acme ");
-  await page.getByRole("button", { name: "Search", exact: true }).first().click();
+  // The header's visible Search button was removed -- Enter submits the
+  // search form at all widths.
+  const searchBox = page.getByRole("searchbox", { name: "Search", exact: true });
+  await searchBox.fill("  acme ");
+  await searchBox.press("Enter");
 
   await expect(page).toHaveURL(/\/search\?q=/);
   await expect(page.getByRole("heading", { name: client.name, exact: true })).toBeVisible();

@@ -5,19 +5,24 @@
 // below are a static, fully-enumerated map -- never constructed as
 // `bg-${color}-100`, since a dynamically-built class name isn't guaranteed
 // to survive Tailwind's build-time class extraction.
+// Spectral order (neutral first, then hue-ordered around the color wheel)
+// so the compact swatch-only picker in choice-option-management.tsx reads
+// as a coherent ramp rather than an arbitrary sequence -- order here is the
+// picker's visual/tab order, not semantically significant anywhere else
+// (isChoiceOptionColor and the class-lookup maps below are order-independent).
 export const CHOICE_OPTION_COLORS = [
   "gray",
   "red",
-  "amber",
-  "emerald",
-  "blue",
-  "violet",
   "orange",
+  "amber",
+  "lime",
+  "emerald",
   "teal",
   "cyan",
+  "blue",
   "indigo",
+  "violet",
   "rose",
-  "lime",
 ] as const;
 
 export type ChoiceOptionColor = (typeof CHOICE_OPTION_COLORS)[number];

@@ -641,7 +641,13 @@ export default async function EntityPage({
                 />
               }
             />
-            <div className="mx-auto w-full max-w-6xl">
+            {/* Both archive-visibility toggles grouped in one place while
+                managing -- previously "Show archived fields" sat here and
+                "Show archived records" sat below the entire records table,
+                reading as unrelated controls despite both being
+                archive-visibility toggles for this same object (dogfood).
+                Each link's text still names exactly what it shows/hides. */}
+            <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-1">
               <Link
                 href={
                   showArchivedFields
@@ -653,6 +659,16 @@ export default async function EntityPage({
                 {showArchivedFields
                   ? "Hide archived fields"
                   : "Show archived fields"}
+              </Link>
+              <Link
+                href={
+                  showArchivedRecords
+                    ? hideArchivedRecordsHref
+                    : showArchivedRecordsHref
+                }
+                className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+              >
+                {showArchivedRecords ? "Hide archived records" : "Show archived records"}
               </Link>
             </div>
           </>
@@ -728,18 +744,20 @@ export default async function EntityPage({
           sortPositionByFieldId={sortPositionByFieldId}
           sortFieldCount={effectiveSorts.length}
         />
-        <div className="mx-auto w-full max-w-6xl">
-          <Link
-            href={
-              showArchivedRecords
-                ? hideArchivedRecordsHref
-                : showArchivedRecordsHref
-            }
-            className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
-          >
-            {showArchivedRecords ? "Hide archived records" : "Show archived records"}
-          </Link>
-        </div>
+        {!isManaging ? (
+          <div className="mx-auto w-full max-w-6xl">
+            <Link
+              href={
+                showArchivedRecords
+                  ? hideArchivedRecordsHref
+                  : showArchivedRecordsHref
+              }
+              className="text-sm font-medium text-slate-700 underline-offset-4 hover:underline"
+            >
+              {showArchivedRecords ? "Hide archived records" : "Show archived records"}
+            </Link>
+          </div>
+        ) : null}
     </WorkspacePageLayout>
   );
 }

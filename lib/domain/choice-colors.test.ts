@@ -15,16 +15,16 @@ describe("CHOICE_OPTION_COLORS", () => {
     expect(CHOICE_OPTION_COLORS).toEqual([
       "gray",
       "red",
-      "amber",
-      "emerald",
-      "blue",
-      "violet",
       "orange",
+      "amber",
+      "lime",
+      "emerald",
       "teal",
       "cyan",
+      "blue",
       "indigo",
+      "violet",
       "rose",
-      "lime",
     ]);
   });
 

@@ -227,13 +227,15 @@ test("a clean CSV import creates records that appear in the object list, global 
     page.getByRole("row").filter({ hasText: `${run.label} Acme` }),
   ).toBeVisible();
 
+  // The header's visible Search button was removed (Enter submits, at all
+  // widths, with no dedicated button) -- native Enter submission on the
+  // search input is now the only way to submit it.
   await page
     .getByRole("searchbox", { name: "Search", exact: true })
     .fill(`${run.label} Globex`);
   await page
-    .getByRole("button", { name: "Search", exact: true })
-    .first()
-    .click();
+    .getByRole("searchbox", { name: "Search", exact: true })
+    .press("Enter");
   await expect(page).toHaveURL(/\/search\?q=/);
   await expect(page.getByRole("link", { name: `${run.label} Globex` })).toBeVisible();
 });

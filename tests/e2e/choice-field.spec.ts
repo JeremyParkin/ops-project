@@ -174,26 +174,23 @@ test("builder creates a Choice field and configures options through the real UI"
     await expectAfterMutation(page.getByText("Option added."));
   }
 
-  // Saved options render as a collapsed summary (swatch + label text) by
-  // default; their editable label input only exists once expanded.
+  // Saved options render as a collapsed row (swatch + label text) by
+  // default; their editable label input only exists once expanded via Edit.
   await expect(fieldRow.getByText("Minor", { exact: true })).toBeVisible();
   await expect(fieldRow.getByText("Critical", { exact: true })).toBeVisible();
 
-  // Reorder: Critical should be able to move up above Minor. Its
-  // reorder/archive controls live inside the option's collapsed <details>,
-  // so open it first (nested interactive controls can't live in <summary>).
-  const criticalRow = fieldRow.locator("details").filter({
-    has: page.getByText("Critical", { exact: true }),
-  }).first();
-  await criticalRow.locator("summary").click();
+  // Reorder: Critical should be able to move up above Minor. Reordering
+  // lives inside the option's expanded body (opened via the row's own Edit
+  // quick action, not a native <summary> -- nested interactive controls
+  // can't live there reliably), while Archive is itself a quick action
+  // directly on the collapsed row.
+  const criticalRow = fieldRow.getByText("Critical", { exact: true }).locator("..").locator("..");
+  await criticalRow.getByRole("button", { name: "Edit" }).click();
   await criticalRow.getByRole("button", { name: "Up" }).click();
   await expectAfterMutation(page.getByText("Option order updated."));
 
   // Archive Minor, confirm it moves to the archived (restore-only) row.
-  const minorRow = fieldRow.locator("details").filter({
-    has: page.getByText("Minor", { exact: true }),
-  }).first();
-  await minorRow.locator("summary").click();
+  const minorRow = fieldRow.getByText("Minor", { exact: true }).locator("..").locator("..");
   await minorRow.getByRole("button", { name: "Archive" }).click();
   // A successful archive immediately swaps the row to its archived-only
   // branch (a Restore button, no editable label input) -- that branch swap

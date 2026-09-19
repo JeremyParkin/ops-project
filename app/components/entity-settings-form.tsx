@@ -200,7 +200,7 @@ export function EntitySettingsForm({
         </div>
       </form>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-5">
+      <div className="mt-6 flex flex-wrap items-center gap-4 border-t border-slate-100 pt-5">
         {isArchived ? (
           <form action={restoreAction}>
             <button
@@ -212,12 +212,32 @@ export function EntitySettingsForm({
             </button>
           </form>
         ) : (
+          // Archive/Delete are infrequent secondary lifecycle actions, not
+          // primary configuration actions -- a compact icon+text treatment
+          // (not a bordered button) keeps them from dominating the page
+          // visually while preserving exactly the same submit/confirm
+          // behavior and destructive color distinction for Delete.
           <form action={archiveAction}>
             <button
               type="submit"
               disabled={archivePending}
-              className="inline-flex h-10 items-center justify-center border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline"
             >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4 shrink-0"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="4" rx="1" />
+                <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+                <path d="M10 12h4" />
+              </svg>
               {archivePending ? "Archiving..." : "Archive Entity"}
             </button>
           </form>
@@ -238,8 +258,25 @@ export function EntitySettingsForm({
           <button
             type="submit"
             disabled={deletePending}
-            className="inline-flex h-10 items-center justify-center border border-red-300 px-4 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-red-700 hover:text-red-900 hover:underline disabled:cursor-not-allowed disabled:text-red-300 disabled:no-underline"
           >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4 shrink-0"
+              aria-hidden="true"
+            >
+              <path d="M3 6h18" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+            </svg>
             {deletePending ? "Deleting..." : "Delete Entity"}
           </button>
         </form>

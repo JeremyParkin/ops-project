@@ -89,25 +89,31 @@ test("Choice option swatch picker: keyboard selection, visible selected state, a
   // real keyboard path (Tab to the group, then arrow keys to the target
   // swatch) rather than a direct click, so this test actually exercises
   // keyboard accessibility rather than just the resulting form value.
+  // Swatch-only, no visible text label, so each swatch's accessible name
+  // comes from an aria-label on its (visually hidden) radio input.
   const colorGroup = fieldRow.getByRole("radiogroup", { name: "Color" });
   await colorGroup.getByRole("radio", { name: "No color" }).focus();
-  // Order in CHOICE_OPTION_COLORS: gray, red, amber, emerald, blue, violet,
-  // orange, teal, cyan, indigo, rose, lime -- "No color" then 6 presses
-  // right lands on Violet.
+  // Spectral order in CHOICE_OPTION_COLORS: gray, red, orange, amber, lime,
+  // emerald, teal, cyan, blue, indigo, violet, rose -- "No color" then 6
+  // presses right lands on Emerald.
   for (let i = 0; i < 6; i += 1) {
     await page.keyboard.press("ArrowRight");
   }
-  const violetRadio = colorGroup.getByRole("radio", { name: "Violet" });
-  await expect(violetRadio).toBeChecked();
-  // Selected-state affordance is visible, not just programmatically true.
-  await expect(colorGroup.locator("label").filter({ hasText: "Violet" })).toHaveClass(/border-grit|has-/);
+  const emeraldRadio = colorGroup.getByRole("radio", { name: "Emerald" });
+  await expect(emeraldRadio).toBeChecked();
+  // Selected-state affordance is visible on the swatch itself, not just
+  // programmatically true.
+  await expect(emeraldRadio.locator("..")).toHaveClass(/has-\[:checked\]:ring/);
 
   await fieldRow.getByRole("button", { name: "Save option" }).click();
   await expectAfterMutation(page.getByText("Option added."));
-  await expect(fieldRow.locator('input[value="Urgent"]')).toHaveCount(1);
+  // Saved options render collapsed by default -- the label only exists as
+  // an editable input once expanded, so confirm the save via the visible
+  // collapsed-row text instead.
+  await expect(fieldRow.getByText("Urgent", { exact: true })).toBeVisible();
 
-  // Confirm the option actually persisted with the violet color (not
-  // silently dropped), and that it renders as a violet pill on a record.
+  // Confirm the option actually persisted with the chosen color (not
+  // silently dropped), and that it renders with that color as a pill on a record.
   await gotoEntity(page, entity, false);
   await page.getByRole("link", { name: `Add ${entity.name}` }).first().click();
   await page.locator(`[name="${entity.fields.title.key}"]`).fill(`${run.label} Ticket`);
@@ -119,7 +125,7 @@ test("Choice option swatch picker: keyboard selection, visible selected state, a
   await expectAfterMutation(page.getByText(`${entity.name} created.`));
 
   const row = rowForText(page, `${run.label} Ticket`);
-  await expect(row.getByText("Urgent")).toHaveClass(/border-violet-400/);
+  await expect(row.getByText("Urgent")).toHaveClass(/border-emerald-400/);
 });
 
 test("Long text clamps to 2 lines by default with a separate More/Less toggle; identity and linkified URL/email cells are excluded", async ({

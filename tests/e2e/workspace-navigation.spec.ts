@@ -108,7 +108,13 @@ test("home provides shared navigation and keeps the entity card on its default v
 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Home", exact: true })).toBeVisible();
+  // The logo is the only Home affordance in the header (the redundant text
+  // "Home" nav item was removed) -- it still links to "/" and carries an
+  // accessible name so its destination remains unambiguous to AT.
+  const logoHomeLink = page.getByRole("link", { name: "Kinema home", exact: true });
+  await expect(logoHomeLink).toBeVisible();
+  await expect(logoHomeLink).toHaveAttribute("href", "/");
+  await expect(page.getByRole("link", { name: "Home", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Automations", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Configure", exact: true }).click();
   await expect(page.getByRole("link", { name: "Automations", exact: true })).toBeVisible();
