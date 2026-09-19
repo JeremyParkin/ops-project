@@ -221,11 +221,7 @@ export async function setEntityDefaultView({
     throw new Error(`Unable to update default view: ${error.message}`);
   }
 
-  // set_entity_default_view returns the now-default view's id as a string,
-  // or SQL null (received here as JS null) when clearing the default back
-  // to none -- both are legitimate; anything else is a genuinely malformed
-  // response.
-  if (data !== null && typeof data !== "string") {
+  if (typeof data !== "string") {
     throw new Error("Unable to update default view: unexpected RPC response.");
   }
 }
