@@ -196,3 +196,34 @@ Explore a lightweight "Create new object..." path from the relation-target contr
 
 Status:
 Open
+
+
+### [2026-09-19] Responsive header grows taller on smaller screens
+
+Context:
+Jeremy used the hosted Household workspace at a narrower desktop/browser width.
+
+What I was trying to do:
+Navigate the app normally while keeping the global header compact and usable.
+
+What happened:
+As the viewport narrows, the global header becomes significantly taller because the search field drops onto its own full-width row while Menu, Notifications, and the workspace/account control remain text-heavy. The responsive state therefore consumes more vertical space precisely when screen space is more constrained.
+
+Why it matters:
+The global header is persistent chrome. On smaller screens it should become more compact, not more dominant. The current layout reduces usable vertical space and makes ordinary navigation feel heavier.
+
+Initial classification:
+UX friction / responsive design issue
+
+Possible direction:
+Revisit the compact-header composition rather than simply stacking the desktop controls. Candidate directions include:
+- use a conventional hamburger icon for the collapsed primary menu;
+- use a bell icon for Notifications, with a small badge/dot only when unread notifications exist;
+- reduce the search field width and allow Enter/Return to submit, removing the dedicated Search button if no accessibility or discoverability issue requires it;
+- keep search on the same row where practical, or collapse it behind a search icon at narrower breakpoints;
+- reassess whether the current workspace name needs to be permanently visible as a full-width text control, while preserving a clear and truthful account/workspace-switching affordance.
+
+Do not assume icons alone are sufficient; any compact controls still need accessible labels/tooltips and understandable state.
+
+Status:
+Open
