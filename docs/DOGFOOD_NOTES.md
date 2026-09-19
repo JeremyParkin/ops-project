@@ -227,3 +227,29 @@ Do not assume icons alone are sufficient; any compact controls still need access
 
 Status:
 Open
+
+
+### [2026-09-19] Builders cannot define a user-assignment field while modeling ordinary objects
+
+Context:
+Jeremy was designing the first Household objects and wanted Household Task to carry an owner/assignee tied to an actual workspace user.
+
+What I was trying to do:
+Add a field to a configurable business object that references a real workspace member, so a Task can be assigned to Jeremy, Natalie, or another user.
+
+What happened:
+The generic field model exposes business-object Relation fields, but there is no field type that directly references workspace members/users. A Relation can only point to an existing EntityType, which makes the obvious "assign this Task to a user" modeling need unavailable during schema setup.
+
+Why it matters:
+Assignment to a person is a basic expectation in many operational objects. Requiring builders to model around the absence of a user/member reference feels counterintuitive, especially before any Person business object exists. A plain Choice field with user names would be static, would not preserve identity, and would not integrate naturally with user-based operational features.
+
+Initial classification:
+Missing primitive / UX friction
+
+Possible direction:
+Investigate whether Kinema needs a first-class workspace-member reference field (or similarly bounded identity-reference primitive) for metadata-defined business objects. Do not assume the right answer is to auto-create a default Users EntityType: the existing architecture intentionally keeps authentication/workspace membership separate from configurable business data, and Person EntityTypes are optional business records linked explicitly to workspace identities. Any solution should preserve that boundary and stable user identity while making ordinary "Owner", "Assignee", or "Requested by" fields easy to configure.
+
+Also evaluate how such a field should relate to existing user-keyed features such as Process step assignment and My Work, without silently coupling ordinary record fields to process authority or inventing a broad ownership/permission model.
+
+Status:
+Open
