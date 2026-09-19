@@ -142,8 +142,11 @@ UX friction
 Possible direction:
 Make the unsaved state visually distinct and use action copy that clearly describes what will happen, such as "Save option" for committing the current draft and a separate, unambiguous control for creating another option if needed.
 
+Hosted verification after commit `ab6629c`:
+The unsaved state and save action are now clear enough for continued use: the editor is visually distinct, uses "Save option", and transient success feedback no longer creates a contradictory-looking saved/draft state.
+
 Status:
-Open
+Fixed
 
 ### [2026-09-18] Choice field unavailable during initial object creation
 
@@ -415,6 +418,26 @@ The strengthened Add field treatment is easy to find without becoming oversized.
 Status:
 Fixed
 
+### [2026-09-19] Ordinary Manage Fields rows remain too vertically sparse
+
+Context:
+Jeremy reviewed the live hosted Household Manage Fields surface after the previous builder-density cleanup.
+
+What happened:
+Ordinary non-Choice fields still render as several stacked management rows: Name heading plus a large input, Type heading plus separate text, Required and Save, Move Up / Move Down text buttons, then Archive Field on another row.
+
+Why it matters:
+A modest object schema still becomes longer than necessary. The page improved at the section level, but routine field maintenance still carries too much vertical weight per field.
+
+Initial classification:
+UX friction / builder density
+
+Possible direction:
+Compact each ordinary field's primary controls into one responsive row at desktop and medium widths: name input, compact immutable type metadata, Required checkbox, explicit Save, conventional arrow/icon move controls with accessible names, and a visually secondary Archive action. Let the row wrap cleanly at narrow widths. Preserve Choice option management beneath Choice fields rather than redesigning option rows in this slice.
+
+Status:
+Open
+
 ### [2026-09-19] Field-type immutability has no builder recovery path
 
 Context:
@@ -571,8 +594,11 @@ Two related needs should be investigated separately:
 
 If an option has ever become meaningfully referenced, preserve archive/restore rather than silently rewriting dependent data.
 
+Hosted verification after commits `3df76d4`, `5f90a7b`, `92ebb50`, and `693c183`:
+Archived Choice options are now hidden behind a "Show archived options" disclosure, can be restored, and can be permanently deleted only when completely unreferenced. The safe-delete path blocks active/archived record values, saved-view Choice filters, and Quality Review draft/finalized configuration, and the related raw table-bypass paths are closed. Hosted Household verification passed for the archived disclosure, Restore, Permanent delete, and saved-view behavior after the corrective migrations.
+
 Status:
-Open
+Resolved
 
 ### [2026-09-19] New Choice option Label input reads visually disabled
 
@@ -591,5 +617,8 @@ Minor UX / visual polish
 Possible direction:
 Give the Label input a normal high-contrast editable surface (for example white) while retaining the distinct unsaved-state container around the new-option editor.
 
+Hosted verification after commit `7e15af3`:
+The Choice Label input now reads as editable in the compact new-option editor.
+
 Status:
-Open
+Fixed
