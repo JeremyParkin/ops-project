@@ -155,6 +155,8 @@ test("builder creates a Choice field and configures options through the real UI"
 
   await gotoEntity(page, entity, true);
 
+  // "Add field" is a disclosure inside Manage Fields, collapsed by default.
+  await page.getByText("Add field", { exact: true }).click();
   await page.getByLabel("Field Name").fill("Severity");
   await page.getByLabel("Type", { exact: true }).selectOption("choice");
   await page.getByRole("button", { name: "Add Field" }).click();
@@ -168,26 +170,30 @@ test("builder creates a Choice field and configures options through the real UI"
   // Add three options, one at a time, through the option-management UI.
   for (const label of ["Minor", "Critical"]) {
     await fieldRow.getByLabel("New option").fill(label);
-    await fieldRow.getByRole("button", { name: "Add Option" }).click();
+    await fieldRow.getByRole("button", { name: "Save option" }).click();
     await expectAfterMutation(page.getByText("Option added."));
   }
 
-  // Active option labels live inside an editable input (not a text node),
-  // so their value is confirmed via toHaveValue, not getByText.
-  await expect(fieldRow.locator('input[value="Minor"]')).toHaveCount(1);
-  await expect(fieldRow.locator('input[value="Critical"]')).toHaveCount(1);
+  // Saved options render as a collapsed summary (swatch + label text) by
+  // default; their editable label input only exists once expanded.
+  await expect(fieldRow.getByText("Minor", { exact: true })).toBeVisible();
+  await expect(fieldRow.getByText("Critical", { exact: true })).toBeVisible();
 
-  // Reorder: Critical should be able to move up above Minor.
-  const criticalRow = fieldRow.locator("div.grid.gap-2.border").filter({
-    has: page.locator('input[value="Critical"]'),
+  // Reorder: Critical should be able to move up above Minor. Its
+  // reorder/archive controls live inside the option's collapsed <details>,
+  // so open it first (nested interactive controls can't live in <summary>).
+  const criticalRow = fieldRow.locator("details").filter({
+    has: page.getByText("Critical", { exact: true }),
   }).first();
+  await criticalRow.locator("summary").click();
   await criticalRow.getByRole("button", { name: "Up" }).click();
   await expectAfterMutation(page.getByText("Option order updated."));
 
   // Archive Minor, confirm it moves to the archived (restore-only) row.
-  const minorRow = fieldRow.locator("div.grid.gap-2.border").filter({
-    has: page.locator('input[value="Minor"]'),
+  const minorRow = fieldRow.locator("details").filter({
+    has: page.getByText("Minor", { exact: true }),
   }).first();
+  await minorRow.locator("summary").click();
   await minorRow.getByRole("button", { name: "Archive" }).click();
   // A successful archive immediately swaps the row to its archived-only
   // branch (a Restore button, no editable label input) -- that branch swap

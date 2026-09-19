@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState } from "react";
-import { SectionHeader } from "@/app/components/page-primitives";
 import type { EntityTypeActionState } from "@/app/actions";
 import type { EntityTypeQualityReviewPresentationConfig } from "@/lib/domain/metadata-repository";
 import type { FieldDefinition } from "@/lib/domain/types";
@@ -31,11 +30,12 @@ export function EntityTypeQualityReviewPresentationForm({
   const [state, formAction, pending] = useActionState(action, initialState);
 
   return (
-    <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
-      <SectionHeader
-        title="Review presentation"
-        description="Choose which fields show as Review Date and Overall Result on this person's Review history. Once a Finalized review exists, these designations can no longer be changed or cleared."
-      />
+    <div className="mt-6 border-t border-slate-200 pt-6">
+      <h3 className="text-base font-semibold text-graphite">Review presentation</h3>
+      <p className="mt-1 text-sm text-stone">
+        Choose which fields show as Review Date and Overall Result on this person&apos;s Review history. Once a
+        Finalized review exists, these designations can no longer be changed or cleared.
+      </p>
 
       <form action={formAction} className="mt-4 grid gap-4 md:grid-cols-2">
         <div>
@@ -99,6 +99,6 @@ export function EntityTypeQualityReviewPresentationForm({
           </p>
         ) : null}
       </form>
-    </section>
+    </div>
   );
 }

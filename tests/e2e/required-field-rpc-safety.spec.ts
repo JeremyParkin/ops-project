@@ -259,8 +259,10 @@ test("existing UI friendly validation still prevents adding required fields afte
 
   await gotoEntity(page, entity, true);
 
-  const addFieldSection = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Add Field", exact: true }),
+  // "Add field" is a disclosure inside Manage Fields, collapsed by default.
+  await page.getByText("Add field", { exact: true }).click();
+  const addFieldSection = page.locator("details").filter({
+    has: page.getByText("Add field", { exact: true }),
   });
 
   await addFieldSection.getByLabel("Field Name").fill("Required Later");

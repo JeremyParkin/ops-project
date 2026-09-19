@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { SectionHeader } from "@/app/components/page-primitives";
 import type { EntityTypeActionState } from "@/app/actions";
 import type { EntityTypeQualityReviewConfig } from "@/lib/domain/metadata-repository";
 import type { ChoiceOption, FieldDefinition } from "@/lib/domain/types";
@@ -41,12 +40,7 @@ export function EntityTypeQualityReviewForm({
   );
 
   return (
-    <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
-      <SectionHeader
-        title="Quality Review lifecycle"
-        description="Give this object a Draft/Finalized state: only the designated reviewer can create and edit a review while it's a draft, and once finalized it becomes read-only history."
-      />
-
+    <>
       {!prerequisitesMet ? (
         <p className="mt-3 text-sm text-amber-700" role="status">
           Configure sensitive people data above first -- with a subject field, a reviewer field, and reviewer
@@ -160,6 +154,6 @@ export function EntityTypeQualityReviewForm({
           </p>
         ) : null}
       </form>
-    </section>
+    </>
   );
 }

@@ -47,9 +47,8 @@ export function FieldCreateForm({
   const [fieldType, setFieldType] = useState<FieldType>(state.values.type);
 
   return (
-    <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
-      <div className="mb-5">
-        <h2 className="text-xl font-semibold text-slate-950">Add Field</h2>
+    <>
+      <div className="mb-4">
         {state.message ? (
           <p
             className={`mt-2 text-sm ${
@@ -160,6 +159,6 @@ export function FieldCreateForm({
           <FieldError message={state.errors.fieldRequired} />
         </div>
       </form>
-    </section>
+    </>
   );
 }

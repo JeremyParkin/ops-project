@@ -19,6 +19,22 @@ async function authenticatedClient(user: User): Promise<SupabaseClient> {
   return client;
 }
 
+// The "Sensitive people data" section is a collapsed-by-default
+// CollapsibleSection (native <details>) until it's already configured. A
+// full page reload always re-renders it from the server's current
+// peopleSensitive value, so it can re-collapse between steps in a single
+// test -- this idempotently opens it without accidentally toggling an
+// already-open section closed.
+async function ensureSensitiveSectionOpen(page: Page) {
+  const details = page.locator("details").filter({
+    has: page.getByRole("heading", { name: "Sensitive people data" }),
+  });
+  const isOpen = await details.evaluate((el) => (el as HTMLDetailsElement).open);
+  if (!isOpen) {
+    await details.locator("summary").click();
+  }
+}
+
 // Phase 12.2 People-Sensitive Read Access: focused E2E coverage over the
 // real UI (and, for the public API, the real HTTP contract) -- builder
 // configuration and its guards, subject/manager/reviewer/coworker/
@@ -278,9 +294,11 @@ test.describe("people-sensitive access", () => {
     await signIn(page, fixture.builder);
     await page.goto(`/entities/${fixture.reviewEntityTypeId}?manage=true`);
     await expect(page.getByRole("heading", { name: "Sensitive people data" })).toBeVisible();
+    // Not yet configured, so the section starts collapsed.
+    await ensureSensitiveSectionOpen(page);
 
     // No RLS/security-mechanism terminology in worker-facing copy.
-    const sectionText = await page.locator("section", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).innerText();
+    const sectionText = await page.locator("details", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).innerText();
     expect(sectionText.toLowerCase()).not.toMatch(/\brls\b|row-level security|\bpolicy\b|\bpolicies\b/);
 
     // The UI itself prevents even attempting to enable author_can_view
@@ -299,9 +317,10 @@ test.describe("people-sensitive access", () => {
     // Enabling is blocked truthfully while an existing record lacks a valid subject.
     const orphanRecordId = await createRecordDirect(fixture.workspaceId, fixture.reviewEntityTypeId, {});
     await page.reload();
+    await ensureSensitiveSectionOpen(page);
     await page.getByLabel("Treat this object as sensitive people data").check();
     await page.getByLabel("Subject field").selectOption({ label: "Reviewed Employee" });
-    await page.locator("section", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
+    await page.locator("details", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText(/do not have a valid subject relation/i)).toBeVisible();
     await expect(page.getByText(/^1 /)).toBeVisible();
     await createSupabaseTestClient().from("entity_records").delete().eq("id", orphanRecordId);
@@ -330,9 +349,10 @@ test.describe("people-sensitive access", () => {
     });
     expect(templateError).toBeNull();
     await page.reload();
+    await ensureSensitiveSectionOpen(page);
     await page.getByLabel("Treat this object as sensitive people data").check();
     await page.getByLabel("Subject field").selectOption({ label: "Reviewed Employee" });
-    await page.locator("section", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
+    await page.locator("details", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText(/process template/i)).toBeVisible();
 
     // Clean up the conflicting template, then complete a real, successful save.
@@ -345,13 +365,14 @@ test.describe("people-sensitive access", () => {
     await admin.from("process_templates").delete().eq("id", (templateRow as { id: string }).id);
 
     await page.reload();
+    await ensureSensitiveSectionOpen(page);
     await page.getByLabel("Treat this object as sensitive people data").check();
     await page.getByLabel("Subject field").selectOption({ label: "Reviewed Employee" });
     await page.getByLabel("Reviewer/author field (optional)").selectOption({ label: "Reviewer" });
     await page.getByLabel("Subject can view").check();
     await page.getByLabel("Primary manager can view").check();
     await page.getByLabel("Reviewer/author can view").check();
-    await page.locator("section", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
+    await page.locator("details", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Sensitive people data configuration saved.")).toBeVisible();
 
     // Person-type redesignation is blocked (this fixture also has identity
@@ -405,8 +426,9 @@ test.describe("people-sensitive access", () => {
     // Disable subject_can_view; subject loses access.
     await signIn(page, fixture.builder);
     await page.goto(`/entities/${fixture.reviewEntityTypeId}?manage=true`);
+    await ensureSensitiveSectionOpen(page);
     await page.getByLabel("Subject can view").uncheck();
-    await page.locator("section", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
+    await page.locator("details", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Sensitive people data configuration saved.")).toBeVisible();
 
     await signIn(page, fixture.subject);
@@ -416,8 +438,9 @@ test.describe("people-sensitive access", () => {
     // Restore subject_can_view for later tests.
     await signIn(page, fixture.builder);
     await page.goto(`/entities/${fixture.reviewEntityTypeId}?manage=true`);
+    await ensureSensitiveSectionOpen(page);
     await page.getByLabel("Subject can view").check();
-    await page.locator("section", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
+    await page.locator("details", { has: page.getByRole("heading", { name: "Sensitive people data" }) }).getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Sensitive people data configuration saved.")).toBeVisible();
 
     (fixture as unknown as { sharedReviewId: string }).sharedReviewId = reviewId;

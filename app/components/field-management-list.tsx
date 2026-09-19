@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   addChoiceOptionAction,
   archiveChoiceOptionAction,
@@ -22,6 +23,7 @@ type FieldManagementListProps = {
   workflowReferenceCountByFieldId: Record<string, number>;
   viewReferenceCountByFieldId?: Record<string, number>;
   choiceOptionsByFieldId?: ChoiceOptionsByFieldId;
+  addFieldForm?: ReactNode;
 };
 
 export function FieldManagementList({
@@ -32,6 +34,7 @@ export function FieldManagementList({
   workflowReferenceCountByFieldId,
   viewReferenceCountByFieldId = {},
   choiceOptionsByFieldId = {},
+  addFieldForm,
 }: FieldManagementListProps) {
   const orderedFields = [...fields].sort((left, right) => {
     return left.position - right.position;
@@ -39,9 +42,24 @@ export function FieldManagementList({
 
   return (
     <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
-      <div className="mb-5">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-slate-950">Manage Fields</h2>
       </div>
+
+      {addFieldForm ? (
+        <details className="group mb-5 border border-slate-200 [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50">
+            <span>Add field</span>
+            <span
+              aria-hidden="true"
+              className="shrink-0 text-sm text-slate-500 transition-transform group-open:rotate-90"
+            >
+              ▸
+            </span>
+          </summary>
+          <div className="border-t border-slate-200 p-4">{addFieldForm}</div>
+        </details>
+      ) : null}
 
       <div className="divide-y divide-slate-100">
         {orderedFields.map((field, index) => {

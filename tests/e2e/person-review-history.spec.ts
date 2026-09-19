@@ -269,7 +269,7 @@ test.describe("person review history", () => {
     await page.goto(`/entities/${fixture.reviewEntityTypeId}?manage=true`);
     await expect(page.getByRole("heading", { name: "Review presentation" })).toBeVisible();
 
-    const presentationSection = page.locator("section", { has: page.getByRole("heading", { name: "Review presentation" }) });
+    const presentationSection = page.getByRole("heading", { name: "Review presentation" }).locator("..");
     const sectionText = await presentationSection.innerText();
     expect(sectionText.toLowerCase()).not.toMatch(/\brls\b|row-level security|\btrigger\b|\bpolicy\b|\bpolicies\b/);
 
@@ -335,7 +335,7 @@ test.describe("person review history", () => {
 
     await signIn(page, scratchBuilder);
     await page.goto(`/entities/${scratchType}?manage=true`);
-    const presentationSection = page.locator("section", { has: page.getByRole("heading", { name: "Review presentation" }) });
+    const presentationSection = page.getByRole("heading", { name: "Review presentation" }).locator("..");
     await presentationSection.getByLabel("Review date field").selectOption({ label: "Review Date" });
     await presentationSection.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText(/1 existing finalized review\(s\) do not have a valid review date/i)).toBeVisible();

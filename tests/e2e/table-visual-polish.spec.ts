@@ -102,7 +102,7 @@ test("Choice option swatch picker: keyboard selection, visible selected state, a
   // Selected-state affordance is visible, not just programmatically true.
   await expect(colorGroup.locator("label").filter({ hasText: "Violet" })).toHaveClass(/border-grit|has-/);
 
-  await fieldRow.getByRole("button", { name: "Add Option" }).click();
+  await fieldRow.getByRole("button", { name: "Save option" }).click();
   await expectAfterMutation(page.getByText("Option added."));
   await expect(fieldRow.locator('input[value="Urgent"]')).toHaveCount(1);
 

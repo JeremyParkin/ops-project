@@ -273,13 +273,21 @@ test.describe("quality review lifecycle", () => {
     test.setTimeout(60_000);
     await signIn(page, fixture.builder);
     await page.goto(`/entities/${fixture.reviewEntityTypeId}?manage=true`);
-    await expect(page.getByRole("heading", { name: "Quality Review lifecycle" })).toBeVisible();
+    // level: 2 disambiguates from the page's own <h1> title -- this fixture's
+    // entity type is itself named "Quality Review", identical to the
+    // CollapsibleSection's <h2> title.
+    await expect(page.getByRole("heading", { name: "Quality Review", exact: true, level: 2 })).toBeVisible();
+
+    // Not yet configured, so the Quality Review section starts collapsed.
+    const qrSection = page.locator("details", {
+      has: page.getByRole("heading", { name: "Quality Review", exact: true, level: 2 }),
+    });
+    await qrSection.locator("summary").click();
 
     // No RLS/security-mechanism terminology in worker-facing copy.
-    const sectionText = await page.locator("section", { has: page.getByRole("heading", { name: "Quality Review lifecycle" }) }).innerText();
+    const sectionText = await qrSection.innerText();
     expect(sectionText.toLowerCase()).not.toMatch(/\brls\b|row-level security|\btrigger\b|\bpolicy\b|\bpolicies\b/);
 
-    const qrSection = page.locator("section", { has: page.getByRole("heading", { name: "Quality Review lifecycle" }) });
     await qrSection.getByLabel("Track a Draft/Finalized lifecycle for this object").check();
     await qrSection.getByLabel("Status field").selectOption({ label: "Status" });
     await qrSection.getByLabel("Draft option").selectOption({ label: "Draft" });

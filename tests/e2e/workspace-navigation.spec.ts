@@ -384,7 +384,7 @@ test.describe("capability-gated Configure navigation", () => {
       await page.goto(`/entities/${entityId}?manage=true`);
       await expect(page).toHaveURL(new RegExp(`/entities/${entityId}$`));
       await expect(page.getByRole("heading", { name: "Entity Settings" })).toHaveCount(0);
-      await expect(page.getByRole("heading", { name: "Add Field", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Manage Fields", exact: true })).toHaveCount(0);
       await expect(page.getByRole("heading", { name: "E2E Manage Boundary", exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "Manage", exact: true })).toHaveCount(0);
 

@@ -26,6 +26,7 @@ import { FieldManagementList } from "@/app/components/field-management-list";
 import { ObjectContextNav } from "@/app/components/object-context-nav";
 import { RecordCreateForm } from "@/app/components/record-create-form";
 import {
+  CollapsibleSection,
   PageHeader,
   WorkspacePageLayout,
 } from "@/app/components/page-primitives";
@@ -577,46 +578,54 @@ export default async function EntityPage({
           />
         ) : null}
         {isManaging && !isArchivedEntity ? (
-          <EntityTypeSensitiveAccessForm
-            entityTypeId={entityType.id}
-            personTypeDesignated={Boolean(personEntityTypeId)}
-            relationFieldsTargetingPersonType={fields.filter(
-              (field) => field.type === "relation" && field.relatedEntityTypeId === personEntityTypeId && !field.archivedAt,
-            )}
-            config={sensitiveAccessConfig}
-            action={updateSensitiveAccess}
-          />
+          <CollapsibleSection
+            title="Sensitive people data"
+            description="Restrict who can see records of this object to the person it's about, their manager, and a designated reviewer -- instead of the whole workspace."
+            defaultOpen={sensitiveAccessConfig.peopleSensitive}
+          >
+            <EntityTypeSensitiveAccessForm
+              entityTypeId={entityType.id}
+              personTypeDesignated={Boolean(personEntityTypeId)}
+              relationFieldsTargetingPersonType={fields.filter(
+                (field) => field.type === "relation" && field.relatedEntityTypeId === personEntityTypeId && !field.archivedAt,
+              )}
+              config={sensitiveAccessConfig}
+              action={updateSensitiveAccess}
+            />
+          </CollapsibleSection>
         ) : null}
         {isManaging && !isArchivedEntity ? (
-          <EntityTypeQualityReviewForm
-            entityTypeId={entityType.id}
-            prerequisitesMet={
-              sensitiveAccessConfig.peopleSensitive &&
-              Boolean(sensitiveAccessConfig.subjectPersonFieldId) &&
-              Boolean(sensitiveAccessConfig.authorPersonFieldId) &&
-              sensitiveAccessConfig.authorCanView
-            }
-            choiceFields={fields.filter((field) => field.type === "choice" && !field.archivedAt)}
-            optionsByFieldId={choiceOptionsByFieldId}
-            config={qualityReviewConfig}
-            action={updateQualityReviewLifecycle}
-          />
-        ) : null}
-        {isManaging && !isArchivedEntity && qualityReviewConfig.qualityReview ? (
-          <EntityTypeQualityReviewPresentationForm
-            entityTypeId={entityType.id}
-            dateFields={fields.filter((field) => field.type === "date" && !field.archivedAt)}
-            choiceFields={fields.filter((field) => field.type === "choice" && !field.archivedAt)}
-            config={qualityReviewPresentationConfig}
-            action={updateQualityReviewPresentation}
-          />
+          <CollapsibleSection
+            title="Quality Review"
+            description="Give this object a Draft/Finalized state: only the designated reviewer can create and edit a review while it's a draft, and once finalized it becomes read-only history."
+            defaultOpen={qualityReviewConfig.qualityReview}
+          >
+            <EntityTypeQualityReviewForm
+              entityTypeId={entityType.id}
+              prerequisitesMet={
+                sensitiveAccessConfig.peopleSensitive &&
+                Boolean(sensitiveAccessConfig.subjectPersonFieldId) &&
+                Boolean(sensitiveAccessConfig.authorPersonFieldId) &&
+                sensitiveAccessConfig.authorCanView
+              }
+              choiceFields={fields.filter((field) => field.type === "choice" && !field.archivedAt)}
+              optionsByFieldId={choiceOptionsByFieldId}
+              config={qualityReviewConfig}
+              action={updateQualityReviewLifecycle}
+            />
+            {qualityReviewConfig.qualityReview ? (
+              <EntityTypeQualityReviewPresentationForm
+                entityTypeId={entityType.id}
+                dateFields={fields.filter((field) => field.type === "date" && !field.archivedAt)}
+                choiceFields={fields.filter((field) => field.type === "choice" && !field.archivedAt)}
+                config={qualityReviewPresentationConfig}
+                action={updateQualityReviewPresentation}
+              />
+            ) : null}
+          </CollapsibleSection>
         ) : null}
         {isManaging && !isArchivedEntity ? (
           <>
-            <FieldCreateForm
-              entityTypes={activeEntityTypes}
-              addFieldDefinitionAction={addEntityField}
-            />
             <FieldManagementList
               workspaceId={context.workspaceId}
               entityTypeId={entityType.id}
@@ -625,8 +634,14 @@ export default async function EntityPage({
               workflowReferenceCountByFieldId={workflowReferenceCountByFieldId}
               viewReferenceCountByFieldId={viewReferenceCountByFieldId}
               choiceOptionsByFieldId={choiceOptionsByFieldId}
+              addFieldForm={
+                <FieldCreateForm
+                  entityTypes={activeEntityTypes}
+                  addFieldDefinitionAction={addEntityField}
+                />
+              }
             />
-            <div className="mx-auto -mt-6 w-full max-w-6xl bg-white">
+            <div className="mx-auto w-full max-w-6xl">
               <Link
                 href={
                   showArchivedFields
@@ -713,7 +728,7 @@ export default async function EntityPage({
           sortPositionByFieldId={sortPositionByFieldId}
           sortFieldCount={effectiveSorts.length}
         />
-        <div className="mx-auto w-full max-w-6xl bg-white">
+        <div className="mx-auto w-full max-w-6xl">
           <Link
             href={
               showArchivedRecords

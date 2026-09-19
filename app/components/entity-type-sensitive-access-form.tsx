@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { SectionHeader } from "@/app/components/page-primitives";
 import type { EntityTypeActionState } from "@/app/actions";
 import type { EntityTypeSensitiveAccessConfig } from "@/lib/domain/metadata-repository";
 import type { FieldDefinition } from "@/lib/domain/types";
@@ -36,12 +35,7 @@ export function EntityTypeSensitiveAccessForm({
   const [authorCanView, setAuthorCanView] = useState(config.authorCanView);
 
   return (
-    <section className="mx-auto w-full max-w-6xl border border-slate-200 bg-white p-5">
-      <SectionHeader
-        title="Sensitive people data"
-        description="Restrict who can see records of this object to the person it's about, their manager, and a designated reviewer -- instead of the whole workspace."
-      />
-
+    <>
       {!personTypeDesignated ? (
         <p className="mt-3 text-sm text-amber-700" role="status">
           A workspace Person type must be designated in Settings before sensitive people data can be enabled here.
@@ -155,6 +149,6 @@ export function EntityTypeSensitiveAccessForm({
           </p>
         ) : null}
       </form>
-    </section>
+    </>
   );
 }

@@ -7,6 +7,7 @@ import {
   CHOICE_OPTION_COLORS,
   CHOICE_OPTION_COLOR_LABELS,
   CHOICE_OPTION_SWATCH_CLASSES,
+  isChoiceOptionColor,
 } from "@/lib/domain/choice-colors";
 import type { ChoiceOption } from "@/lib/domain/types";
 import type { FieldLifecycleActionState } from "@/app/actions";
@@ -97,10 +98,13 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
   const colorLegendId = `${domId}-color-legend`;
 
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-2 border-t border-grit pt-3">
+    <form
+      action={formAction}
+      className="flex flex-wrap items-end gap-2 border border-dashed border-brass bg-chalk p-3"
+    >
       <div>
         <label htmlFor="new-option-label" className="block text-xs font-medium text-stone">
-          New option
+          New option (unsaved)
         </label>
         <input
           id="new-option-label"
@@ -126,9 +130,9 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
       <button
         type="submit"
         disabled={pending}
-        className="h-8 border border-grit px-3 text-xs font-medium text-stone disabled:text-grit"
+        className="h-8 border border-grit bg-white px-3 text-xs font-medium text-stone disabled:text-grit"
       >
-        {pending ? "Adding..." : "Add Option"}
+        {pending ? "Saving..." : "Save option"}
       </button>
       {state.message ? (
         <p
@@ -195,8 +199,23 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
     );
   }
 
+  const swatchClass = isChoiceOptionColor(option.color)
+    ? CHOICE_OPTION_SWATCH_CLASSES[option.color]
+    : "border-dashed border-grit";
+
   return (
-    <div className="grid gap-2 border border-grit p-3">
+    <details className="group border border-grit">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+        <span className={`h-3.5 w-3.5 shrink-0 rounded-sm border ${swatchClass}`} aria-hidden="true" />
+        <span className="text-sm text-graphite">{option.label}</span>
+        <span
+          aria-hidden="true"
+          className="ml-auto shrink-0 text-xs text-stone transition-transform group-open:rotate-90"
+        >
+          ▸
+        </span>
+      </summary>
+      <div className="grid gap-2 border-t border-grit p-3">
       <form action={formAction} className="flex flex-wrap items-end gap-2">
         <div>
           <label htmlFor={`option-label-${option.id}`} className="block text-xs font-medium text-stone">
@@ -279,7 +298,8 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
           </span>
         ) : null}
       </div>
-    </div>
+      </div>
+    </details>
   );
 }
 
