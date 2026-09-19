@@ -250,7 +250,10 @@ The compact header is materially better overall, but some near-mobile widths sti
 The next pass should test breakpoint behavior continuously rather than only at a few canonical widths. At narrow widths, give controls minimum usable tap/input dimensions and truncate or collapse workspace text before allowing the header to wrap.
 
 Hosted verification after commit `ab6629c`:
-The intermediate-width behavior is better and the previous wrapping/tapability failures are substantially reduced. A remaining product question is whether the workspace/account switcher should become an icon-first control at narrower widths instead of continuing to reserve horizontal space for the workspace name. If pursued, preserve an accessible label and make current-workspace context available in the menu rather than relying on an unexplained icon.
+The intermediate-width behavior is better and the previous wrapping/tapability failures are substantially reduced.
+
+Product clarification from continued dogfood:
+The workspace/environment name is not considered headline navigation context. In comparable SaaS products, users generally operate in one current environment without needing its name persistently displayed. Kinema should therefore treat the workspace switcher primarily as an account/workspace-control affordance rather than as a permanent text label. An icon-first trigger is appropriate, with the current workspace name revealed inside the dropdown/menu and preserved accessibly.
 
 Status:
 Partially improved
@@ -538,7 +541,9 @@ Initial classification:
 Visual-system opportunity / UX polish
 
 Possible direction:
-Develop a small, consistent icon vocabulary for obvious repeated actions such as Edit, Archive, Restore, Move, Notifications, and Menu. Prefer icons where the meaning is conventional and repeated density is a real problem. Preserve accessible names/tooltips and use text where meaning is less obvious or consequences are significant. Do not launch a broad icon-replacement sweep without checking each surface.
+Begin introducing a small, consistent icon vocabulary now for obvious repeated actions such as Edit, Archive, Restore, Move, Notifications, Menu, and workspace/account switching. Prefer icons where the meaning is conventional and repeated density is a real problem. Preserve accessible names/tooltips and use text where meaning is less obvious or consequences are significant.
+
+Apply this deliberately rather than as a blanket icon-replacement sweep; each surface should still justify icon-only treatment.
 
 Status:
 Open
@@ -558,7 +563,13 @@ Initial classification:
 UX friction / management presentation
 
 Possible direction:
-Keep archived option identity/history unchanged, but present archived options separately from active options in the management UI — for example in a compact "Archived options" subsection below the active list. Restoring should return the option to its preserved configured position among active options.
+Two related needs should be investigated separately:
+
+1. Presentation: archived options should not be interleaved with active options by default. Hide them behind a compact "Show archived choices/options" disclosure or place them in a separate archived subsection, while preserving restore behavior and stable identity.
+
+2. Safe deletion: builders may reasonably want to permanently delete a mistaken Choice option before real work has begun. Investigate whether a hard-delete path can be allowed only when the option has no record references and no other dependent configuration. Do not assume record references are the only dependency; inspect saved views/filters, workflows, imports, API/config references, and any other persisted option-id consumers before defining the rule.
+
+If an option has ever become meaningfully referenced, preserve archive/restore rather than silently rewriting dependent data.
 
 Status:
 Open
