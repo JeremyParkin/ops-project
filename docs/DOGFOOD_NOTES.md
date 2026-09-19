@@ -255,5 +255,8 @@ Do not assume the answer is to auto-create a default Users EntityType: the exist
 
 If a member-reference field is introduced, separately decide whether and how it can drive My Work, notifications, dynamic Process assignment, filtering, or permissions. Do not silently make an ordinary record field confer process authority or row-level ownership semantics.
 
+Additional product evidence:
+Jeremy compared this to Salesforce-style record relationships: an Account can have an internal Account Owner who is a Salesforce user, while also relating to external Contact records and potentially additional internal team members in other roles. Kinema likely needs the same conceptual separation. Internal workspace-member references should be available as configurable fields alongside ordinary business-object Relations, with multiple independently named member fields possible on one EntityType (for example Owner, Account Manager, Reviewer, or Internal Team). External/business participants such as client contacts should remain ordinary relations to configurable business objects rather than being conflated with workspace identities.
+
 Status:
 Open
