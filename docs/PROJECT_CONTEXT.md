@@ -1651,3 +1651,17 @@ Sensible next areas, without committing to architecture yet:
 - More workflow actions or conditions; an "unset" sentinel for transition-condition operands.
 - Local/separate Supabase test environment before CI.
 - Eventually, AI-assisted configuration of deterministic entity/field/workflow definitions.
+
+
+### Builder UX dogfood cleanup (2026-09-19)
+
+Hosted Household dogfood produced a concentrated builder-UX cleanup across commits `139e7d6` and `ab6629c`, with no schema, RPC, authorization, or persistence changes.
+
+- Manage Object now uses progressive disclosure for specialized Sensitive people data and Quality Review configuration; inactive advanced sections no longer dominate the page.
+- Add Field is integrated into Manage Fields and given a visible but compact schema-expansion affordance.
+- Choice option management is substantially denser: saved options are compact by default, new-option color selection is swatch-only, success feedback is transient, and saved rows expose convenient Edit/Archive actions without nesting interactive controls inside native `<summary>`.
+- Entity Archive/Delete actions are visually de-emphasized while preserving lifecycle semantics and Delete confirmation.
+- Archived-field/record controls use a lighter presentation and are grouped in Manage mode.
+- Header polish removed the redundant Home nav item and visible Search button, kept logo-as-Home and Enter-to-search, introduced compact menu/notification affordances, and improved intermediate-width truncation/non-wrapping behavior.
+
+Hosted verification confirmed the major density, Add Field, navigation, Search-button, Choice feedback, quick-action, and entity-lifecycle improvements. Remaining dogfood polish is tracked in `DOGFOOD_NOTES.md`, including archived Choice-option presentation, new-option input contrast, archive-control placement, icon-system consistency, and whether the workspace switcher should become more icon-first at narrow widths.
