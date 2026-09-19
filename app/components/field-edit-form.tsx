@@ -222,11 +222,11 @@ export function FieldEditForm({
           <FieldError message={state.errors.fieldName} />
         </div>
 
-        <div className="min-w-32">
+        <div className="flex min-h-10 min-w-32 items-center">
           <p
             aria-label={`Type: ${typeDescription}`}
             title={typeDescription}
-            className="flex min-h-10 items-center border border-slate-300 bg-transparent px-3 text-sm font-medium text-slate-700"
+            className="inline-flex max-w-full items-center bg-slate-100 px-2.5 py-1 text-sm font-medium text-slate-700"
           >
             {typeDescription}
           </p>
