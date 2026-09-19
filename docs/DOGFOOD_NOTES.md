@@ -274,3 +274,36 @@ Keep later operational semantics explicit and separately configured. Merely addi
 
 Status:
 Open
+
+
+### [2026-09-19] Guided workspace setup disappears after the first object is created
+
+Context:
+Jeremy began configuring the persistent Household workspace as a first-time builder. On the initially empty Home screen, Kinema offered a guided starter-structure flow with selectable default business objects. Jeremy chose to start from scratch instead. After creating the first custom object, the workspace was no longer considered new, and the guided starter flow was no longer available from Home.
+
+What I was trying to do:
+Continue setting up a coherent small workspace while learning Kinema's modeling concepts and discovering how existing capabilities such as Person identity, member assignment, relations, Choice fields, and processes fit together.
+
+What happened:
+The current onboarding model is effectively one-shot: the guided starter experience is shown only while the workspace has zero EntityTypes. Once the builder creates any object, Home becomes the established operational experience and the guided setup path disappears. At that point, further configuration requires the builder to already understand where features live and how Kinema's primitives fit together.
+
+Why it matters:
+Real first-time setup is iterative. A builder may reasonably create one object, discover missing needs, reconsider the model, or need help understanding existing concepts before the workspace is meaningfully configured. Treating "one object exists" as equivalent to "onboarding is complete" removes guidance too early.
+
+The Household dogfood session produced repeated uncertainty around field types, Choice setup, Person designation, workspace-member identity, relations, field ordering, and configuration flow. This is strong evidence that builder assistance is not merely polish; reducing setup cognitive load is central to Kinema's configurable-product value proposition.
+
+Initial classification:
+UX friction / onboarding gap / strategic product evidence
+
+Possible direction:
+Preserve the established operational Home experience once data exists, but make guided setup re-enterable from an appropriate builder/configuration surface rather than tying it exclusively to the zero-EntityType state.
+
+Guidance could evolve in layers:
+- a reusable starter-object/template flow for adding common structures later;
+- contextual setup guidance that explains relevant existing primitives while configuring an object;
+- eventually AI-assisted configuration that proposes deterministic objects, fields, relations, member-reference fields, roles, processes, and other metadata from the builder's description, with explicit review/approval before creation.
+
+Do not make AI a prerequisite for basic usability. Manual configuration should remain coherent and understandable, while AI can reduce setup effort for more complex systems.
+
+Status:
+Open
