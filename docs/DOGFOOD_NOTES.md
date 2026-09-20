@@ -170,8 +170,11 @@ UX friction / feature-surface inconsistency
 Possible direction:
 Make supported field types consistent between initial object creation and later field management unless there is a genuine product or integrity reason for a difference.
 
+Hosted verification after migration `0140_create_object_choice_fields.sql` and the subsequent Create Object Choice UI polish:
+Choice is now available during initial object creation through the same authoritative transactional creation path as the other supported field types. Draft options can be configured in place, and the final custom color picker shows swatches in both the closed control and open list. Hosted Household dogfood confirmed the initial-create flow works as intended.
+
 Status:
-Open
+Resolved
 
 ### [2026-09-18] Object configuration is too slow and repetitive for multi-field schemas
 
@@ -437,8 +440,11 @@ UX friction / builder density
 Possible direction:
 Compact each ordinary field's primary controls into one responsive row at desktop and medium widths: name input, compact immutable type metadata, Required checkbox, explicit Save, conventional arrow/icon move controls with accessible names, and a visually secondary Archive action. Let the row wrap cleanly at narrow widths. Preserve Choice option management beneath Choice fields rather than redesigning option rows in this slice.
 
+Hosted verification after the compact Manage Fields row work:
+Ordinary fields now use a substantially denser responsive row with name, neutral read-only type metadata, Required, Save, compact move controls, and a secondary Archive action. The later type-badge softening kept the metadata legible without making it look editable. Hosted Household review accepted the resulting density.
+
 Status:
-Open
+Resolved
 
 ### [2026-09-19] Field-type immutability has no builder recovery path
 
@@ -475,8 +481,13 @@ For a brand-new empty field with no records or dependencies, a narrower safe typ
 
 This finding is also linked to the separate "Choice field unavailable during initial object creation" issue; fixing that creation inconsistency would prevent some of these recovery cases.
 
+Hosted verification after migrations `0141_safe_pristine_field_type_change.sql` and corrective `0142_fix_choice_option_add_lock_ordering.sql`:
+Kinema now allows an in-place type correction only while the field is genuinely pristine. The backend re-checks record values, relation rows, Choice options, display-field/Quality Review/people-sensitive designations, saved views, Automations/workflows, and Process references under the shared lock protocol before changing type. Field ID/key are preserved; non-pristine fields are blocked with specific reasons rather than silently converted or replaced.
+
+A real concurrent-pair test exposed and then verified the `0142` lock-order correction for Choice-option creation. The corrected implementation passed 25/25 backend tests, 3/3 focused E2E, 16/16 focused Choice/Process/Workflow regressions, repeated concurrency runs, and hosted Household acceptance. A real pristine Text field was successfully corrected to Choice; a dependent field was correctly blocked with a truthful explanation.
+
 Status:
-Open
+Resolved
 
 
 ### [2026-09-19] Desktop navigation includes a redundant Home item
@@ -670,6 +681,9 @@ Fix this narrowly before closing the field-type-recovery slice:
 
 Avoid a broad theme-system refactor in this pass; treat this as local semantic-token cleanup for the newly added field-type-recovery UI and its adjacent type metadata.
 
+Hosted verification after the scoped dark-mode polish:
+The New type panel and immutable field-type chip now use dedicated theme-aware styling instead of fixed light-only surfaces. Light mode retains the previous neutral treatment; dark mode now has readable foreground/background contrast and a subdued metadata chip that remains visually distinct without looking editable. Focused E2E and static checks passed, and hosted light/dark acceptance confirmed the result.
+
 Status:
-Open
+Resolved
 
