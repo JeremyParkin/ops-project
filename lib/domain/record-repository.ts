@@ -799,23 +799,26 @@ export async function workspaceMemberExists({
   supabase?: SupabaseServerClient;
 }) {
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
-  let query = supabase
-    .from("workspace_memberships")
-    .select("user_id")
-    .eq("workspace_id", workspaceId)
-    .eq("user_id", userId);
-
-  if (!includeDeactivated) {
-    query = query.is("deactivated_at", null);
-  }
-
-  const { data, error } = await query.maybeSingle<{ user_id: string }>();
+  const { data, error } = await supabase.rpc(
+    "list_workspace_member_identities_authorized",
+    { p_workspace_id: workspaceId },
+  );
 
   if (error) {
     throw new Error(`Unable to validate workspace member: ${error.message}`);
   }
 
-  return data !== null;
+  if (((data ?? []) as Array<{ user_id: string }>).some((row) => row.user_id === userId)) {
+    return true;
+  }
+
+  if (includeDeactivated) {
+    // Inactive identities must be resolved through record-scoped projections,
+    // not by this general membership validator.
+    return false;
+  }
+
+  return false;
 }
 
 export async function countEntityRecords({

@@ -1295,11 +1295,7 @@ export async function updateRecordField(
       }),
     async (memberField, value) => {
       if (previousRecord.values[memberField.key] === value) {
-        return workspaceMemberExists({
-          workspaceId: context.workspaceId,
-          userId: value,
-          includeDeactivated: true,
-        });
+        return true;
       }
 
       return workspaceMemberExists({
