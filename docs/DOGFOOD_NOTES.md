@@ -341,8 +341,11 @@ Introduce a canonical user-level display/full name associated with the Kinema ac
 
 Do not change Workspace Member's stable storage identity: references should continue to use `user_id`, with names resolved for presentation.
 
+Hosted verification after migration `0145_user_display_name.sql` and deployment:
+Personal Settings now supports a global user-level display name. Workspace Member pickers show `Name — email`, while ordinary record/table/detail presentation prefers the human name with email fallback. Existing assigned records update their current presentation without changing stored `user_id`; referenced inactive values use the same name-first rule with an explicit Deactivated suffix. Process Template live assignee selection and member-admin presentation share the canonical label behavior. Household dogfood confirmed the assignment picker shows `Jeremy Parkin — djplana@gmail.com` and the record table displays `Jeremy Parkin`.
+
 Status:
-Open
+Resolved
 
 
 ### [2026-09-20] Quick view controls block has ambiguous scope and an inconsistent three-sided border
