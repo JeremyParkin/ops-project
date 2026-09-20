@@ -22,6 +22,7 @@ const fieldTypes: Array<{ label: string; value: FieldType }> = [
   { label: "Boolean", value: "boolean" },
   { label: "Relation", value: "relation" },
   { label: "Choice", value: "choice" },
+  { label: "Workspace Member", value: "workspace_member" },
 ];
 
 function FieldError({ message }: { message?: string }) {

@@ -54,8 +54,12 @@ export function formatActivityEvent(event: RecordActivityEvent): ActivityCopy {
       ? fields.length === 1
         ? changeDetail(
           fields[0].field_name_snapshot ?? "Field",
-          fields[0].old_choice_label_snapshot ?? fields[0].old_value,
-          fields[0].new_choice_label_snapshot ?? fields[0].new_value,
+          fields[0].old_workspace_member_email_snapshot ??
+            fields[0].old_choice_label_snapshot ??
+            fields[0].old_value,
+          fields[0].new_workspace_member_email_snapshot ??
+            fields[0].new_choice_label_snapshot ??
+            fields[0].new_value,
         )
         : changeDetail(
           relations[0].field_name_snapshot ?? "Relation",

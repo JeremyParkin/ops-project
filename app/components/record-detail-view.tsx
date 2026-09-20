@@ -29,6 +29,9 @@ import type { PersonQualityReviewHistoryEntry } from "@/lib/domain/quality-revie
 import type {
   IncomingRelationGroup,
   RelationLabelsByFieldKey,
+  WorkspaceMemberOption,
+  WorkspaceMemberLabelsByFieldKey,
+  WorkspaceMemberOptionsByFieldKey,
 } from "@/lib/domain/record-repository";
 import { getRecordIdentityField, getRecordLabel } from "@/lib/domain/record-repository";
 import type {
@@ -61,6 +64,8 @@ type RecordDetailViewProps = {
   fields: FieldDefinition[];
   record: EntityRecord;
   relationLabelsByFieldKey: RelationLabelsByFieldKey;
+  workspaceMemberLabelsByFieldKey?: WorkspaceMemberLabelsByFieldKey;
+  workspaceMemberOptionsByFieldKey?: WorkspaceMemberOptionsByFieldKey;
   choiceOptionsByFieldKey?: ChoiceOptionsByFieldKey;
   incomingRelationGroups: IncomingRelationGroup[];
   processSectionEntries: ProcessSectionEntry[];
@@ -111,6 +116,8 @@ function formatPrimitiveValue(field: FieldDefinition, value: FieldValue) {
       return value === true ? "Yes" : "No";
     case "relation":
       return "—";
+    case "workspace_member":
+      return "—";
     case "choice":
       return "—";
   }
@@ -148,6 +155,8 @@ function FieldRow({
   field,
   value,
   relationLabel,
+  workspaceMemberLabel,
+  workspaceMemberOptions = [],
   choiceOptions = [],
   updateFieldAction,
   editHref,
@@ -155,6 +164,8 @@ function FieldRow({
   field: FieldDefinition;
   value: FieldValue;
   relationLabel?: string;
+  workspaceMemberLabel?: string;
+  workspaceMemberOptions?: WorkspaceMemberOption[];
   choiceOptions?: ChoiceOption[];
   updateFieldAction?: UpdateFieldAction;
   editHref?: string;
@@ -176,6 +187,23 @@ function FieldRow({
             >
               {relationLabel}
             </Link>
+          ) : (
+            "—"
+          )
+        ) : field.type === "workspace_member" ? (
+          updateFieldAction && editHref ? (
+            <EditableTableCell
+              field={field}
+              value={value}
+              displayValue={workspaceMemberLabel ?? "—"}
+              workspaceMemberOptions={workspaceMemberOptions}
+              recordEditHref={editHref}
+              updateFieldAction={updateFieldAction}
+            />
+          ) : workspaceMemberLabel ? (
+            <span className="inline-flex items-center border border-grit bg-chalk px-2 py-1 text-xs font-medium text-stone">
+              {workspaceMemberLabel}
+            </span>
           ) : (
             "—"
           )
@@ -203,6 +231,8 @@ export function RecordDetailView({
   fields,
   record,
   relationLabelsByFieldKey,
+  workspaceMemberLabelsByFieldKey = {},
+  workspaceMemberOptionsByFieldKey = {},
   choiceOptionsByFieldKey = {},
   incomingRelationGroups,
   processSectionEntries,
@@ -262,6 +292,12 @@ export function RecordDetailView({
     return typeof value === "string" ? relationLabelsByFieldKey[field.key]?.[value] : undefined;
   }
 
+  function workspaceMemberLabelFor(field: FieldDefinition) {
+    const value = record.values[field.key];
+
+    return typeof value === "string" ? workspaceMemberLabelsByFieldKey[field.key]?.[value] : undefined;
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <PageHeader
@@ -305,6 +341,8 @@ export function RecordDetailView({
                   field={field}
                   value={record.values[field.key]}
                   relationLabel={field.type === "relation" ? relationLabelFor(field) : undefined}
+                  workspaceMemberLabel={field.type === "workspace_member" ? workspaceMemberLabelFor(field) : undefined}
+                  workspaceMemberOptions={workspaceMemberOptionsByFieldKey[field.key]}
                   choiceOptions={choiceOptionsByFieldKey[field.key]}
                   updateFieldAction={updateFieldAction}
                   editHref={editHref}
@@ -323,6 +361,8 @@ export function RecordDetailView({
                       field={field}
                       value={record.values[field.key]}
                       relationLabel={field.type === "relation" ? relationLabelFor(field) : undefined}
+                      workspaceMemberLabel={field.type === "workspace_member" ? workspaceMemberLabelFor(field) : undefined}
+                      workspaceMemberOptions={workspaceMemberOptionsByFieldKey[field.key]}
                       choiceOptions={choiceOptionsByFieldKey[field.key]}
                       updateFieldAction={updateFieldAction}
                       editHref={editHref}

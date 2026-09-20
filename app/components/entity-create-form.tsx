@@ -39,6 +39,7 @@ const fieldTypes: Array<{
   { label: "Boolean", value: "boolean" },
   { label: "Relation", value: "relation" },
   { label: "Choice", value: "choice" },
+  { label: "Workspace Member", value: "workspace_member" },
 ];
 
 function createEmptyChoiceOption(rowId: string): EntityChoiceOptionFormRow {

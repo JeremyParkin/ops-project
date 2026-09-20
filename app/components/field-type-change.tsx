@@ -15,6 +15,7 @@ const fieldTypeLabel: Record<FieldType, string> = {
   boolean: "Boolean",
   relation: "Relation",
   choice: "Choice",
+  workspace_member: "Workspace Member",
 };
 
 type FieldTypeChangeProps = {

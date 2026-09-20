@@ -14,6 +14,7 @@ import {
 import {
   getEntityRecord,
   getRelationLookups,
+  getWorkspaceMemberLookups,
 } from "@/lib/domain/record-repository";
 import { listEntityViews } from "@/lib/domain/view-repository";
 
@@ -40,8 +41,13 @@ async function loadRecordEditPageData(
       recordId,
       fields: entityContext.fields,
     });
-    const [relationLookups, choiceOptionsByFieldId] = await Promise.all([
+    const [relationLookups, workspaceMemberLookups, choiceOptionsByFieldId] = await Promise.all([
       getRelationLookups({
+        workspaceId,
+        fields: entityContext.fields,
+        currentRecord: record,
+      }),
+      getWorkspaceMemberLookups({
         workspaceId,
         fields: entityContext.fields,
         currentRecord: record,
@@ -61,6 +67,7 @@ async function loadRecordEditPageData(
       entityContext,
       record,
       relationLookups,
+      workspaceMemberLookups,
       choiceOptionsByFieldId,
     };
   } catch {
@@ -96,6 +103,7 @@ export default async function RecordEditPage({
     entityContext: { entityType, fields },
     record,
     relationLookups,
+    workspaceMemberLookups,
     choiceOptionsByFieldId,
   } = pageData;
   const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(fields, choiceOptionsByFieldId);
@@ -132,6 +140,7 @@ export default async function RecordEditPage({
           fields={fields}
           record={record}
           relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+          workspaceMemberOptionsByFieldKey={workspaceMemberLookups.optionsByFieldKey}
           choiceOptionsByFieldKey={choiceOptionsByFieldKey}
           entityNameById={entityNameById}
           updateRecordAction={updateEntityRecord}

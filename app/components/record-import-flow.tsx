@@ -41,6 +41,7 @@ const fieldTypeLabel: Record<ImportableField["type"], string> = {
   boolean: "Boolean",
   relation: "Relation",
   choice: "Choice",
+  workspace_member: "Workspace Member",
 };
 
 function sampleValuesForColumn(rows: string[][], columnIndex: number): string {

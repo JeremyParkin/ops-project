@@ -56,6 +56,7 @@ const fieldTypeLabel = {
   boolean: "Boolean",
   relation: "Relation",
   choice: "Choice",
+  workspace_member: "Workspace Member",
 };
 
 function FieldError({ message }: { message?: string }) {

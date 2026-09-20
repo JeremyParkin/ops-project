@@ -1,7 +1,11 @@
 import { stringify } from "csv-stringify/sync";
 import { listChoiceOptionsByFieldIds } from "./choice-option-repository";
 import { getEntityContext } from "./metadata-repository";
-import { getRecordLabel, listEntityRecords } from "./record-repository";
+import {
+  getRecordLabel,
+  getWorkspaceMemberLookups,
+  listEntityRecords,
+} from "./record-repository";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
 import type { EntityRecord, EntityType, FieldDefinition } from "./types";
 
@@ -41,12 +45,46 @@ function formatCellValue(field: FieldDefinition, rawValue: EntityRecord["values"
     case "date":
     case "relation":
     case "choice":
+    case "workspace_member":
       // Choice cells are pre-resolved to their option's current label by
       // resolveChoiceOptionLabels below, the same way relation cells are
       // pre-resolved by resolveRelationTargetLabels -- by the time this
       // runs, rawValue is already a label, not an option id.
       return String(rawValue);
   }
+}
+
+async function resolveWorkspaceMemberLabels({
+  workspaceId,
+  fields,
+  records,
+  supabase,
+}: {
+  workspaceId: string;
+  fields: FieldDefinition[];
+  records: EntityRecord[];
+  supabase?: SupabaseServerClient;
+}): Promise<EntityRecord[]> {
+  const workspaceMemberFields = fields.filter((field) => field.type === "workspace_member");
+  if (workspaceMemberFields.length === 0) return records;
+
+  const lookups = await getWorkspaceMemberLookups({
+    workspaceId,
+    fields,
+    currentRecords: records,
+    supabase,
+  });
+
+  return records.map((record) => {
+    const values = { ...record.values };
+    for (const field of workspaceMemberFields) {
+      const userId = values[field.key];
+      if (typeof userId === "string") {
+        values[field.key] = lookups.labelsByFieldKey[field.key]?.[userId] ?? "";
+      }
+    }
+    return { ...record, values };
+  });
 }
 
 // Pure and directly unit-testable: takes already-fetched data (records with
@@ -188,7 +226,13 @@ export async function exportEntityRecordsToCsv({
     records: recordsWithRelationLabels,
     supabase,
   });
-  const table = buildExportTable({ fields, records: recordsWithLabels });
+  const recordsWithMemberLabels = await resolveWorkspaceMemberLabels({
+    workspaceId,
+    fields,
+    records: recordsWithLabels,
+    supabase,
+  });
+  const table = buildExportTable({ fields, records: recordsWithMemberLabels });
   const csv = stringifyExportTable(table);
   const date = new Date().toISOString().slice(0, 10);
 

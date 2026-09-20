@@ -95,6 +95,7 @@ import {
   entityRecordExists,
   getEntityRecord,
   getIncomingReferenceSummary,
+  workspaceMemberExists,
   restoreEntityRecord,
   setEntityRecordsArchived,
   type RecordActionState,
@@ -239,6 +240,11 @@ async function validateRecordSubmission(
         workspaceId: context.workspaceId,
         fieldDefinitionId: field.id,
         optionId: value,
+      }),
+    async (_field, value) =>
+      workspaceMemberExists({
+        workspaceId: context.workspaceId,
+        userId: value,
       }),
   );
 
@@ -1287,6 +1293,20 @@ export async function updateRecordField(
         fieldDefinitionId: choiceField.id,
         optionId: value,
       }),
+    async (memberField, value) => {
+      if (previousRecord.values[memberField.key] === value) {
+        return workspaceMemberExists({
+          workspaceId: context.workspaceId,
+          userId: value,
+          includeDeactivated: true,
+        });
+      }
+
+      return workspaceMemberExists({
+        workspaceId: context.workspaceId,
+        userId: value,
+      });
+    },
   );
 
   if (!validation.success) {
@@ -2331,6 +2351,12 @@ async function validateViewSubmission(context: EntityViewContext, formData: Form
         workspaceId: context.workspaceId,
         fieldDefinitionId: field.id,
         optionId,
+      }),
+    validateWorkspaceMemberValue: async (_field, userId) =>
+      workspaceMemberExists({
+        workspaceId: context.workspaceId,
+        userId,
+        includeDeactivated: true,
       }),
   });
 

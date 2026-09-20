@@ -38,7 +38,15 @@ export type RecordActivityEvent = {
   fromAssigneeLabel?: string;
   toAssigneeLabel?: string;
   changes?: {
-    fields?: Array<{ field_name_snapshot?: string; old_value?: unknown; new_value?: unknown; old_choice_label_snapshot?: string; new_choice_label_snapshot?: string }>;
+    fields?: Array<{
+      field_name_snapshot?: string;
+      old_value?: unknown;
+      new_value?: unknown;
+      old_choice_label_snapshot?: string;
+      new_choice_label_snapshot?: string;
+      old_workspace_member_email_snapshot?: string;
+      new_workspace_member_email_snapshot?: string;
+    }>;
     relations?: Array<{ field_name_snapshot?: string; old_target_label_snapshot?: string; new_target_label_snapshot?: string }>;
   };
   authorityKind?: "human" | "impersonated" | "automation" | "process";

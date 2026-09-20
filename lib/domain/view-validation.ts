@@ -83,6 +83,7 @@ function parseFilterValue({
     case "text":
     case "relation":
     case "choice":
+    case "workspace_member":
       return { value: rawValue.trim() };
     case "number": {
       const value = Number(rawValue);
@@ -126,6 +127,7 @@ export async function validateViewFormData({
   formData,
   validateRelationValue,
   validateChoiceValue,
+  validateWorkspaceMemberValue,
 }: {
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
@@ -137,6 +139,10 @@ export async function validateViewFormData({
   validateChoiceValue: (
     field: FieldDefinition,
     optionId: string,
+  ) => Promise<boolean>;
+  validateWorkspaceMemberValue: (
+    field: FieldDefinition,
+    userId: string,
   ) => Promise<boolean>;
 }): Promise<ViewFormState> {
   const activeFieldById = new Map(activeFields.map((field) => [field.id, field]));
@@ -197,6 +203,15 @@ export async function validateViewFormData({
       !(await validateChoiceValue(field, parsedValue.value))
     ) {
       errors[`filterValue:${index}`] = `${field.name} must reference a valid option.`;
+      continue;
+    }
+
+    if (
+      field.type === "workspace_member" &&
+      typeof parsedValue.value === "string" &&
+      !(await validateWorkspaceMemberValue(field, parsedValue.value))
+    ) {
+      errors[`filterValue:${index}`] = `${field.name} must reference a workspace member.`;
       continue;
     }
 

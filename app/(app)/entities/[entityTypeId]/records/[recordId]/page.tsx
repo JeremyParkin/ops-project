@@ -54,6 +54,7 @@ import {
 import {
   getEntityRecord,
   getRelationLookups,
+  getWorkspaceMemberLookups,
   listIncomingRelationsForRecord,
   withoutQualityReviewSubjectGroups,
 } from "@/lib/domain/record-repository";
@@ -208,6 +209,7 @@ async function loadRecordDetailPageData(
     });
     const [
       relationLookups,
+      workspaceMemberLookups,
       choiceOptionsByFieldId,
       incomingRelationGroups,
       processSectionEntries,
@@ -222,6 +224,11 @@ async function loadRecordDetailPageData(
         fields: entityContext.fields,
         currentRecord: record,
         restrictToCurrentRecordValues: true,
+      }),
+      getWorkspaceMemberLookups({
+        workspaceId,
+        fields: entityContext.fields,
+        currentRecord: record,
       }),
       listChoiceOptionsByFieldIds({
         workspaceId,
@@ -310,6 +317,7 @@ async function loadRecordDetailPageData(
       entityContext,
       record,
       relationLookups,
+      workspaceMemberLookups,
       choiceOptionsByFieldId,
       incomingRelationGroups: visibleIncomingRelationGroups,
       processSectionEntries,
@@ -355,6 +363,7 @@ export default async function RecordDetailPage({
     entityContext: { entityType, fields },
     record,
     relationLookups,
+    workspaceMemberLookups,
     choiceOptionsByFieldId,
     incomingRelationGroups,
     processSectionEntries,
@@ -420,6 +429,8 @@ export default async function RecordDetailPage({
           fields={fields}
           record={record}
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
+          workspaceMemberLabelsByFieldKey={workspaceMemberLookups.labelsByFieldKey}
+          workspaceMemberOptionsByFieldKey={workspaceMemberLookups.optionsByFieldKey}
           choiceOptionsByFieldKey={choiceOptionsByFieldKey}
           incomingRelationGroups={incomingRelationGroups}
           processSectionEntries={record.archivedAt ? [] : processSectionEntries}

@@ -74,6 +74,12 @@ type RelationValueRow = {
   target_record_id: string;
 };
 
+type WorkspaceMemberValueRow = {
+  source_record_id: string;
+  field_definition_id: string;
+  member_user_id: string;
+};
+
 export type RelationRecordOption = {
   value: string;
   label: string;
@@ -86,6 +92,15 @@ export type RelationRecordOption = {
 
 export type RelationOptionsByFieldKey = Record<string, RelationRecordOption[]>;
 export type RelationLabelsByFieldKey = Record<string, Record<string, string>>;
+
+export type WorkspaceMemberOption = {
+  value: string;
+  label: string;
+  deactivatedAt?: string | null;
+};
+
+export type WorkspaceMemberOptionsByFieldKey = Record<string, WorkspaceMemberOption[]>;
+export type WorkspaceMemberLabelsByFieldKey = Record<string, Record<string, string>>;
 
 export type RecordActionState = {
   success: boolean;
@@ -417,41 +432,73 @@ export async function listEntityRecords({
 
   const records = data.map(mapEntityRecord);
   const relationFields = fields.filter((field) => field.type === "relation");
+  const workspaceMemberFields = fields.filter((field) => field.type === "workspace_member");
 
-  if (records.length === 0 || relationFields.length === 0) {
+  if (records.length === 0) {
     return records;
-  }
-
-  const fieldKeyById = new Map(
-    relationFields.map((field) => [field.id, field.key]),
-  );
-  const { data: relationRows, error: relationError } = await supabase
-    .from("entity_record_relation_values")
-    .select("source_record_id, field_definition_id, target_record_id")
-    .eq("workspace_id", workspaceId)
-    .eq("source_entity_type_id", entityTypeId)
-    .in(
-      "source_record_id",
-      records.map((record) => record.id),
-    )
-    .returns<RelationValueRow[]>();
-
-  if (relationError) {
-    throw new Error(
-      `Unable to load entity record relations: ${relationError.message}`,
-    );
   }
 
   const recordById = new Map(records.map((record) => [record.id, record]));
 
-  relationRows.forEach((relationRow) => {
-    const record = recordById.get(relationRow.source_record_id);
-    const fieldKey = fieldKeyById.get(relationRow.field_definition_id);
+  if (relationFields.length > 0) {
+    const fieldKeyById = new Map(
+      relationFields.map((field) => [field.id, field.key]),
+    );
+    const { data: relationRows, error: relationError } = await supabase
+      .from("entity_record_relation_values")
+      .select("source_record_id, field_definition_id, target_record_id")
+      .eq("workspace_id", workspaceId)
+      .eq("source_entity_type_id", entityTypeId)
+      .in(
+        "source_record_id",
+        records.map((record) => record.id),
+      )
+      .returns<RelationValueRow[]>();
 
-    if (record && fieldKey) {
-      record.values[fieldKey] = relationRow.target_record_id;
+    if (relationError) {
+      throw new Error(
+        `Unable to load entity record relations: ${relationError.message}`,
+      );
     }
-  });
+
+    relationRows.forEach((relationRow) => {
+      const record = recordById.get(relationRow.source_record_id);
+      const fieldKey = fieldKeyById.get(relationRow.field_definition_id);
+
+      if (record && fieldKey) {
+        record.values[fieldKey] = relationRow.target_record_id;
+      }
+    });
+  }
+
+  if (workspaceMemberFields.length > 0) {
+    const fieldKeyById = new Map(
+      workspaceMemberFields.map((field) => [field.id, field.key]),
+    );
+    const { data: memberRows, error: memberError } = await supabase.rpc(
+      "list_workspace_member_values_for_records_authorized",
+      {
+        p_workspace_id: workspaceId,
+        p_entity_type_id: entityTypeId,
+        p_record_ids: records.map((record) => record.id),
+      },
+    );
+
+    if (memberError) {
+      throw new Error(
+        `Unable to load entity record workspace members: ${memberError.message}`,
+      );
+    }
+
+    ((memberRows ?? []) as WorkspaceMemberValueRow[]).forEach((memberRow) => {
+      const record = recordById.get(memberRow.source_record_id);
+      const fieldKey = fieldKeyById.get(memberRow.field_definition_id);
+
+      if (record && fieldKey) {
+        record.values[fieldKey] = memberRow.member_user_id;
+      }
+    });
+  }
 
   return records;
 }
@@ -464,6 +511,11 @@ export function splitRecordValues(fields: FieldDefinition[], values: EntityRecor
     target_record_id: string;
   }> = [];
   const relationFieldIds: string[] = [];
+  const workspaceMembers: Array<{
+    field_definition_id: string;
+    member_user_id: string;
+  }> = [];
+  const workspaceMemberFieldIds: string[] = [];
 
   fields.forEach((field) => {
     const value = values[field.key];
@@ -487,6 +539,23 @@ export function splitRecordValues(fields: FieldDefinition[], values: EntityRecor
       return;
     }
 
+    if (field.type === "workspace_member") {
+      workspaceMemberFieldIds.push(field.id);
+
+      if (
+        value !== null &&
+        value !== undefined &&
+        typeof value === "string"
+      ) {
+        workspaceMembers.push({
+          field_definition_id: field.id,
+          member_user_id: value,
+        });
+      }
+
+      return;
+    }
+
     primitiveValues[field.key] = value;
   });
 
@@ -494,6 +563,8 @@ export function splitRecordValues(fields: FieldDefinition[], values: EntityRecor
     primitiveValues,
     relationFieldIds,
     relations,
+    workspaceMemberFieldIds,
+    workspaceMembers,
   };
 }
 
@@ -509,7 +580,7 @@ export async function createEntityRecord({
   originatingRelatedFieldDefinitionId,
 }: CreateEntityRecordInput) {
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
-  const { primitiveValues, relations } = splitRecordValues(fields, values);
+  const { primitiveValues, relations, workspaceMembers } = splitRecordValues(fields, values);
   const rpcName = originatingWorkflowId
     ? "create_entity_record_with_relations_automation_system"
     : originatingProcessStepRunId
@@ -521,6 +592,7 @@ export async function createEntityRecord({
         p_entity_type_id: entityTypeId,
         p_values: primitiveValues,
         p_relations: relations,
+        p_workspace_members: workspaceMembers,
         p_originating_workflow_id: originatingWorkflowId,
         p_action_type: originatingActionType,
         p_related_field_definition_id: originatingRelatedFieldDefinitionId ?? null,
@@ -531,6 +603,7 @@ export async function createEntityRecord({
           p_entity_type_id: entityTypeId,
           p_values: primitiveValues,
           p_relations: relations,
+          p_workspace_members: workspaceMembers,
           p_originating_process_step_run_id: originatingProcessStepRunId,
           p_action_type: originatingActionType,
           p_related_field_definition_id: originatingRelatedFieldDefinitionId ?? null,
@@ -540,11 +613,10 @@ export async function createEntityRecord({
           p_entity_type_id: entityTypeId,
           p_values: primitiveValues,
           p_relations: relations,
+          p_workspace_members: workspaceMembers,
+          p_originating_process_step_run_id: null,
         };
-  const { data, error } = await supabase.rpc(
-    rpcName,
-    rpcArgs,
-  );
+  const { data, error } = await supabase.rpc(rpcName, rpcArgs);
 
   if (error) {
     throw new Error(`Unable to create entity record: ${error.message}`);
@@ -580,8 +652,8 @@ export async function bulkCreateEntityRecords({
 }) {
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
   const payload = rows.map((values) => {
-    const { primitiveValues, relations } = splitRecordValues(fields, values);
-    return { values: primitiveValues, relations };
+    const { primitiveValues, relations, workspaceMembers } = splitRecordValues(fields, values);
+    return { values: primitiveValues, relations, workspace_members: workspaceMembers };
   });
 
   const { data, error } = await supabase.rpc("bulk_create_entity_records_authorized", {
@@ -640,7 +712,7 @@ export async function updateEntityRecord({
   originatingRelatedFieldDefinitionId,
 }: UpdateEntityRecordInput) {
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
-  const { primitiveValues, relationFieldIds, relations } = splitRecordValues(
+  const { primitiveValues, relationFieldIds, relations, workspaceMemberFieldIds, workspaceMembers } = splitRecordValues(
     fields,
     values,
   );
@@ -657,6 +729,8 @@ export async function updateEntityRecord({
       p_values: primitiveValues,
       p_relation_field_ids: relationFieldIds,
       p_relations: relations,
+      p_workspace_member_field_ids: workspaceMemberFieldIds,
+      p_workspace_members: workspaceMembers,
       ...(originatingWorkflowId ? { p_originating_workflow_id: originatingWorkflowId } : {}),
       ...(originatingProcessStepRunId ? { p_originating_process_step_run_id: originatingProcessStepRunId } : {}),
       ...(originatingWorkflowId || originatingProcessStepRunId
@@ -708,6 +782,37 @@ export async function entityRecordExists({
 
   if (error) {
     throw new Error(`Unable to validate relation record: ${error.message}`);
+  }
+
+  return data !== null;
+}
+
+export async function workspaceMemberExists({
+  workspaceId,
+  userId,
+  includeDeactivated = false,
+  supabase: injectedSupabase,
+}: {
+  workspaceId: string;
+  userId: string;
+  includeDeactivated?: boolean;
+  supabase?: SupabaseServerClient;
+}) {
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+  let query = supabase
+    .from("workspace_memberships")
+    .select("user_id")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId);
+
+  if (!includeDeactivated) {
+    query = query.is("deactivated_at", null);
+  }
+
+  const { data, error } = await query.maybeSingle<{ user_id: string }>();
+
+  if (error) {
+    throw new Error(`Unable to validate workspace member: ${error.message}`);
   }
 
   return data !== null;
@@ -876,6 +981,96 @@ export async function getRelationLookups({
     optionsByFieldKey,
     labelsByFieldKey,
   };
+}
+
+export async function getWorkspaceMemberLookups({
+  workspaceId,
+  fields,
+  currentRecord,
+  currentRecords,
+  supabase: injectedSupabase,
+}: {
+  workspaceId: string;
+  fields: FieldDefinition[];
+  currentRecord?: EntityRecord;
+  currentRecords?: EntityRecord[];
+  supabase?: SupabaseServerClient;
+}) {
+  const memberFields = fields.filter((field) => field.type === "workspace_member");
+  const optionsByFieldKey: WorkspaceMemberOptionsByFieldKey = {};
+  const labelsByFieldKey: WorkspaceMemberLabelsByFieldKey = {};
+
+  if (memberFields.length === 0) {
+    return { optionsByFieldKey, labelsByFieldKey };
+  }
+
+  const supabase = injectedSupabase ?? (await createServerSupabaseClient());
+  const { data: activeRows, error: activeError } = await supabase.rpc(
+    "list_workspace_member_identities_authorized",
+    { p_workspace_id: workspaceId },
+  );
+
+  if (activeError) {
+    throw new Error(`Unable to load workspace members: ${activeError.message}`);
+  }
+
+  const activeOptions = ((activeRows ?? []) as Array<{ user_id: string; email: string }>)
+    .map((row) => ({ value: row.user_id, label: row.email }));
+  const activeByUserId = new Map(activeOptions.map((option) => [option.value, option]));
+  const referencingRecords = [
+    ...(currentRecord ? [currentRecord] : []),
+    ...(currentRecords ?? []),
+  ];
+
+  const referencedRecordIds = referencingRecords.map((record) => record.id);
+  const historicalByFieldId = new Map<string, WorkspaceMemberOption[]>();
+
+  if (referencedRecordIds.length > 0) {
+    const { data: historicalRows, error: historicalError } = await supabase.rpc(
+      "list_workspace_member_values_for_records_authorized",
+      {
+        p_workspace_id: workspaceId,
+        p_entity_type_id: memberFields[0]?.entityTypeId ?? "",
+        p_record_ids: referencedRecordIds,
+      },
+    );
+
+    if (historicalError) {
+      throw new Error(`Unable to load workspace member values: ${historicalError.message}`);
+    }
+
+    for (const row of (historicalRows ?? []) as Array<{
+      field_definition_id: string;
+      member_user_id: string;
+      email: string;
+      deactivated_at: string | null;
+    }>) {
+      if (activeByUserId.has(row.member_user_id)) {
+        continue;
+      }
+
+      const options = historicalByFieldId.get(row.field_definition_id) ?? [];
+      if (!options.some((option) => option.value === row.member_user_id)) {
+        options.push({
+          value: row.member_user_id,
+          label: row.deactivated_at ? `${row.email} (Deactivated)` : row.email,
+          deactivatedAt: row.deactivated_at,
+        });
+      }
+      historicalByFieldId.set(row.field_definition_id, options);
+    }
+  }
+
+  for (const field of memberFields) {
+    const historical = historicalByFieldId.get(field.id) ?? [];
+    const options = [...activeOptions, ...historical];
+    optionsByFieldKey[field.key] = options;
+    labelsByFieldKey[field.key] = Object.fromEntries(
+      options.map((option) => [option.value, option.label]),
+    );
+  }
+
+  return { optionsByFieldKey, labelsByFieldKey };
 }
 
 export async function archiveEntityRecord({

@@ -27,6 +27,8 @@ import type {
 import type {
   RelationLabelsByFieldKey,
   RelationOptionsByFieldKey,
+  WorkspaceMemberLabelsByFieldKey,
+  WorkspaceMemberOptionsByFieldKey,
 } from "@/lib/domain/record-repository";
 import { getRecordIdentityField } from "@/lib/domain/record-repository";
 
@@ -37,6 +39,8 @@ type EntityRecordsTableProps = {
   records: EntityRecord[];
   relationLabelsByFieldKey?: RelationLabelsByFieldKey;
   relationOptionsByFieldKey?: RelationOptionsByFieldKey;
+  workspaceMemberLabelsByFieldKey?: WorkspaceMemberLabelsByFieldKey;
+  workspaceMemberOptionsByFieldKey?: WorkspaceMemberOptionsByFieldKey;
   choiceOptionsByFieldKey?: ChoiceOptionsByFieldKey;
   recordEditPathBase?: string;
   recordActionContext?: {
@@ -77,6 +81,7 @@ function formatFieldValue(
   value: FieldValue | undefined,
   relationLabelsByFieldKey: RelationLabelsByFieldKey,
   choiceOptionsByFieldKey: ChoiceOptionsByFieldKey,
+  workspaceMemberLabelsByFieldKey: WorkspaceMemberLabelsByFieldKey,
 ) {
   if (value === null || value === undefined || value === "") {
     return "—";
@@ -95,6 +100,10 @@ function formatFieldValue(
       return typeof value === "string"
         ? relationLabelsByFieldKey[field.key]?.[value] ?? `${value.slice(0, 8)}...`
         : "—";
+    case "workspace_member":
+      return typeof value === "string"
+        ? workspaceMemberLabelsByFieldKey[field.key]?.[value] ?? `${value.slice(0, 8)}...`
+        : "—";
     case "choice": {
       const option = resolveChoiceOption(choiceOptionsByFieldKey[field.key] ?? [], value);
       return option?.label ?? "Unknown option";
@@ -112,6 +121,7 @@ const INLINE_EDITABLE_FIELD_TYPES = new Set<FieldDefinition["type"]>([
   "boolean",
   "choice",
   "relation",
+  "workspace_member",
 ]);
 
 function formatTableCell(
@@ -119,6 +129,7 @@ function formatTableCell(
   value: FieldValue | undefined,
   relationLabelsByFieldKey: RelationLabelsByFieldKey,
   choiceOptionsByFieldKey: ChoiceOptionsByFieldKey,
+  workspaceMemberLabelsByFieldKey: WorkspaceMemberLabelsByFieldKey,
   // False for the identity-field column, which the row already wraps in its
   // own <Link> to the record -- a nested <a> there would be invalid HTML.
   linkifyPlainText = true,
@@ -131,11 +142,12 @@ function formatTableCell(
   const formattedValue = formatFieldValue(
     field,
     value,
-    relationLabelsByFieldKey,
-    choiceOptionsByFieldKey,
-  );
+      relationLabelsByFieldKey,
+      choiceOptionsByFieldKey,
+      workspaceMemberLabelsByFieldKey,
+    );
 
-  if (field.type === "relation" && formattedValue !== "—") {
+  if ((field.type === "relation" || field.type === "workspace_member") && formattedValue !== "—") {
     return (
       <span className="inline-flex items-center border border-grit bg-chalk px-2 py-1 text-xs font-medium text-stone">
         {formattedValue}
@@ -175,6 +187,8 @@ export function EntityRecordsTable({
   records,
   relationLabelsByFieldKey = {},
   relationOptionsByFieldKey = {},
+  workspaceMemberLabelsByFieldKey = {},
+  workspaceMemberOptionsByFieldKey = {},
   choiceOptionsByFieldKey = {},
   recordEditPathBase,
   recordActionContext,
@@ -346,6 +360,7 @@ export function EntityRecordsTable({
                       record.values[identityField.key],
                       relationLabelsByFieldKey,
                       choiceOptionsByFieldKey,
+                      workspaceMemberLabelsByFieldKey,
                     )
                   : record.id;
 
@@ -368,6 +383,7 @@ export function EntityRecordsTable({
                       record.values[field.key],
                       relationLabelsByFieldKey,
                       choiceOptionsByFieldKey,
+                      workspaceMemberLabelsByFieldKey,
                       field.id !== identityField?.id,
                     );
                     const inlineEditProps =
@@ -397,9 +413,11 @@ export function EntityRecordsTable({
                               record.values[field.key],
                               relationLabelsByFieldKey,
                               choiceOptionsByFieldKey,
+                              workspaceMemberLabelsByFieldKey,
                             )}
                             choiceOptions={choiceOptionsByFieldKey[field.key] ?? []}
                             relationOptions={relationOptionsByFieldKey[field.key] ?? []}
+                            workspaceMemberOptions={workspaceMemberOptionsByFieldKey[field.key] ?? []}
                             recordEditHref={inlineEditProps.recordEditHref}
                             updateFieldAction={inlineEditProps.updateFieldAction}
                           />

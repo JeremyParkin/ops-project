@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
 import type { RelationOptionsByFieldKey } from "@/lib/domain/record-repository";
+import type { WorkspaceMemberOptionsByFieldKey } from "@/lib/domain/record-repository";
 import { activeChoiceOptions } from "@/lib/domain/choice-display";
 import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import {
@@ -16,6 +17,7 @@ type RecordCreateFormProps = {
   fields: FieldDefinition[];
   relationOptionsByFieldKey?: RelationOptionsByFieldKey;
   choiceOptionsByFieldKey?: ChoiceOptionsByFieldKey;
+  workspaceMemberOptionsByFieldKey?: WorkspaceMemberOptionsByFieldKey;
   entityNameById?: Record<string, string>;
   initialValues?: Record<string, string>;
   cancelHref?: string;
@@ -61,6 +63,7 @@ function RecordCreateFormContents({
   fields,
   relationOptionsByFieldKey = {},
   choiceOptionsByFieldKey = {},
+  workspaceMemberOptionsByFieldKey = {},
   entityNameById = {},
   initialValues = {},
   cancelHref,
@@ -290,6 +293,47 @@ function RecordCreateFormContents({
                     Related to {relatedEntityName}
                   </p>
                 ) : null}
+                <div id={`${fieldId}-error`}>
+                  <FieldError message={state.errors[field.key]} />
+                </div>
+              </div>
+            );
+          }
+
+          if (field.type === "workspace_member") {
+            const options = workspaceMemberOptionsByFieldKey[field.key] ?? [];
+
+            return (
+              <div key={field.id}>
+                <label
+                  htmlFor={fieldId}
+                  className="block text-sm font-medium text-foreground"
+                >
+                  {field.name}
+                  {field.required ? (
+                    <span className="ml-1 text-error" aria-hidden="true">
+                      *
+                    </span>
+                  ) : null}
+                </label>
+                <select
+                  id={fieldId}
+                  name={field.key}
+                  required={field.required}
+                  defaultValue={fieldValue}
+                  aria-invalid={state.errors[field.key] ? "true" : "false"}
+                  aria-describedby={
+                    state.errors[field.key] ? `${fieldId}-error` : undefined
+                  }
+                  className="mt-1 block h-10 w-full border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-foreground"
+                >
+                  <option value="">Choose member</option>
+                  {options.filter((option) => !option.deactivatedAt).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
                 <div id={`${fieldId}-error`}>
                   <FieldError message={state.errors[field.key]} />
                 </div>

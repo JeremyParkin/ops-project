@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import type { DeleteViewActionState } from "@/app/actions";
-import type { RelationOptionsByFieldKey } from "@/lib/domain/record-repository";
+import type {
+  RelationOptionsByFieldKey,
+  WorkspaceMemberOptionsByFieldKey,
+} from "@/lib/domain/record-repository";
 import { activeChoiceOptions } from "@/lib/domain/choice-display";
 import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
@@ -32,6 +35,7 @@ type EntityViewsPanelProps = {
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
   relationOptionsByFieldKey: RelationOptionsByFieldKey;
+  workspaceMemberOptionsByFieldKey: WorkspaceMemberOptionsByFieldKey;
   choiceOptionsByFieldKey: ChoiceOptionsByFieldKey;
   warnings: string[];
   invalidFilter: boolean;
@@ -77,6 +81,7 @@ function ViewForm({
   activeFields,
   allFields,
   relationOptionsByFieldKey,
+  workspaceMemberOptionsByFieldKey,
   choiceOptionsByFieldKey,
   action,
   pendingOverride,
@@ -86,6 +91,7 @@ function ViewForm({
   activeFields: FieldDefinition[];
   allFields: FieldDefinition[];
   relationOptionsByFieldKey: RelationOptionsByFieldKey;
+  workspaceMemberOptionsByFieldKey: WorkspaceMemberOptionsByFieldKey;
   choiceOptionsByFieldKey: ChoiceOptionsByFieldKey;
   action: (
     state: ViewFormState,
@@ -292,6 +298,19 @@ function ViewForm({
                   <option value="">Choose an option</option>
                   {activeChoiceOptions(choiceOptionsByFieldKey[field.key] ?? []).map((option) => (
                     <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : field?.type === "workspace_member" ? (
+                <select
+                  name={`filterValue:${index}`}
+                  defaultValue={String(filter.value ?? "")}
+                  className="h-10 border border-slate-300 bg-white px-3 text-sm text-slate-950"
+                >
+                  <option value="">Choose member</option>
+                  {(workspaceMemberOptionsByFieldKey[field.key] ?? []).map((option) => (
+                    <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
@@ -539,6 +558,7 @@ export function EntityViewsPanel({
   activeFields,
   allFields,
   relationOptionsByFieldKey,
+  workspaceMemberOptionsByFieldKey,
   choiceOptionsByFieldKey,
   warnings,
   invalidFilter,
@@ -633,6 +653,7 @@ export function EntityViewsPanel({
                 activeFields={activeFields}
                 allFields={allFields}
                 relationOptionsByFieldKey={relationOptionsByFieldKey}
+                workspaceMemberOptionsByFieldKey={workspaceMemberOptionsByFieldKey}
                 choiceOptionsByFieldKey={choiceOptionsByFieldKey}
                 action={updateViewAction}
                 pendingOverride={pendingOverride}
@@ -650,7 +671,8 @@ export function EntityViewsPanel({
               activeFields={activeFields}
               allFields={allFields}
               relationOptionsByFieldKey={relationOptionsByFieldKey}
-                choiceOptionsByFieldKey={choiceOptionsByFieldKey}
+              workspaceMemberOptionsByFieldKey={workspaceMemberOptionsByFieldKey}
+              choiceOptionsByFieldKey={choiceOptionsByFieldKey}
               action={createViewAction}
               pendingOverride={pendingOverride}
             />

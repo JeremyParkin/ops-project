@@ -30,6 +30,7 @@ export const FILTER_OPERATORS_BY_FIELD_TYPE: Record<
   date: ["equals", "before", "after", "is_set", "is_not_set"],
   boolean: ["equals", "is_set", "is_not_set"],
   relation: ["equals", "not_equals", "is_set", "is_not_set"],
+  workspace_member: ["equals", "not_equals", "is_set", "is_not_set"],
   // V1: is / is not / is empty / is not empty only -- reusing the same
   // equals/not_equals/is_set/is_not_set operators every other type already
   // has (just with Choice-appropriate wording, see
@@ -70,7 +71,7 @@ export function filterOperatorLabel(
   fieldType: FieldDefinition["type"],
   operator: ViewFilterOperator,
 ): string {
-  if (fieldType === "choice") {
+  if (fieldType === "choice" || fieldType === "workspace_member") {
     return CHOICE_FILTER_OPERATOR_LABELS[operator] ?? FILTER_OPERATOR_LABELS[operator];
   }
 

@@ -52,6 +52,12 @@ export function validateColumnMapping(
     if (!fieldById.has(fieldId)) {
       errors.push("A mapped field no longer exists or is archived. Review your mapping.");
     }
+
+    if (fieldById.get(fieldId)?.type === "workspace_member") {
+      errors.push(
+        `${fieldById.get(fieldId)?.name ?? "Workspace Member"} is a Workspace Member field. CSV import does not support Workspace Member fields yet.`,
+      );
+    }
   }
 
   for (const fieldId of duplicated) {
@@ -131,6 +137,11 @@ export function parseCsvCellValue(field: FieldDefinition, rawCell: string): Cell
     case "choice":
       // Choice cells are resolved separately -- see resolveChoiceValues.
       return { success: true, value: trimmed };
+    case "workspace_member":
+      return {
+        success: false,
+        error: `${field.name} is a Workspace Member field. CSV import does not support Workspace Member fields yet.`,
+      };
   }
 }
 

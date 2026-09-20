@@ -18,7 +18,10 @@ import type { RecordFieldFormState } from "@/app/actions";
 import { ChoicePill } from "@/app/components/choice-pill";
 import { ClampedText } from "@/app/components/clamped-text";
 import type { ChoiceOption, FieldDefinition, FieldValue } from "@/lib/domain/types";
-import type { RelationRecordOption } from "@/lib/domain/record-repository";
+import type {
+  RelationRecordOption,
+  WorkspaceMemberOption,
+} from "@/lib/domain/record-repository";
 import { linkifyText } from "@/lib/domain/text-linkification";
 
 type UpdateFieldAction = (
@@ -41,6 +44,9 @@ type EditableTableCellProps = {
   // own current target even if archived (see getRelationLookups'
   // currentRecords) -- ignored by every other field type.
   relationOptions?: RelationRecordOption[];
+  // Workspace Member only: active workspace members for the dropdown, plus
+  // this row's own current deactivated member when needed for preservation.
+  workspaceMemberOptions?: WorkspaceMemberOption[];
 };
 
 const initialFieldState: RecordFieldFormState = {
@@ -84,6 +90,7 @@ const ANCHORED_EDITOR_MARGIN = 8;
 const ANCHORED_EDITOR_WIDTH_BY_TYPE: Partial<Record<FieldDefinition["type"], number>> = {
   choice: 300,
   relation: 300,
+  workspace_member: 300,
   text: 420,
 };
 
@@ -204,6 +211,7 @@ export function EditableTableCell({
   updateFieldAction,
   choiceOptions = [],
   relationOptions = [],
+  workspaceMemberOptions = [],
 }: EditableTableCellProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editSessionId, setEditSessionId] = useState(0);
@@ -232,7 +240,10 @@ export function EditableTableCell({
   }
 
   const usesAnchoredEditor =
-    field.type === "choice" || field.type === "relation" || field.type === "text";
+    field.type === "choice" ||
+    field.type === "relation" ||
+    field.type === "workspace_member" ||
+    field.type === "text";
   const anchoredEditorWidth = ANCHORED_EDITOR_WIDTH_BY_TYPE[field.type] ?? 300;
 
   const currentChoiceOption =
@@ -348,6 +359,7 @@ export function EditableTableCell({
             updateFieldAction={updateFieldAction}
             choiceOptions={choiceOptions}
             relationOptions={relationOptions}
+            workspaceMemberOptions={workspaceMemberOptions}
             onClose={closeEditor}
             layout="popover"
             headingId={popoverLabelId}
@@ -366,6 +378,7 @@ export function EditableTableCell({
       updateFieldAction={updateFieldAction}
       choiceOptions={choiceOptions}
       relationOptions={relationOptions}
+      workspaceMemberOptions={workspaceMemberOptions}
       onClose={closeEditor}
       layout="inline"
     />
@@ -379,6 +392,7 @@ type EditableCellFormProps = {
   updateFieldAction: UpdateFieldAction;
   choiceOptions: ChoiceOption[];
   relationOptions: RelationRecordOption[];
+  workspaceMemberOptions: WorkspaceMemberOption[];
   onClose: (options: { returnFocus: boolean }) => void;
   // "inline" (number/date/boolean) swaps the trigger for the form in
   // place, in the existing compact cell-width layout. "popover" (choice/
@@ -404,6 +418,7 @@ function EditableCellForm({
   updateFieldAction,
   choiceOptions,
   relationOptions,
+  workspaceMemberOptions,
   onClose,
   layout,
   headingId,
@@ -437,6 +452,9 @@ function EditableCellForm({
   const selectableRelationOptions = relationOptions.filter(
     (option) => !option.archivedAt || option.value === value,
   );
+  const selectableWorkspaceMemberOptions = workspaceMemberOptions.filter(
+    (option) => !option.deactivatedAt || option.value === value,
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -445,6 +463,7 @@ function EditableCellForm({
       field.type !== "boolean" &&
       field.type !== "choice" &&
       field.type !== "relation" &&
+      field.type !== "workspace_member" &&
       inputRef.current
     ) {
       (inputRef.current as HTMLInputElement | HTMLTextAreaElement).select();
@@ -605,6 +624,25 @@ function EditableCellForm({
       >
         <option value="">Choose a record</option>
         {selectableRelationOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    ) : field.type === "workspace_member" ? (
+      <select
+        ref={inputRef as RefObject<HTMLSelectElement>}
+        id={domId}
+        name="value"
+        defaultValue={toDefaultInputValue(value)}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        aria-invalid={fieldError ? "true" : "false"}
+        aria-describedby={fieldError ? errorId : undefined}
+        className="h-8 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-graphite"
+      >
+        <option value="">Choose member</option>
+        {selectableWorkspaceMemberOptions.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>

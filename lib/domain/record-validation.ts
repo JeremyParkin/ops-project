@@ -45,6 +45,11 @@ type ChoiceValueValidator = (
   optionId: string,
 ) => Promise<boolean>;
 
+type WorkspaceMemberValueValidator = (
+  field: FieldDefinition,
+  userId: string,
+) => Promise<boolean>;
+
 type RecordValuesValidationResult =
   | {
       success: true;
@@ -138,6 +143,12 @@ function parseFieldValue(
       }
 
       return { value: rawValue };
+    case "workspace_member":
+      if (!isUuid(rawValue)) {
+        return { error: `${field.name} must reference a valid workspace member.` };
+      }
+
+      return { value: rawValue };
   }
 }
 
@@ -146,6 +157,7 @@ export async function validateRecordFormData(
   formData: FormData,
   validateRelationValue?: RelationValueValidator,
   validateChoiceValue?: ChoiceValueValidator,
+  validateWorkspaceMemberValue?: WorkspaceMemberValueValidator,
 ): Promise<ValidationResult> {
   const fieldKeys = new Set(fields.map((field) => field.key));
   const errors: Record<string, string> = {};
@@ -202,6 +214,23 @@ export async function validateRecordFormData(
         }
       }
 
+      if (
+        field.type === "workspace_member" &&
+        parsedValue.value !== null &&
+        typeof parsedValue.value === "string" &&
+        validateWorkspaceMemberValue
+      ) {
+        const isValidMember = await validateWorkspaceMemberValue(
+          field,
+          parsedValue.value,
+        );
+
+        if (!isValidMember) {
+          errors[field.key] = `${field.name} must reference an active workspace member.`;
+          continue;
+        }
+      }
+
       recordValues[field.key] = parsedValue.value;
     }
   }
@@ -226,6 +255,7 @@ export async function validateRecordValues(
   values: EntityRecord["values"],
   validateRelationValue?: RelationValueValidator,
   validateChoiceValue?: ChoiceValueValidator,
+  validateWorkspaceMemberValue?: WorkspaceMemberValueValidator,
 ): Promise<RecordValuesValidationResult> {
   const errors: Record<string, string> = {};
   const recordValues: EntityRecord["values"] = {};
@@ -311,6 +341,22 @@ export async function validateRecordValues(
           !(await validateChoiceValue(field, value))
         ) {
           errors[field.key] = `${field.name} must reference a valid option.`;
+          break;
+        }
+
+        recordValues[field.key] = value;
+        break;
+      case "workspace_member":
+        if (typeof value !== "string" || !isUuid(value)) {
+          errors[field.key] = `${field.name} must reference a valid workspace member.`;
+          break;
+        }
+
+        if (
+          validateWorkspaceMemberValue &&
+          !(await validateWorkspaceMemberValue(field, value))
+        ) {
+          errors[field.key] = `${field.name} must reference an active workspace member.`;
           break;
         }
 

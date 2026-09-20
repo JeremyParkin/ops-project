@@ -8,6 +8,7 @@ import type {
   FieldDefinition,
 } from "@/lib/domain/types";
 import type { RelationOptionsByFieldKey } from "@/lib/domain/record-repository";
+import type { WorkspaceMemberOptionsByFieldKey } from "@/lib/domain/record-repository";
 import { activeChoiceOptions } from "@/lib/domain/choice-display";
 import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
 import type { RecordFormState } from "@/lib/domain/record-validation";
@@ -18,6 +19,7 @@ type RecordEditFormProps = {
   record: EntityRecord;
   relationOptionsByFieldKey?: RelationOptionsByFieldKey;
   choiceOptionsByFieldKey?: ChoiceOptionsByFieldKey;
+  workspaceMemberOptionsByFieldKey?: WorkspaceMemberOptionsByFieldKey;
   entityNameById?: Record<string, string>;
   updateRecordAction: (
     state: RecordFormState,
@@ -69,6 +71,7 @@ export function RecordEditForm({
   record,
   relationOptionsByFieldKey = {},
   choiceOptionsByFieldKey = {},
+  workspaceMemberOptionsByFieldKey = {},
   entityNameById = {},
   updateRecordAction,
   returnTo,
@@ -230,6 +233,53 @@ export function RecordEditForm({
                     Related to {relatedEntityName}
                   </p>
                 ) : null}
+                <div id={`${fieldId}-error`}>
+                  <FieldError message={state.errors[field.key]} />
+                </div>
+              </div>
+            );
+          }
+
+          if (field.type === "workspace_member") {
+            const allOptions = workspaceMemberOptionsByFieldKey[field.key] ?? [];
+            const activeOptions = allOptions.filter((option) => !option.deactivatedAt);
+            const currentOption = allOptions.find((option) => option.value === fieldValue);
+            const options =
+              currentOption?.deactivatedAt && !activeOptions.some((option) => option.value === currentOption.value)
+                ? [currentOption, ...activeOptions]
+                : activeOptions;
+
+            return (
+              <div key={field.id}>
+                <label
+                  htmlFor={fieldId}
+                  className="block text-sm font-medium text-slab"
+                >
+                  {field.name}
+                  {field.required ? (
+                    <span className="ml-1 text-red-700" aria-hidden="true">
+                      *
+                    </span>
+                  ) : null}
+                </label>
+                <select
+                  id={fieldId}
+                  name={field.key}
+                  required={field.required}
+                  defaultValue={fieldValue}
+                  aria-invalid={state.errors[field.key] ? "true" : "false"}
+                  aria-describedby={
+                    state.errors[field.key] ? `${fieldId}-error` : undefined
+                  }
+                  className="mt-1 block h-10 w-full border border-grit bg-white px-3 text-sm text-graphite outline-none focus:border-brass-deep"
+                >
+                  <option value="">Choose member</option>
+                  {options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
                 <div id={`${fieldId}-error`}>
                   <FieldError message={state.errors[field.key]} />
                 </div>

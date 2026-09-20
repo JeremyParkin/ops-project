@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type {
   RelationOptionsByFieldKey,
+  WorkspaceMemberOptionsByFieldKey,
 } from "@/lib/domain/record-repository";
 import { activeChoiceOptions, resolveChoiceOption } from "@/lib/domain/choice-display";
 import type { ChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
@@ -24,6 +25,7 @@ import type { ViewFilter, ViewSort } from "@/lib/domain/view-types";
 type EntityViewQuickBarProps = {
   activeFields: FieldDefinition[];
   relationOptionsByFieldKey: RelationOptionsByFieldKey;
+  workspaceMemberOptionsByFieldKey: WorkspaceMemberOptionsByFieldKey;
   choiceOptionsByFieldKey: ChoiceOptionsByFieldKey;
   effectiveFilters: ViewFilter[];
   effectiveSorts: ViewSort[];
@@ -40,6 +42,7 @@ function formatFilterValue(
   filter: ViewFilter,
   field: FieldDefinition | undefined,
   choiceOptionsByFieldKey: ChoiceOptionsByFieldKey,
+  workspaceMemberOptionsByFieldKey: WorkspaceMemberOptionsByFieldKey,
 ) {
   if (!viewFilterNeedsValue(filter.operator)) {
     return "";
@@ -54,12 +57,20 @@ function formatFilterValue(
     return option?.label ?? String(filter.value ?? "");
   }
 
+  if (field?.type === "workspace_member") {
+    const option = (workspaceMemberOptionsByFieldKey[field.key] ?? []).find(
+      (candidate) => candidate.value === filter.value,
+    );
+    return option?.label ?? String(filter.value ?? "");
+  }
+
   return String(filter.value ?? "");
 }
 
 export function EntityViewQuickBar({
   activeFields,
   relationOptionsByFieldKey,
+  workspaceMemberOptionsByFieldKey,
   choiceOptionsByFieldKey,
   effectiveFilters,
   effectiveSorts,
@@ -215,7 +226,12 @@ export function EntityViewQuickBar({
       <div className="flex flex-wrap items-center gap-2">
         {effectiveFilters.map((filter, index) => {
           const field = activeFieldById.get(filter.fieldDefinitionId);
-          const value = formatFilterValue(filter, field, choiceOptionsByFieldKey);
+          const value = formatFilterValue(
+            filter,
+            field,
+            choiceOptionsByFieldKey,
+            workspaceMemberOptionsByFieldKey,
+          );
 
           return (
             <span
@@ -374,6 +390,20 @@ export function EntityViewQuickBar({
                 <option value="">Choose an option</option>
                 {activeChoiceOptions(choiceOptionsByFieldKey[filterField.key] ?? []).map((option) => (
                   <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : filterField?.type === "workspace_member" ? (
+              <select
+                aria-label="Quick filter value"
+                value={filterValue}
+                onChange={(event) => setFilterValue(event.currentTarget.value)}
+                className="h-9 border border-grit bg-white px-2 text-sm text-graphite"
+              >
+                <option value="">Choose member</option>
+                {(workspaceMemberOptionsByFieldKey[filterField.key] ?? []).map((option) => (
+                  <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}

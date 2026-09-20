@@ -195,6 +195,7 @@ function filterMatchesValue({
     case "boolean":
       return filter.operator === "equals" && value === filter.value;
     case "relation":
+    case "workspace_member":
       if (typeof value !== "string" || typeof filter.value !== "string") {
         return false;
       }

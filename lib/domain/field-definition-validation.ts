@@ -7,6 +7,7 @@ const fieldTypes = new Set<FieldType>([
   "boolean",
   "relation",
   "choice",
+  "workspace_member",
 ]);
 
 export type FieldDefinitionFormState = {

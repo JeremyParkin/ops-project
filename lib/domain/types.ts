@@ -14,7 +14,8 @@ export type FieldType =
   | "date"
   | "boolean"
   | "relation"
-  | "choice";
+  | "choice"
+  | "workspace_member";
 
 export type EntityType = {
   id: string;

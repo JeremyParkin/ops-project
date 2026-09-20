@@ -43,8 +43,10 @@ import {
   countEntityRecords,
   entityRecordExists,
   getRelationLookups,
+  getWorkspaceMemberLookups,
   getEntityRecord,
   listEntityRecords,
+  workspaceMemberExists,
 } from "@/lib/domain/record-repository";
 import { choiceOptionExists, listChoiceOptionsByFieldIds } from "@/lib/domain/choice-option-repository";
 import { toChoiceOptionsByFieldKey } from "@/lib/domain/choice-display";
@@ -231,6 +233,11 @@ async function loadEntityPageData({
       fields: entityContext.fields,
       currentRecords: records,
     });
+    const workspaceMemberLookups = await getWorkspaceMemberLookups({
+      workspaceId,
+      fields: entityContext.fields,
+      currentRecords: records,
+    });
 
     return {
       context,
@@ -251,6 +258,7 @@ async function loadEntityPageData({
       views,
       records,
       relationLookups,
+      workspaceMemberLookups,
       personEntityTypeId,
       sensitiveAccessConfig,
       qualityReviewConfig,
@@ -326,6 +334,7 @@ export default async function EntityPage({
     views,
     records,
     relationLookups,
+    workspaceMemberLookups,
     personEntityTypeId,
     sensitiveAccessConfig,
     qualityReviewConfig,
@@ -378,6 +387,12 @@ export default async function EntityPage({
           workspaceId,
           fieldDefinitionId: field.id,
           optionId,
+        }),
+      validateWorkspaceMemberValue: async (_field, userId) =>
+        workspaceMemberExists({
+          workspaceId,
+          userId,
+          includeDeactivated: true,
         }),
     });
     effectiveFilters = pendingValidation.values.filters;
@@ -659,6 +674,7 @@ export default async function EntityPage({
             activeFields={fields}
             allFields={allFields}
             relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            workspaceMemberOptionsByFieldKey={workspaceMemberLookups.optionsByFieldKey}
             choiceOptionsByFieldKey={choiceOptionsByFieldKey}
             warnings={evaluatedView.warnings}
             invalidFilter={evaluatedView.invalidFilter}
@@ -683,6 +699,7 @@ export default async function EntityPage({
           <EntityViewQuickBar
             activeFields={fields}
             relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            workspaceMemberOptionsByFieldKey={workspaceMemberLookups.optionsByFieldKey}
             choiceOptionsByFieldKey={choiceOptionsByFieldKey}
             effectiveFilters={effectiveFilters}
             effectiveSorts={effectiveSorts}
@@ -696,6 +713,7 @@ export default async function EntityPage({
             entityType={entityType}
             fields={fields}
             relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            workspaceMemberOptionsByFieldKey={workspaceMemberLookups.optionsByFieldKey}
             choiceOptionsByFieldKey={choiceOptionsByFieldKey}
             entityNameById={entityNameById}
             initialValues={relatedCreateMode?.initialValues}
@@ -710,6 +728,8 @@ export default async function EntityPage({
           records={evaluatedView.records}
           relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
           relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+          workspaceMemberLabelsByFieldKey={workspaceMemberLookups.labelsByFieldKey}
+          workspaceMemberOptionsByFieldKey={workspaceMemberLookups.optionsByFieldKey}
           choiceOptionsByFieldKey={choiceOptionsByFieldKey}
           recordEditPathBase={
             isArchivedEntity ? undefined : `/entities/${entityType.id}/records`

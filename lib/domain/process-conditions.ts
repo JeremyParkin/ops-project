@@ -19,6 +19,7 @@ const operatorsByFieldType: Record<FieldType, ProcessBranchConditionOperator[]> 
   // Same deferral as workflow-conditions.ts: no Choice-aware process branch
   // conditions in this slice, so no operators are offered for it yet.
   choice: [],
+  workspace_member: [],
 };
 
 const operatorsNeedingValue = new Set<ProcessBranchConditionOperator>([

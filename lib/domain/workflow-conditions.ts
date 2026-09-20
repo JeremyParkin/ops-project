@@ -26,6 +26,7 @@ const operatorsByFieldType: Record<FieldType, WorkflowConditionOperator[]> = {
   // offered yet, so a choice field simply won't appear as usable in a
   // workflow condition's field picker.
   choice: [],
+  workspace_member: [],
 };
 
 // Transition operators compare the previous persisted value (from the
@@ -128,6 +129,8 @@ export function parseConditionValue({
     case "relation":
     case "choice":
       return { value: rawValue };
+    case "workspace_member":
+      return { error: `${field.name} cannot be used in workflow conditions yet.` };
     case "number": {
       const value = Number(rawValue);
 
@@ -307,6 +310,7 @@ function compareValues({
     case "text":
     case "date":
     case "relation":
+    case "workspace_member":
       if (operator === "equals") {
         return sourceValue === conditionValue;
       }

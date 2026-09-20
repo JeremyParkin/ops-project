@@ -270,6 +270,8 @@ function parseConstantValue(
       // exists only so the switch stays exhaustive; it is unreachable
       // through the current UI.
       return { value: rawValue };
+    case "workspace_member":
+      return { error: `${targetField.name} constants are not supported for Workspace Member fields yet.` };
   }
 }
 

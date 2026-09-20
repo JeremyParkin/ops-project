@@ -255,6 +255,9 @@ function formatTemplateValue({
       return value === true ? "Yes" : "No";
     case "relation":
       return typeof value === "string" ? resolveRelationLabel(field, value) : "";
+    case "choice":
+    case "workspace_member":
+      return String(value);
   }
 }
 
