@@ -345,6 +345,45 @@ Status:
 Open
 
 
+### [2026-09-20] Quick view controls block has ambiguous scope and an inconsistent three-sided border
+
+Context:
+Jeremy reviewed the hosted Household Task record page at a narrower desktop width while continuing dogfood of the record/table experience.
+
+What I was trying to do:
+Understand and use the lightweight view controls immediately above the Add Task disclosure and records table.
+
+What happened:
+The block containing `+ Add filter`, `+ Add sort`, and `Columns` is visually enclosed by a border on only three sides, with no top border. This treatment is inconsistent with most other Kinema panels, which generally use either a complete four-sided border or no enclosing border.
+
+The block is also ambiguous in scope. Its placement between the larger Records/Manage views area and the Add Task/table content does not make it immediately clear whether these controls affect:
+- the current saved view;
+- the table below;
+- all records;
+- or some other page-level state.
+
+Why it matters:
+The visual treatment makes the block look unfinished or accidentally clipped, while the unclear relationship to the surrounding sections increases cognitive load. View/filter controls should read as belonging to a specific surface, especially on a page that already contains a saved-view selector, Manage views disclosure, Add Task disclosure, and the records table.
+
+Initial classification:
+UX friction / information architecture / visual consistency
+
+Possible direction:
+First clarify the information architecture before applying cosmetic polish.
+
+Prefer one of:
+- visually integrate these controls into the records table/header area if they are table-local;
+- integrate them into the current-view management surface if they operate on the selected saved view;
+- or use a clearly labeled, complete panel if they intentionally form a distinct control region.
+
+For border treatment, use a complete four-sided border or no enclosing border. Avoid three-sided containers unless there is a deliberate adjoining-panel relationship that is visually obvious.
+
+Do not solve this as an isolated CSS tweak if the underlying scope remains unclear.
+
+Status:
+Open
+
+
 ### [2026-09-20] Record Actions column hides two small lifecycle actions behind an oversized disclosure
 
 Context:
