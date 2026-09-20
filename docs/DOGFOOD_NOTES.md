@@ -409,8 +409,11 @@ Replace the current disclosure with compact direct action controls, likely conve
 
 Prefer a small consistent icon vocabulary rather than another one-off action-menu treatment.
 
+Implemented in commit `d37373ab8accc7ce38ab5a570ed748cdea1ef857`:
+The record-table disclosure layer was removed. Actions now expose compact direct Archive/Restore and Delete controls in the row, with Delete retaining its existing destructive confirmation/safety behavior. The controls retain accessible visible labels and title tooltips, and focused E2E confirmed archive, delete cancel/confirm, accessibility labels, and narrow-width visibility. Small local inline SVGs were used rather than introducing a broader icon-system refactor.
+
 Status:
-Open
+Resolved
 
 
 ### [2026-09-20] Assigning a record to a Workspace Member does not create My Work or notification behavior
