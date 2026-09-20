@@ -3,8 +3,10 @@ import {
   addChoiceOptionAction,
   archiveChoiceOptionAction,
   archiveField,
+  changeFieldDefinitionTypeAction,
   deleteChoiceOptionAction,
   deleteField,
+  getFieldTypeChangePreflightAction,
   moveChoiceOptionAction,
   moveFieldDefinition,
   restoreChoiceOptionAction,
@@ -14,7 +16,8 @@ import {
 } from "@/app/actions";
 import { ChoiceOptionManagement } from "@/app/components/choice-option-management";
 import { FieldEditForm } from "@/app/components/field-edit-form";
-import type { ChoiceOptionsByFieldId, FieldDefinition } from "@/lib/domain/types";
+import { FieldTypeChange } from "@/app/components/field-type-change";
+import type { ChoiceOptionsByFieldId, EntityType, FieldDefinition } from "@/lib/domain/types";
 
 type FieldManagementListProps = {
   workspaceId: string;
@@ -24,6 +27,9 @@ type FieldManagementListProps = {
   workflowReferenceCountByFieldId: Record<string, number>;
   viewReferenceCountByFieldId?: Record<string, number>;
   choiceOptionsByFieldId?: ChoiceOptionsByFieldId;
+  // Active entity types only -- passed through to FieldTypeChange for its
+  // Relation-target picker, same list/semantics as Add Field's own.
+  activeEntityTypes: EntityType[];
   addFieldForm?: ReactNode;
 };
 
@@ -35,6 +41,7 @@ export function FieldManagementList({
   workflowReferenceCountByFieldId,
   viewReferenceCountByFieldId = {},
   choiceOptionsByFieldId = {},
+  activeEntityTypes,
   addFieldForm,
 }: FieldManagementListProps) {
   const orderedFields = [...fields].sort((left, right) => {
@@ -101,6 +108,23 @@ export function FieldManagementList({
             fieldDefinitionId: field.id,
             direction: "down",
           });
+
+          const typeChangeControl = field.archivedAt ? undefined : (
+            <FieldTypeChange
+              field={field}
+              entityTypes={activeEntityTypes}
+              checkPreflightAction={getFieldTypeChangePreflightAction.bind(null, {
+                workspaceId,
+                entityTypeId,
+                fieldDefinitionId: field.id,
+              })}
+              changeTypeAction={changeFieldDefinitionTypeAction.bind(null, {
+                workspaceId,
+                entityTypeId,
+                fieldDefinitionId: field.id,
+              })}
+            />
+          );
 
           const choiceOptionManagement =
             field.type === "choice" ? (
@@ -174,6 +198,7 @@ export function FieldManagementList({
                     : undefined
                 }
                 choiceOptionManagement={choiceOptionManagement}
+                typeChangeControl={typeChangeControl}
                 updateFieldDefinitionAction={updateFieldAction}
                 archiveFieldAction={archiveFieldAction}
                 restoreFieldAction={restoreFieldAction}

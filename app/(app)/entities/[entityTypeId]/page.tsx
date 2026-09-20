@@ -641,6 +641,7 @@ export default async function EntityPage({
             workflowReferenceCountByFieldId={workflowReferenceCountByFieldId}
             viewReferenceCountByFieldId={viewReferenceCountByFieldId}
             choiceOptionsByFieldId={choiceOptionsByFieldId}
+            activeEntityTypes={activeEntityTypes}
             addFieldForm={
               <FieldCreateForm
                 entityTypes={activeEntityTypes}

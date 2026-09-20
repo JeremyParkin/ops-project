@@ -15,6 +15,10 @@ type FieldEditFormProps = {
   // per-option lifecycle actions) -- kept out of this component so it stays
   // a plain field-metadata editor for every other field type.
   choiceOptionManagement?: ReactNode;
+  // Secondary "Change type…" recovery affordance, supplied by the parent
+  // (same reason as choiceOptionManagement: it needs bound server actions
+  // and the active entity-type list for a Relation target picker).
+  typeChangeControl?: ReactNode;
   updateFieldDefinitionAction: (
     state: FieldEditFormState,
     formData: FormData,
@@ -70,6 +74,7 @@ export function FieldEditForm({
   field,
   relatedEntityName,
   choiceOptionManagement,
+  typeChangeControl,
   updateFieldDefinitionAction,
   archiveFieldAction,
   restoreFieldAction,
@@ -310,6 +315,7 @@ export function FieldEditForm({
           {moveMessage}
         </p>
       ) : null}
+      {typeChangeControl}
       {field.type === "choice" ? choiceOptionManagement : null}
       <form
         id={`field-archive-${field.id}`}

@@ -513,6 +513,97 @@ export async function deleteFieldDefinition({
   };
 }
 
+type FieldTypeChangeDependencyRow = {
+  pristine?: boolean;
+  changed?: boolean;
+  record_value_count: number;
+  relation_value_count: number;
+  choice_option_count: number;
+  display_field_reference_count: number;
+  quality_review_reference_count: number;
+  people_sensitive_reference_count: number;
+  view_reference_count: number;
+  workflow_reference_count: number;
+  process_reference_count: number;
+};
+
+function mapFieldTypeChangeDependencyRow(row: FieldTypeChangeDependencyRow) {
+  return {
+    recordValueCount: row.record_value_count,
+    relationValueCount: row.relation_value_count,
+    choiceOptionCount: row.choice_option_count,
+    displayFieldReferenceCount: row.display_field_reference_count,
+    qualityReviewReferenceCount: row.quality_review_reference_count,
+    peopleSensitiveReferenceCount: row.people_sensitive_reference_count,
+    viewReferenceCount: row.view_reference_count,
+    workflowReferenceCount: row.workflow_reference_count,
+    processReferenceCount: row.process_reference_count,
+  };
+}
+
+export async function getFieldDefinitionTypeChangePreflight({
+  workspaceId,
+  entityTypeId,
+  fieldDefinitionId,
+}: FieldDefinitionLifecycleInput) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .rpc("get_field_definition_type_change_preflight_authorized", {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_field_definition_id: fieldDefinitionId,
+    })
+    .single<FieldTypeChangeDependencyRow>();
+
+  if (error) {
+    throw new Error(`Unable to check field type change: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("Unable to check field type change: unexpected RPC response.");
+  }
+
+  return {
+    pristine: Boolean(data.pristine),
+    ...mapFieldTypeChangeDependencyRow(data),
+  };
+}
+
+export async function changeFieldDefinitionType({
+  workspaceId,
+  entityTypeId,
+  fieldDefinitionId,
+  newType,
+  newRelatedEntityTypeId,
+}: FieldDefinitionLifecycleInput & {
+  newType: string;
+  newRelatedEntityTypeId?: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .rpc("change_field_definition_type_if_safe_authorized", {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_field_definition_id: fieldDefinitionId,
+      p_new_type: newType,
+      p_new_related_entity_type_id: newType === "relation" ? newRelatedEntityTypeId : null,
+    })
+    .single<FieldTypeChangeDependencyRow>();
+
+  if (error) {
+    throw new Error(`Unable to change field type: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("Unable to change field type: unexpected RPC response.");
+  }
+
+  return {
+    changed: Boolean(data.changed),
+    ...mapFieldTypeChangeDependencyRow(data),
+  };
+}
+
 export async function updateEntityTypeMetadata({
   workspaceId,
   entityTypeId,

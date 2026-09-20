@@ -21,6 +21,11 @@ import {
   type FieldEditFormState,
   validateFieldEditFormData,
 } from "@/lib/domain/field-edit-validation";
+import type {
+  FieldTypeChangeActionState,
+  FieldTypeChangeDependencySummary,
+  FieldTypeChangePreflightState,
+} from "@/lib/domain/field-type-change-validation";
 import {
   type ChoiceOptionFormState,
   createInitialChoiceOptionFormState,
@@ -57,6 +62,7 @@ import {
 import {
   archiveFieldDefinition,
   archiveEntityType,
+  changeFieldDefinitionType,
   createFieldDefinition,
   createEntityTypesWithFieldsAuthorized,
   createEntityTypeWithFields,
@@ -65,6 +71,7 @@ import {
   getEntityTypeRelationFieldSummary,
   getEntityTypeWorkflowTargetSummary,
   getEntityContext,
+  getFieldDefinitionTypeChangePreflight,
   listEntityTypes,
   restoreFieldDefinition,
   restoreEntityType,
@@ -2502,6 +2509,198 @@ export async function deleteField(
   return {
     success: true,
     message: "Field permanently deleted.",
+  };
+}
+
+
+function formatFieldTypeChangeBlockMessage({
+  fieldName,
+  dependencies,
+}: {
+  fieldName: string;
+  dependencies: FieldTypeChangeDependencySummary;
+}) {
+  const reasons: string[] = [];
+
+  if (dependencies.recordValueCount > 0) {
+    reasons.push(
+      `${dependencies.recordValueCount} record value${dependencies.recordValueCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (dependencies.relationValueCount > 0) {
+    reasons.push(
+      `${dependencies.relationValueCount} relation value${dependencies.relationValueCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (dependencies.choiceOptionCount > 0) {
+    reasons.push(
+      `${dependencies.choiceOptionCount} Choice option${dependencies.choiceOptionCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (dependencies.displayFieldReferenceCount > 0) {
+    reasons.push("configured as this object's display field");
+  }
+
+  if (dependencies.qualityReviewReferenceCount > 0) {
+    reasons.push("configured as the Quality Review status field");
+  }
+
+  if (dependencies.peopleSensitiveReferenceCount > 0) {
+    reasons.push("configured as a people-sensitive subject or author field");
+  }
+
+  if (dependencies.viewReferenceCount > 0) {
+    reasons.push(
+      `${dependencies.viewReferenceCount} saved view reference${dependencies.viewReferenceCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (dependencies.workflowReferenceCount > 0) {
+    reasons.push(
+      `${dependencies.workflowReferenceCount} workflow reference${dependencies.workflowReferenceCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (dependencies.processReferenceCount > 0) {
+    reasons.push(
+      `${dependencies.processReferenceCount} process reference${dependencies.processReferenceCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (reasons.length === 0) {
+    return `${fieldName}'s type cannot be changed right now.`;
+  }
+
+  return `${fieldName}'s type cannot be changed because it has ${reasons.join(", ")}.`;
+}
+
+export async function getFieldTypeChangePreflightAction(
+  context: UpdateFieldDefinitionContext,
+  previousState: FieldTypeChangePreflightState,
+  formData: FormData,
+): Promise<FieldTypeChangePreflightState> {
+  void previousState;
+  void formData;
+
+  const { entityType, fields } = await getEntityContext({
+    ...context,
+    includeArchivedFields: true,
+  });
+  const field = fields.find((candidateField) => candidateField.id === context.fieldDefinitionId);
+
+  if (!field) {
+    return {
+      checked: true,
+      success: false,
+      message: "Field not found.",
+      pristine: false,
+    };
+  }
+
+  if (entityType.archivedAt) {
+    return {
+      checked: true,
+      success: false,
+      message: "Archived entities are read-only. Restore this entity before changing a field's type.",
+      pristine: false,
+    };
+  }
+
+  try {
+    const result = await getFieldDefinitionTypeChangePreflight(context);
+
+    return {
+      checked: true,
+      success: true,
+      message: result.pristine
+        ? ""
+        : formatFieldTypeChangeBlockMessage({ fieldName: field.name, dependencies: result }),
+      pristine: result.pristine,
+      dependencies: result,
+    };
+  } catch {
+    return {
+      checked: true,
+      success: false,
+      message: "Unable to check whether this field's type can be changed. Please try again.",
+      pristine: false,
+    };
+  }
+}
+
+export async function changeFieldDefinitionTypeAction(
+  context: UpdateFieldDefinitionContext,
+  _previousState: FieldTypeChangeActionState,
+  formData: FormData,
+): Promise<FieldTypeChangeActionState> {
+  const newType = String(formData.get("newType") ?? "");
+  const newRelatedEntityTypeId = String(formData.get("newRelatedEntityTypeId") ?? "").trim() || undefined;
+
+  const { entityType, fields } = await getEntityContext({
+    ...context,
+    includeArchivedFields: true,
+  });
+  const field = fields.find((candidateField) => candidateField.id === context.fieldDefinitionId);
+
+  if (!field) {
+    return { success: false, message: "Field not found." };
+  }
+
+  if (entityType.archivedAt) {
+    return {
+      success: false,
+      message: "Archived entities are read-only. Restore this entity before changing a field's type.",
+    };
+  }
+
+  if (!["text", "number", "date", "boolean", "relation", "choice"].includes(newType)) {
+    return { success: false, message: "Choose a supported field type." };
+  }
+
+  if (newType === "relation") {
+    if (!newRelatedEntityTypeId || !(await isActiveEntityType(context.workspaceId, newRelatedEntityTypeId))) {
+      return {
+        success: false,
+        message: "Relation fields must target an active object.",
+      };
+    }
+  }
+
+  try {
+    const result = await changeFieldDefinitionType({
+      ...context,
+      newType,
+      newRelatedEntityTypeId,
+    });
+
+    if (!result.changed) {
+      return {
+        success: false,
+        message: formatFieldTypeChangeBlockMessage({ fieldName: field.name, dependencies: result }),
+        dependencies: result,
+      };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+
+    if (message.includes("already this type")) {
+      return { success: false, message: "This field is already that type." };
+    }
+
+    return {
+      success: false,
+      message: "Unable to change the field's type. Please try again.",
+    };
+  }
+
+  revalidatePath(`/entities/${context.entityTypeId}`);
+
+  return {
+    success: true,
+    message: "Field type changed.",
   };
 }
 
