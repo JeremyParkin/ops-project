@@ -14,11 +14,16 @@ import {
   updateEntityTypeSensitiveAccess,
   updateView,
 } from "@/app/actions";
+import {
+  updateEntityTypeWorkEnabled,
+  updateEntityTypeWorkMapping,
+} from "@/app/work-actions";
 import { EntityRecordsTable } from "@/app/components/entity-records-table";
 import { EntitySettingsForm } from "@/app/components/entity-settings-form";
 import { EntityTypeQualityReviewForm } from "@/app/components/entity-type-quality-review-form";
 import { EntityTypeQualityReviewPresentationForm } from "@/app/components/entity-type-quality-review-presentation-form";
 import { EntityTypeSensitiveAccessForm } from "@/app/components/entity-type-sensitive-access-form";
+import { EntityTypeWorkSettingsForm } from "@/app/components/entity-type-work-settings-form";
 import { EntityViewQuickBar } from "@/app/components/entity-view-quickbar";
 import { EntityViewsPanel } from "@/app/components/entity-views-panel";
 import { FieldCreateForm } from "@/app/components/field-create-form";
@@ -39,6 +44,7 @@ import {
   listEntityTypes,
 } from "@/lib/domain/metadata-repository";
 import { getPersonEntityTypeId } from "@/lib/domain/person-link-repository";
+import { getEntityTypeWorkSettingsConfig } from "@/lib/domain/work-repository";
 import {
   countEntityRecords,
   entityRecordExists,
@@ -190,6 +196,7 @@ async function loadEntityPageData({
       sensitiveAccessConfig,
       qualityReviewConfig,
       qualityReviewPresentationConfig,
+      workSettingsConfig,
     ] = await Promise.all([
       listEntityTypes({ workspaceId }),
       listEntityTypes({
@@ -211,6 +218,7 @@ async function loadEntityPageData({
       getEntityTypeSensitiveAccessConfig(context),
       getEntityTypeQualityReviewConfig(context),
       getEntityTypeQualityReviewPresentationConfig(context),
+      getEntityTypeWorkSettingsConfig(context),
     ]);
     const [records, choiceOptionsByFieldId] = await Promise.all([
       listEntityRecords({
@@ -263,6 +271,7 @@ async function loadEntityPageData({
       sensitiveAccessConfig,
       qualityReviewConfig,
       qualityReviewPresentationConfig,
+      workSettingsConfig,
     };
   } catch {
     return null;
@@ -339,6 +348,7 @@ export default async function EntityPage({
     sensitiveAccessConfig,
     qualityReviewConfig,
     qualityReviewPresentationConfig,
+    workSettingsConfig,
   } = pageData;
   const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(allFields, choiceOptionsByFieldId);
   const selectedView =
@@ -496,6 +506,8 @@ export default async function EntityPage({
   const updateSensitiveAccess = updateEntityTypeSensitiveAccess.bind(null, context);
   const updateQualityReviewLifecycle = updateEntityTypeQualityReviewLifecycle.bind(null, context);
   const updateQualityReviewPresentation = updateEntityTypeQualityReviewPresentation.bind(null, context);
+  const updateWorkMapping = updateEntityTypeWorkMapping.bind(null, context);
+  const updateWorkEnabled = updateEntityTypeWorkEnabled.bind(null, context);
   const archiveCurrentEntity = archiveEntity.bind(null, context);
   const restoreCurrentEntity = restoreEntity.bind(null, context);
   const deleteCurrentEntity = deleteEntity.bind(null, context);
@@ -645,6 +657,24 @@ export default async function EntityPage({
                 action={updateQualityReviewPresentation}
               />
             ) : null}
+          </CollapsibleSection>
+        ) : null}
+        {isManaging && !isArchivedEntity ? (
+          <CollapsibleSection
+            title="Work settings"
+            description="Make this object's records eligible for My Work and assignment notifications."
+            defaultOpen={workSettingsConfig.workEnabled}
+          >
+            <EntityTypeWorkSettingsForm
+              entityTypeId={entityType.id}
+              workspaceMemberFields={fields.filter((field) => field.type === "workspace_member" && !field.archivedAt)}
+              dateFields={fields.filter((field) => field.type === "date" && !field.archivedAt)}
+              choiceFields={fields.filter((field) => field.type === "choice" && !field.archivedAt)}
+              optionsByFieldId={choiceOptionsByFieldId}
+              config={workSettingsConfig}
+              mappingAction={updateWorkMapping}
+              enabledAction={updateWorkEnabled}
+            />
           </CollapsibleSection>
         ) : null}
         {isManaging && !isArchivedEntity ? (
