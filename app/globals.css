@@ -97,6 +97,8 @@
 .theme-root[data-theme="dark"] .text-slate-500,
 .theme-root[data-theme="dark"] .text-slate-700,
 .theme-root[data-theme="dark"] .text-slate-600 { color: var(--muted); }
+.theme-root[data-theme="dark"] .bg-brass:not(:disabled) { color: var(--on-accent); }
+.theme-root[data-theme="dark"] .hover\:bg-brass-deep:hover:not(:disabled) { color: #f4f1ea; }
 .theme-root[data-theme="dark"] .border-grit,
 .theme-root[data-theme="dark"] .border-slate-200,
 .theme-root[data-theme="dark"] .border-slate-300 { border-color: var(--border); }
@@ -120,6 +122,8 @@
   .theme-root[data-theme="system"] .text-slate-500,
   .theme-root[data-theme="system"] .text-slate-700,
   .theme-root[data-theme="system"] .text-slate-600 { color: var(--muted); }
+  .theme-root[data-theme="system"] .bg-brass:not(:disabled) { color: var(--on-accent); }
+  .theme-root[data-theme="system"] .hover\:bg-brass-deep:hover:not(:disabled) { color: #f4f1ea; }
   .theme-root[data-theme="system"] .border-grit,
   .theme-root[data-theme="system"] .border-slate-200,
   .theme-root[data-theme="system"] .border-slate-300 { border-color: var(--border); }

@@ -472,15 +472,8 @@ function EntityCreateFormFields({
         </div>
 
         <div>
-          <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="mb-3">
             <h2 className="text-lg font-semibold text-slate-950">Fields</h2>
-            <button
-              type="button"
-              onClick={addFieldRow}
-              className="inline-flex h-9 items-center justify-center border border-slate-300 px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"
-            >
-              Add Field
-            </button>
           </div>
 
           <div className="flex flex-col gap-3">
@@ -495,15 +488,26 @@ function EntityCreateFormFields({
                     htmlFor={`fieldName:${field.rowId}`}
                     className="block text-sm font-medium text-slate-800"
                   >
-                    Field {index + 1} Name
+                    {index === 0 ? "Primary field name" : `Field ${index + 1} Name`}
                     <span className="ml-1 text-red-700" aria-hidden="true">
                       *
                     </span>
                   </label>
+                  {index === 0 ? (
+                    <p
+                      id={`fieldNameHelp:${field.rowId}`}
+                      className="mt-1 text-xs text-slate-600"
+                    >
+                      Kinema uses this field to identify each record.
+                    </p>
+                  ) : null}
                   <input
                     id={`fieldName:${field.rowId}`}
                     name={`fieldName:${field.rowId}`}
                     required
+                    aria-describedby={
+                      index === 0 ? `fieldNameHelp:${field.rowId}` : undefined
+                    }
                     defaultValue={field.name}
                     className="mt-1 block h-10 w-full border border-slate-300 px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
                   />
@@ -737,6 +741,16 @@ function EntityCreateFormFields({
                 ) : null}
               </div>
             ))}
+            <button
+              type="button"
+              onClick={addFieldRow}
+              className="inline-flex h-9 w-fit items-center gap-1.5 border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"
+            >
+              <span aria-hidden="true" className="text-base leading-none text-slate-500">
+                +
+              </span>
+              <span>Add Field</span>
+            </button>
           </div>
         </div>
 

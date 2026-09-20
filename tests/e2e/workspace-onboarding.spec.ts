@@ -164,6 +164,21 @@ async function setCreateObjectField(
   }
 }
 
+async function chooseCreateObjectChoiceColor(
+  page: Page,
+  fieldRowId: string,
+  optionIndex: number,
+  colorName: string,
+) {
+  const colorControl = page
+    .locator(`[name^="choiceOptionColor:${fieldRowId}"]`)
+    .nth(optionIndex)
+    .locator("..")
+    .getByRole("combobox");
+  await colorControl.click();
+  await page.getByRole("option", { name: colorName, exact: true }).click();
+}
+
 test.afterAll(async () => {
   const admin = createSupabaseTestClient();
   if (workspaceIds.length > 0) {
@@ -294,6 +309,11 @@ test("custom object creation supports Choice options without placeholder Text fi
   await openCreateObjectFromScratch(page, workspaceId);
 
   await expect(page.locator('[name="fieldType:field-1"]')).toContainText("Choice");
+  await expect(page.getByLabel("Primary field name")).toBeVisible();
+  await expect(
+    page.getByText("Kinema uses this field to identify each record."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Field" })).toHaveCount(1);
 
   await page.locator('[name="entityName"]').fill("Household Task");
   await setCreateObjectField(page, "field-1", { name: "Title", type: "text" });
@@ -306,10 +326,11 @@ test("custom object creation supports Choice options without placeholder Text fi
   await page.locator('[name="fieldType:field-2"]').selectOption("date");
   await page.locator('[name="fieldType:field-3"]').selectOption("choice");
   await page.getByLabel("Option 1 label").fill("Low");
+  await page.getByRole("button", { name: "Add option" }).click();
   await page.getByLabel("Option 2 label").fill("High");
   await page.getByRole("button", { name: "Add option" }).click();
   await page.getByLabel("Option 3 label").fill("Urgent");
-  await page.locator('[name^="choiceOptionColor:field-3"]').nth(2).selectOption("red");
+  await chooseCreateObjectChoiceColor(page, "field-3", 2, "Red");
   await page.locator('[name="fieldType:field-4"]').selectOption("number");
   await page.locator('[name="fieldType:field-5"]').selectOption("boolean");
 
@@ -410,9 +431,10 @@ test("custom object creation rejects incomplete and duplicate Choice options tru
   await page.locator('[name="entityName"]').fill("Priority Test");
   await setCreateObjectField(page, "field-1", { name: "Priority", type: "choice" });
   await page.getByRole("button", { name: "Create object" }).click();
-  await expect(page.getByText("Option label is required.")).toHaveCount(2);
+  await expect(page.getByText("Option label is required.")).toBeVisible();
 
   await page.getByLabel("Option 1 label").fill("Low");
+  await page.getByRole("button", { name: "Add option" }).click();
   await page.getByLabel("Option 2 label").fill("low");
   await page.getByRole("button", { name: "Create object" }).click();
   await expect(page.getByText("Option labels must be unique.")).toBeVisible();
@@ -438,8 +460,9 @@ test("custom object creation Choice options remain usable at narrow viewport", a
   await setCreateObjectField(page, "field-1", { name: "Status", type: "choice" });
   await expect(page.getByText("Choice options")).toBeVisible();
   await page.getByLabel("Option 1 label").fill("Open");
+  await page.getByRole("button", { name: "Add option" }).click();
   await page.getByLabel("Option 2 label").fill("Closed");
-  await page.locator('[name^="choiceOptionColor:field-1"]').first().selectOption("emerald");
+  await chooseCreateObjectChoiceColor(page, "field-1", 0, "Emerald");
   const choiceEditorFits = await page.getByText("Choice options").locator("..").evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return rect.left >= 0 && rect.right <= window.innerWidth;
