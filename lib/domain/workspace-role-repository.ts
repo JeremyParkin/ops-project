@@ -13,6 +13,7 @@ export type WorkspaceRole = {
 export type WorkspaceMemberWithRole = {
   userId: string;
   email: string;
+  displayName?: string | null;
   roleId: string;
   roleName: string;
   deactivatedAt?: string;
@@ -38,12 +39,14 @@ export async function listWorkspaceMembersWithRoles({
   return ((data ?? []) as Array<{
     user_id: string;
     email: string;
+    display_name: string | null;
     role_id: string;
     role_name: string;
     deactivated_at: string | null;
   }>).map((member) => ({
     userId: member.user_id,
     email: member.email,
+    displayName: member.display_name,
     roleId: member.role_id,
     roleName: member.role_name,
     deactivatedAt: member.deactivated_at ?? undefined,

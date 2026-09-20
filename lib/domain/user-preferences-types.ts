@@ -5,6 +5,7 @@ export type UserPreferences = {
   timezone: string | null;
   notifyCommentMentions: boolean;
   notifyInputRequestStatusUpdates: boolean;
+  displayName: string | null;
 };
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -12,4 +13,5 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   timezone: null,
   notifyCommentMentions: true,
   notifyInputRequestStatusUpdates: true,
+  displayName: null,
 };

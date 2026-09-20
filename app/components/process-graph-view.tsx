@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { ProcessTemplateFormState } from "@/lib/domain/process-validation";
 import type { FieldDefinition } from "@/lib/domain/types";
 import type { WorkspaceMemberIdentity } from "@/lib/domain/process-types";
+import { primaryUserLabel } from "@/lib/domain/user-identity-label";
 import { computeProcessGraphLayout, GRAPH_NODE_HEIGHT, GRAPH_NODE_WIDTH } from "./process-graph-layout";
 import {
   NODE_TYPE_LABELS,
@@ -91,7 +92,8 @@ function nodeSummary(step: LocalStep, members: WorkspaceMemberIdentity[]): strin
     return "Unassigned";
   }
 
-  return members.find((member) => member.userId === step.assigneeUserId)?.email ?? "Unassigned";
+  const member = members.find((candidate) => candidate.userId === step.assigneeUserId);
+  return member ? primaryUserLabel(member) : "Unassigned";
 }
 
 // A node is reconnect-eligible for delete only when unambiguous: exactly

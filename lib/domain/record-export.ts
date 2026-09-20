@@ -74,13 +74,19 @@ async function resolveWorkspaceMemberLabels({
     currentRecords: records,
     supabase,
   });
+  const emailByFieldKey = Object.fromEntries(
+    Object.entries(lookups.optionsByFieldKey).map(([fieldKey, options]) => [
+      fieldKey,
+      Object.fromEntries(options.map((option) => [option.value, option.email])),
+    ]),
+  );
 
   return records.map((record) => {
     const values = { ...record.values };
     for (const field of workspaceMemberFields) {
       const userId = values[field.key];
       if (typeof userId === "string") {
-        values[field.key] = lookups.labelsByFieldKey[field.key]?.[userId] ?? "";
+        values[field.key] = emailByFieldKey[field.key]?.[userId] ?? "";
       }
     }
     return { ...record, values };

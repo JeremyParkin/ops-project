@@ -8,6 +8,7 @@ describe("user preference defaults", () => {
       timezone: null,
       notifyCommentMentions: true,
       notifyInputRequestStatusUpdates: true,
+      displayName: null,
     });
   });
 });

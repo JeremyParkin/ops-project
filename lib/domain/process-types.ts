@@ -139,6 +139,7 @@ export type ProcessNode = {
 export type WorkspaceMemberIdentity = {
   userId: string;
   email: string;
+  displayName?: string | null;
 };
 
 export type ProcessEdge = {

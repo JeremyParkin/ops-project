@@ -61,7 +61,7 @@ function formatFilterValue(
     const option = (workspaceMemberOptionsByFieldKey[field.key] ?? []).find(
       (candidate) => candidate.value === filter.value,
     );
-    return option?.label ?? String(filter.value ?? "");
+    return option?.displayLabel ?? String(filter.value ?? "");
   }
 
   return String(filter.value ?? "");

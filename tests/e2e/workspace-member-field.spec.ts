@@ -14,8 +14,12 @@ test.describe.configure({ mode: "serial" });
 let run: TestRun;
 let alternateUserId = "";
 let alternateEmail = "";
+let alternateDisplayName = "";
 let secondUserId = "";
 let secondEmail = "";
+let secondDisplayName = "";
+let fallbackUserId = "";
+let fallbackEmail = "";
 
 test.beforeAll(async () => {
   run = createTestRun();
@@ -32,7 +36,7 @@ test.beforeAll(async () => {
   if (roleError || !role) throw new Error(roleError?.message ?? "Unable to load E2E role.");
   const roleId = role.id;
 
-  async function createMember(label: string) {
+  async function createMember(label: string, displayName?: string) {
     const password = `WorkspaceMember-${randomUUID()}!`;
     const email = `e2e-workspace-member-${label}-${randomUUID()}@example.test`;
     const { data: user, error: userError } = await admin.auth.admin.createUser({
@@ -47,15 +51,28 @@ test.beforeAll(async () => {
       .insert({ workspace_id: DEMO_WORKSPACE_ID, user_id: user.user.id, role_id: roleId });
     if (membershipError) throw new Error(membershipError.message);
 
+    if (displayName) {
+      const { error: preferenceError } = await admin
+        .from("user_preferences")
+        .upsert({ user_id: user.user.id, display_name: displayName });
+      if (preferenceError) throw new Error(preferenceError.message);
+    }
+
     return { id: user.user.id, email };
   }
 
-  const alternate = await createMember("alternate");
+  alternateDisplayName = `${run.label} Alpha Owner`;
+  secondDisplayName = `${run.label} Beta Reviewer`;
+
+  const alternate = await createMember("alternate", alternateDisplayName);
   alternateUserId = alternate.id;
   alternateEmail = alternate.email;
-  const second = await createMember("second");
+  const second = await createMember("second", secondDisplayName);
   secondUserId = second.id;
   secondEmail = second.email;
+  const fallback = await createMember("fallback");
+  fallbackUserId = fallback.id;
+  fallbackEmail = fallback.email;
 });
 
 test.afterAll(async () => {
@@ -63,6 +80,7 @@ test.afterAll(async () => {
 
   const admin = createSupabaseTestClient();
   if (alternateUserId) {
+    await admin.from("user_preferences").delete().eq("user_id", alternateUserId);
     await admin
       .from("workspace_memberships")
       .delete()
@@ -71,12 +89,21 @@ test.afterAll(async () => {
     await admin.auth.admin.deleteUser(alternateUserId);
   }
   if (secondUserId) {
+    await admin.from("user_preferences").delete().eq("user_id", secondUserId);
     await admin
       .from("workspace_memberships")
       .delete()
       .eq("workspace_id", DEMO_WORKSPACE_ID)
       .eq("user_id", secondUserId);
     await admin.auth.admin.deleteUser(secondUserId);
+  }
+  if (fallbackUserId) {
+    await admin
+      .from("workspace_memberships")
+      .delete()
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("user_id", fallbackUserId);
+    await admin.auth.admin.deleteUser(fallbackUserId);
   }
 });
 
@@ -123,22 +150,76 @@ test("Workspace Member fields work through create, edit, display, filters, and i
   const addSection = page.locator("details#add-record");
   await addSection.locator("summary").click();
   await addSection.locator(`[name="${titleField!.key}"]`).fill(`${run.label} First task`);
+  await expect(addSection.locator(`[name="${ownerField!.key}"]`)).toContainText(`${alternateDisplayName} — ${alternateEmail}`);
+  await expect(addSection.locator(`[name="${ownerField!.key}"]`)).toContainText(fallbackEmail);
   await addSection.locator(`[name="${ownerField!.key}"]`).selectOption(alternateUserId);
   await page.getByRole("button", { name: `Add ${entityName}` }).click();
-  await expect(page.getByRole("row").filter({ hasText: `${run.label} First task` })).toContainText(alternateEmail);
+  await expect(page.getByRole("row").filter({ hasText: `${run.label} First task` })).toContainText(alternateDisplayName);
+  await expect(page.getByRole("row").filter({ hasText: `${run.label} First task` })).not.toContainText(alternateEmail);
+
+  await page.getByText("Manage views", { exact: true }).click();
+  await expect(async () => {
+    await page.getByRole("button", { name: "Add Filter", exact: true }).click();
+    await expect(page.locator('select[name="filterField:0"]')).toBeVisible({ timeout: 1_000 });
+  }).toPass();
+  await page.locator('select[name="filterField:0"]').selectOption(ownerField!.id);
+  await expect(page.locator('select[name="filterValue:0"]')).toContainText(`${alternateDisplayName} — ${alternateEmail}`);
+  await page.locator('select[name="filterValue:0"]').selectOption(alternateUserId);
+  await page.getByLabel("View Name").fill(`${run.label} Assigned Alpha`);
+  await page.getByRole("button", { name: "Create View" }).click();
+  await expect(page.getByRole("link", { name: `${run.label} Assigned Alpha` })).toBeVisible();
+  await page.getByRole("link", { name: `${run.label} Assigned Alpha` }).click();
+  await expect(page.locator('[data-testid="entity-view-quickbar"]')).toContainText(alternateDisplayName);
+  await expect(page.locator('[data-testid="entity-view-quickbar"]')).not.toContainText(alternateEmail);
+
+  const { data: savedFilters, error: savedFilterError } = await admin
+    .from("entity_views")
+    .select("filters")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("entity_type_id", entityTypeId)
+    .eq("name", `${run.label} Assigned Alpha`)
+    .single<{ filters: Array<{ value?: string }> }>();
+  expect(savedFilterError).toBeNull();
+  expect(savedFilters?.filters?.[0]?.value).toBe(alternateUserId);
 
   const rowLink = page.getByRole("link", { name: `${run.label} First task`, exact: true });
   const detailHref = await rowLink.getAttribute("href");
   expect(detailHref).toBeTruthy();
   await page.goto(detailHref!);
-  await expect(page.getByRole("button", { name: "Edit Owner" })).toContainText(alternateEmail);
+  await expect(page.getByRole("button", { name: "Edit Owner" })).toContainText(alternateDisplayName);
 
   await page.goto(`${detailHref}/edit`);
   await page.locator(`[name="${ownerField!.key}"]`).selectOption(secondUserId);
   await page.getByRole("button", { name: "Save Changes" }).click();
   await page.waitForURL(`/entities/${entityTypeId}`);
   await page.goto(detailHref!);
-  await expect(page.getByRole("button", { name: "Edit Owner" })).toContainText(secondEmail);
+  await expect(page.getByRole("button", { name: "Edit Owner" })).toContainText(secondDisplayName);
+
+  const { data: assignedBeforeRename, error: assignedBeforeRenameError } = await admin
+    .from("entity_record_workspace_member_values")
+    .select("member_user_id")
+    .eq("field_definition_id", ownerField!.id)
+    .single<{ member_user_id: string }>();
+  expect(assignedBeforeRenameError).toBeNull();
+  expect(assignedBeforeRename?.member_user_id).toBe(secondUserId);
+
+  const renamedSecondDisplayName = `${run.label} Renamed Reviewer`;
+  const { error: renameError } = await admin
+    .from("user_preferences")
+    .update({ display_name: renamedSecondDisplayName })
+    .eq("user_id", secondUserId);
+  expect(renameError).toBeNull();
+
+  await page.goto(detailHref!);
+  await expect(page.getByRole("button", { name: "Edit Owner" })).toContainText(renamedSecondDisplayName);
+  const { data: assignedAfterRename, error: assignedAfterRenameError } = await admin
+    .from("entity_record_workspace_member_values")
+    .select("member_user_id")
+    .eq("field_definition_id", ownerField!.id)
+    .single<{ member_user_id: string }>();
+  expect(assignedAfterRenameError).toBeNull();
+  expect(assignedAfterRename?.member_user_id).toBe(secondUserId);
+  secondDisplayName = renamedSecondDisplayName;
 
   const { error: deactivateError } = await admin
     .from("workspace_memberships")
@@ -148,7 +229,8 @@ test("Workspace Member fields work through create, edit, display, filters, and i
   expect(deactivateError).toBeNull();
 
   await page.goto(detailHref!);
-  await expect(page.getByRole("button", { name: "Edit Owner" })).toContainText(`${secondEmail} (Deactivated)`);
+  await expect(page.getByRole("button", { name: "Edit Owner" })).toContainText(`${secondDisplayName} (Deactivated)`);
+  await expect(page.getByRole("button", { name: "Edit Owner" })).not.toContainText(secondEmail);
 
   await page.goto(`/entities/${entityTypeId}`);
   await addSection.locator("summary").click();

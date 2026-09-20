@@ -11,6 +11,7 @@ import type { ProcessBranchConditionOperator } from "@/lib/domain/process-types"
 import type { FieldDefinition } from "@/lib/domain/types";
 import type { RelationRecordOption } from "@/lib/domain/record-repository";
 import type { WorkspaceMemberIdentity } from "@/lib/domain/process-types";
+import { pickerUserLabel } from "@/lib/domain/user-identity-label";
 import type {
   LocalRoute,
   LocalStep,
@@ -358,7 +359,11 @@ export function AssigneeDueFields({
           updateStep(step.key, (current) => ({ ...current, assigneeUserId }));
         }} className="mt-1 block h-9 w-full border border-grit bg-white px-2 text-sm text-graphite outline-none focus:border-brass-deep">
           <option value="">Unassigned</option>
-          {members.map((member) => <option key={member.userId} value={member.userId}>{member.email}</option>)}
+          {members.map((member) => (
+            <option key={member.userId} value={member.userId}>
+              {pickerUserLabel(member)}
+            </option>
+          ))}
         </select>
       </div>
       <fieldset>

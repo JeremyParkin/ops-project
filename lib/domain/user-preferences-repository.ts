@@ -6,6 +6,7 @@ type UserPreferencesRow = {
   timezone: string | null;
   notify_comment_mentions: boolean;
   notify_input_request_status_updates: boolean;
+  display_name: string | null;
 };
 
 function firstPreferencesRow(data: unknown): UserPreferencesRow | undefined {
@@ -21,6 +22,7 @@ function mapPreferences(row: UserPreferencesRow | null | undefined): UserPrefere
     timezone: row.timezone ?? null,
     notifyCommentMentions: row.notify_comment_mentions ?? true,
     notifyInputRequestStatusUpdates: row.notify_input_request_status_updates ?? true,
+    displayName: row.display_name ?? null,
   };
 }
 
@@ -38,6 +40,7 @@ export async function updateUserPreferences({
   timezone,
   notifyCommentMentions,
   notifyInputRequestStatusUpdates,
+  displayName,
   supabase: injectedSupabase,
 }: UserPreferences & { supabase?: SupabaseServerClient }): Promise<UserPreferences> {
   const supabase = injectedSupabase ?? (await createServerSupabaseClient());
@@ -46,6 +49,7 @@ export async function updateUserPreferences({
     p_timezone: timezone,
     p_notify_comment_mentions: notifyCommentMentions,
     p_notify_input_request_status_updates: notifyInputRequestStatusUpdates,
+    p_display_name: displayName,
   }).returns<UserPreferencesRow[]>();
   if (error) throw new Error(`Unable to save personal settings: ${error.message}`);
   return mapPreferences(firstPreferencesRow(data));

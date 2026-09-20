@@ -1,6 +1,11 @@
 import { createServerSupabaseClient, type SupabaseServerClient } from "@/lib/supabase/server";
 import { getEntityContext, listEntityTypes } from "./metadata-repository";
 import type { EntityRecord, EntityType, FieldDefinition } from "./types";
+import {
+  deactivatedUserLabel,
+  pickerUserLabel,
+  primaryUserLabel,
+} from "./user-identity-label";
 
 type EntityRecordRow = {
   id: string;
@@ -78,6 +83,9 @@ type WorkspaceMemberValueRow = {
   source_record_id: string;
   field_definition_id: string;
   member_user_id: string;
+  email: string;
+  display_name: string | null;
+  deactivated_at: string | null;
 };
 
 export type RelationRecordOption = {
@@ -96,6 +104,9 @@ export type RelationLabelsByFieldKey = Record<string, Record<string, string>>;
 export type WorkspaceMemberOption = {
   value: string;
   label: string;
+  displayLabel: string;
+  email: string;
+  displayName?: string | null;
   deactivatedAt?: string | null;
 };
 
@@ -1017,8 +1028,18 @@ export async function getWorkspaceMemberLookups({
     throw new Error(`Unable to load workspace members: ${activeError.message}`);
   }
 
-  const activeOptions = ((activeRows ?? []) as Array<{ user_id: string; email: string }>)
-    .map((row) => ({ value: row.user_id, label: row.email }));
+  const activeOptions = ((activeRows ?? []) as Array<{
+    user_id: string;
+    email: string;
+    display_name: string | null;
+  }>)
+    .map((row) => ({
+      value: row.user_id,
+      label: pickerUserLabel({ email: row.email, displayName: row.display_name }),
+      displayLabel: primaryUserLabel({ email: row.email, displayName: row.display_name }),
+      email: row.email,
+      displayName: row.display_name,
+    }));
   const activeByUserId = new Map(activeOptions.map((option) => [option.value, option]));
   const referencingRecords = [
     ...(currentRecord ? [currentRecord] : []),
@@ -1042,12 +1063,7 @@ export async function getWorkspaceMemberLookups({
       throw new Error(`Unable to load workspace member values: ${historicalError.message}`);
     }
 
-    for (const row of (historicalRows ?? []) as Array<{
-      field_definition_id: string;
-      member_user_id: string;
-      email: string;
-      deactivated_at: string | null;
-    }>) {
+    for (const row of (historicalRows ?? []) as WorkspaceMemberValueRow[]) {
       if (activeByUserId.has(row.member_user_id)) {
         continue;
       }
@@ -1056,7 +1072,14 @@ export async function getWorkspaceMemberLookups({
       if (!options.some((option) => option.value === row.member_user_id)) {
         options.push({
           value: row.member_user_id,
-          label: row.deactivated_at ? `${row.email} (Deactivated)` : row.email,
+          label: row.deactivated_at
+            ? deactivatedUserLabel({ email: row.email, displayName: row.display_name })
+            : pickerUserLabel({ email: row.email, displayName: row.display_name }),
+          displayLabel: row.deactivated_at
+            ? deactivatedUserLabel({ email: row.email, displayName: row.display_name })
+            : primaryUserLabel({ email: row.email, displayName: row.display_name }),
+          email: row.email,
+          displayName: row.display_name,
           deactivatedAt: row.deactivated_at,
         });
       }
@@ -1069,7 +1092,7 @@ export async function getWorkspaceMemberLookups({
     const options = [...activeOptions, ...historical];
     optionsByFieldKey[field.key] = options;
     labelsByFieldKey[field.key] = Object.fromEntries(
-      options.map((option) => [option.value, option.label]),
+      options.map((option) => [option.value, option.displayLabel]),
     );
   }
 

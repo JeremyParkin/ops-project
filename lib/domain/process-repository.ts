@@ -1431,9 +1431,13 @@ export async function listWorkspaceMemberIdentities({
     throw new Error(`Unable to load workspace members: ${error.message}`);
   }
 
-  const rows = data as Array<{ user_id: string; email: string }> | null;
+  const rows = data as Array<{ user_id: string; email: string; display_name: string | null }> | null;
 
-  return (rows ?? []).map((row) => ({ userId: row.user_id, email: row.email }));
+  return (rows ?? []).map((row) => ({
+    userId: row.user_id,
+    email: row.email,
+    displayName: row.display_name,
+  }));
 }
 
 export type MyWorkItem = {

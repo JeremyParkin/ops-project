@@ -21,6 +21,10 @@ export function PersonalSettingsForm({ preferences }: { preferences: UserPrefere
       <SectionHeader title="Personal display settings" description="These settings follow your account across workspaces and devices." />
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm text-foreground">
+          Display name
+          <input name="displayName" defaultValue={preferences.displayName ?? ""} maxLength={120} placeholder="Use email address" className="h-10 border border-border bg-surface px-2 text-sm text-foreground" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-foreground">
           Appearance
           <select name="theme" defaultValue={preferences.theme} className="h-10 border border-border bg-surface px-2 text-sm text-foreground">
             <option value="system">System</option>

@@ -1001,6 +1001,12 @@ test.describe("process runs", () => {
       { slug: "name", name: "Name", type: "text", required: true },
     ]);
     const secondMember = await createSecondWorkspaceMember("assign-ui");
+    const secondMemberDisplayName = `${run.label} Process Assignee`;
+    const { error: displayNameError } = await supabase
+      .from("user_preferences")
+      .upsert({ user_id: secondMember.userId, display_name: secondMemberDisplayName });
+    expect(displayNameError).toBeNull();
+    const secondMemberPickerLabel = `${secondMemberDisplayName} — ${secondMember.email}`;
     const templateName = `${run.label} Assignment Lifecycle Template`;
 
     await page.goto("/processes/new");
@@ -1014,30 +1020,31 @@ test.describe("process runs", () => {
     const optionLabels = await stepAssigneeSelect(page, 0).locator("option").allTextContents();
     expect(optionLabels).toContain("Unassigned");
     expect(optionLabels).toContain(E2E_RUNNER_EMAIL);
-    expect(optionLabels).toContain(secondMember.email);
+    expect(optionLabels).toContain(secondMemberPickerLabel);
 
     await selectReactOption(stepAssigneeSelect(page, 0), { label: E2E_RUNNER_EMAIL });
-    await selectReactOption(stepAssigneeSelect(page, 1), { label: secondMember.email });
+    await selectReactOption(stepAssigneeSelect(page, 1), { label: secondMemberPickerLabel });
     await page.getByRole("button", { name: "Save Process Template" }).click();
     await expect(page.getByRole("link", { name: templateName })).toBeVisible();
 
     await page.getByRole("link", { name: templateName }).click();
     await expect(page.getByRole("heading", { name: "Edit Process Template" })).toBeVisible();
+    await expect(page.locator("main")).toContainText(secondMemberDisplayName);
     expect(await selectedOptionText(stepAssigneeSelect(page, 0))).toBe(E2E_RUNNER_EMAIL);
-    expect(await selectedOptionText(stepAssigneeSelect(page, 1))).toBe(secondMember.email);
+    expect(await selectedOptionText(stepAssigneeSelect(page, 1))).toBe(secondMemberPickerLabel);
 
     // Reassign step 0 to the second member, clear step 1, and rename step 0.
     // Reordering this two-node linear template would make its saved edge point
     // backward, which conditional-routing validation now correctly rejects.
     await stepNameInput(page, 0).fill("Prepare Source Data");
-    await selectReactOption(stepAssigneeSelect(page, 0), { label: secondMember.email });
+    await selectReactOption(stepAssigneeSelect(page, 0), { label: secondMemberPickerLabel });
     await selectReactOption(stepAssigneeSelect(page, 1), { label: "Unassigned" });
     await page.getByRole("button", { name: "Save Process Template" }).click();
     await expect(page.getByRole("link", { name: templateName })).toBeVisible();
 
     await page.getByRole("link", { name: templateName }).click();
     await expect(stepNameInput(page, 0)).toHaveValue("Prepare Source Data");
-    expect(await selectedOptionText(stepAssigneeSelect(page, 0))).toBe(secondMember.email);
+    expect(await selectedOptionText(stepAssigneeSelect(page, 0))).toBe(secondMemberPickerLabel);
     await expect(stepNameInput(page, 1)).toHaveValue("Review");
     expect(await selectedOptionText(stepAssigneeSelect(page, 1))).toBe("Unassigned");
   });

@@ -18,6 +18,7 @@ import {
 } from "@/app/workspace-invitation-actions";
 import { startImpersonationAction, type ImpersonationActionState } from "@/app/impersonation-actions";
 import { workspaceCapabilities, type WorkspaceCapability } from "@/lib/auth/capabilities";
+import { primaryUserLabel } from "@/lib/domain/user-identity-label";
 import type {
   WorkspaceMemberWithRole,
   WorkspaceRole,
@@ -100,20 +101,22 @@ function MemberRoleForm({
   );
   const isCurrentUser = member.userId === currentUserId;
   const isDeactivated = Boolean(member.deactivatedAt);
+  const memberLabel = primaryUserLabel(member);
 
   return (
     <form action={action} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
       <input type="hidden" name="userId" value={member.userId} />
       <div>
         <p className="font-medium text-graphite">
-          {member.email}
+          {memberLabel}
           {isDeactivated ? <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-stone">Deactivated</span> : null}
         </p>
+        {member.displayName ? <p className="mt-1 text-sm text-stone">{member.email}</p> : null}
         <p className="mt-1 text-sm text-stone">Current role: {member.roleName}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <label className="sr-only" htmlFor={`member-role-${member.userId}`}>
-          Role for {member.email}
+          Role for {memberLabel}
         </label>
         <select
           id={`member-role-${member.userId}`}
@@ -151,6 +154,7 @@ function MemberDeactivationControl({
   );
   const isCurrentUser = member.userId === currentUserId;
   const isDeactivated = Boolean(member.deactivatedAt);
+  const memberLabel = primaryUserLabel(member);
 
   if (isCurrentUser) return null;
 
@@ -158,7 +162,7 @@ function MemberDeactivationControl({
     <form
       action={action}
       onSubmit={(event) => {
-        if (!isDeactivated && !window.confirm(`Deactivate ${member.email}? They will lose workspace access immediately.`)) {
+        if (!isDeactivated && !window.confirm(`Deactivate ${memberLabel}? They will lose workspace access immediately.`)) {
           event.preventDefault();
         }
       }}
