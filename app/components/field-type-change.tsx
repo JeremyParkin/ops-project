@@ -107,7 +107,7 @@ export function FieldTypeChange({
           event.preventDefault();
         }
       }}
-      className="flex flex-wrap items-end gap-2 border border-slate-200 bg-slate-50 p-2"
+      className="field-type-change-panel flex flex-wrap items-end gap-2 border border-slate-200 p-2"
     >
       <div>
         <label

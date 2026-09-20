@@ -130,6 +130,30 @@
   .theme-root[data-theme="system"] .text-red-700 { color: var(--error); }
 }
 
+/* Field-type recovery UI (app/components/field-type-change.tsx's expanded
+   "New type" panel, and the read-only field-type metadata chip in
+   app/components/field-edit-form.tsx): dedicated classes rather than
+   reusing bg-slate-50/bg-slate-100 directly, so this dark-mode fix can't
+   change any other component that happens to use those same Tailwind
+   utilities elsewhere. Light-mode values match Tailwind's own slate-50/
+   slate-100 exactly, byte-for-byte unchanged. Both sit inside a bg-white
+   Manage Fields card (-> --surface in dark mode) and in light mode are
+   very slightly darker than that white card, closer to the page's own
+   paper tone than the card's -- dark mode uses --background (darker than
+   --surface) for the same recessed, subdued relationship, rather than
+   --surface itself, which would render the chip/panel indistinguishable
+   from the card they sit on. */
+.field-type-change-panel { background-color: #f8fafc; }
+.field-type-chip { background-color: #f1f5f9; }
+
+.theme-root[data-theme="dark"] .field-type-change-panel,
+.theme-root[data-theme="dark"] .field-type-chip { background-color: var(--background); }
+
+@media (prefers-color-scheme: dark) {
+  .theme-root[data-theme="system"] .field-type-change-panel,
+  .theme-root[data-theme="system"] .field-type-chip { background-color: var(--background); }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

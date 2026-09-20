@@ -231,7 +231,7 @@ export function FieldEditForm({
           <p
             aria-label={`Type: ${typeDescription}`}
             title={typeDescription}
-            className="inline-flex max-w-full items-center bg-slate-100 px-2.5 py-1 text-sm font-medium text-slate-700"
+            className="field-type-chip inline-flex max-w-full items-center px-2.5 py-1 text-sm font-medium text-slate-700"
           >
             {typeDescription}
           </p>
