@@ -44,7 +44,10 @@ import {
   listEntityTypes,
 } from "@/lib/domain/metadata-repository";
 import { getPersonEntityTypeId } from "@/lib/domain/person-link-repository";
-import { getEntityTypeWorkSettingsConfig } from "@/lib/domain/work-repository";
+import {
+  getEntityTypeWorkSettingsConfig,
+  type EntityTypeWorkSettingsConfig,
+} from "@/lib/domain/work-repository";
 import {
   countEntityRecords,
   entityRecordExists,
@@ -196,7 +199,6 @@ async function loadEntityPageData({
       sensitiveAccessConfig,
       qualityReviewConfig,
       qualityReviewPresentationConfig,
-      workSettingsConfig,
     ] = await Promise.all([
       listEntityTypes({ workspaceId }),
       listEntityTypes({
@@ -218,7 +220,6 @@ async function loadEntityPageData({
       getEntityTypeSensitiveAccessConfig(context),
       getEntityTypeQualityReviewConfig(context),
       getEntityTypeQualityReviewPresentationConfig(context),
-      getEntityTypeWorkSettingsConfig(context),
     ]);
     const [records, choiceOptionsByFieldId] = await Promise.all([
       listEntityRecords({
@@ -271,11 +272,46 @@ async function loadEntityPageData({
       sensitiveAccessConfig,
       qualityReviewConfig,
       qualityReviewPresentationConfig,
-      workSettingsConfig,
     };
   } catch {
     return null;
   }
+}
+
+const DEFAULT_WORK_SETTINGS_CONFIG: EntityTypeWorkSettingsConfig = {
+  workEnabled: false,
+  assignmentFieldId: null,
+  dueFieldId: null,
+  statusFieldId: null,
+  completionOptionIds: [],
+};
+
+// get_entity_type_work_settings_authorized is schema.manage-gated by design
+// (builder configuration, not a worker-facing surface -- see 0147) -- unlike
+// sensitiveAccessConfig/qualityReviewConfig, which read directly off
+// entity_types and are visible to any workspace member. Fetching it
+// unconditionally inside loadEntityPageData's own Promise.all previously
+// threw for every non-schema.manage viewer, failing the whole page (a real
+// regression caught by the full E2E gate, not merely a narrower Work
+// Settings issue) -- so this is fetched separately, only once canManageSchema
+// is known, and skipped entirely (not merely try/caught) for callers who can
+// never see the section it feeds. A genuine fetch failure for an authorized
+// caller is deliberately NOT swallowed into the same default here: silently
+// showing "Not configured" to an actual builder whose object really is
+// configured/active would be exactly the kind of untruthful state this
+// slice exists to eliminate -- it should surface as a real error instead.
+async function loadWorkSettingsConfig({
+  context,
+  canManageSchema,
+}: {
+  context: { workspaceId: string; entityTypeId: string };
+  canManageSchema: boolean;
+}): Promise<EntityTypeWorkSettingsConfig> {
+  if (!canManageSchema) {
+    return DEFAULT_WORK_SETTINGS_CONFIG;
+  }
+
+  return getEntityTypeWorkSettingsConfig(context);
 }
 
 export default async function EntityPage({
@@ -348,8 +384,8 @@ export default async function EntityPage({
     sensitiveAccessConfig,
     qualityReviewConfig,
     qualityReviewPresentationConfig,
-    workSettingsConfig,
   } = pageData;
+  const workSettingsConfig = await loadWorkSettingsConfig({ context, canManageSchema });
   const choiceOptionsByFieldKey = toChoiceOptionsByFieldKey(allFields, choiceOptionsByFieldId);
   const selectedView =
     viewParam === "all"
