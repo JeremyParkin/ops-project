@@ -1305,7 +1305,7 @@ test.describe("process runs", () => {
     expect(historicalStepRun?.assignee_label).toBe(secondMember.email);
   });
 
-  test("My Work shows only the current user's steps from active runs, split into Ready now and Upcoming", async ({
+  test("My Work shows only the current user's steps from active runs, split into Needs attention and Coming later", async ({
     page,
   }) => {
     const run = createScenarioRun();
@@ -1333,10 +1333,10 @@ test.describe("process runs", () => {
     await page.waitForURL(/\/process-runs\//);
 
     await page.goto("/my-work");
-    const readyNowSection = page.locator("section").filter({ hasText: "Ready now" });
-    const upcomingSection = page.locator("section").filter({ hasText: "Upcoming" });
-    await expect(readyNowSection.getByText("Runner Active Step")).toBeVisible();
-    await expect(upcomingSection.getByText("Runner Pending Step")).toBeVisible();
+    const needsAttentionSection = page.locator("section").filter({ hasText: "Needs attention" });
+    const comingLaterSection = page.locator("section").filter({ hasText: "Coming later" });
+    await expect(needsAttentionSection.getByText("Runner Active Step")).toBeVisible();
+    await expect(comingLaterSection.getByText("Runner Pending Step")).toBeVisible();
     await expect(page.getByText("Second Member Step")).toHaveCount(0);
 
     const { data: runRow } = await supabase
@@ -1433,16 +1433,22 @@ test.describe("process runs", () => {
     expect(overdueUpdateError).toBeNull();
 
     await page.goto("/my-work");
-    const overdueSection = page.locator("section").filter({ hasText: "Overdue" });
-    const readyNowSection = page.locator("section").filter({ hasText: "Ready now" });
-    const upcomingSection = page.locator("section").filter({ hasText: "Upcoming" });
-    await expect(overdueSection.getByText("Overdue review")).toBeVisible();
-    await expect(readyNowSection.getByText("Due soon review")).toBeVisible();
-    await expect(readyNowSection.getByText("Undated review")).toBeVisible();
-    await expect(upcomingSection.getByText("Due soon review")).toHaveCount(0);
-    const readyText = await readyNowSection.textContent();
-    expect(readyText?.indexOf("Due soon review")).toBeLessThan(
-      readyText?.indexOf("Undated review") ?? Number.POSITIVE_INFINITY,
+    // Overdue is now an item-level treatment within one unified "Needs
+    // attention" section, not a separate top-level section -- proven here
+    // by ordering (overdue first, then due-soon, then undated) rather than
+    // section membership.
+    const needsAttentionSection = page.locator("section").filter({ hasText: "Needs attention" });
+    const comingLaterSection = page.locator("section").filter({ hasText: "Coming later" });
+    await expect(needsAttentionSection.getByText("Overdue review")).toBeVisible();
+    await expect(needsAttentionSection.getByText("Due soon review")).toBeVisible();
+    await expect(needsAttentionSection.getByText("Undated review")).toBeVisible();
+    await expect(comingLaterSection.getByText("Due soon review")).toHaveCount(0);
+    const needsAttentionText = await needsAttentionSection.textContent();
+    expect(needsAttentionText?.indexOf("Overdue review")).toBeLessThan(
+      needsAttentionText?.indexOf("Due soon review") ?? Number.POSITIVE_INFINITY,
+    );
+    expect(needsAttentionText?.indexOf("Due soon review")).toBeLessThan(
+      needsAttentionText?.indexOf("Undated review") ?? Number.POSITIVE_INFINITY,
     );
   });
 });

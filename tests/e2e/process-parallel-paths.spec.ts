@@ -367,11 +367,11 @@ test("parallel branches preserve their own assignment and due snapshots while My
   expect(steps.get(fixture.nodeIds.finalize)?.due_at).toBeNull();
 
   await page.goto("/my-work");
-  const readyNow = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Ready now" }),
+  const needsAttention = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Needs attention" }),
   });
-  await expect(readyNow.getByText("Editorial review")).toBeVisible();
-  await expect(readyNow.getByText("Legal review")).toBeVisible();
+  await expect(needsAttention.getByText("Editorial review")).toBeVisible();
+  await expect(needsAttention.getByText("Legal review")).toBeVisible();
   await expect(page.getByText("Finalize", { exact: true })).not.toBeVisible();
 
   // Existing runs must never consult modified live template routes/config.
@@ -399,7 +399,7 @@ test("parallel branches preserve their own assignment and due snapshots while My
   expect(steps.get(fixture.nodeIds.finalize)?.due_at).toBeTruthy();
 
   await page.reload();
-  await expect(readyNow.getByText("Finalize", { exact: true })).toBeVisible();
+  await expect(needsAttention.getByText("Finalize", { exact: true })).toBeVisible();
 });
 
 test("parallel join obligations are workspace-scoped select-only runtime state", async () => {

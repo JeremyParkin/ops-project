@@ -15,8 +15,8 @@ import {
   updateView,
 } from "@/app/actions";
 import {
-  updateEntityTypeWorkEnabled,
-  updateEntityTypeWorkMapping,
+  deactivateEntityTypeWork,
+  saveEntityTypeWorkConfiguration,
 } from "@/app/work-actions";
 import { EntityRecordsTable } from "@/app/components/entity-records-table";
 import { EntitySettingsForm } from "@/app/components/entity-settings-form";
@@ -506,8 +506,8 @@ export default async function EntityPage({
   const updateSensitiveAccess = updateEntityTypeSensitiveAccess.bind(null, context);
   const updateQualityReviewLifecycle = updateEntityTypeQualityReviewLifecycle.bind(null, context);
   const updateQualityReviewPresentation = updateEntityTypeQualityReviewPresentation.bind(null, context);
-  const updateWorkMapping = updateEntityTypeWorkMapping.bind(null, context);
-  const updateWorkEnabled = updateEntityTypeWorkEnabled.bind(null, context);
+  const saveWorkConfiguration = saveEntityTypeWorkConfiguration.bind(null, context);
+  const deactivateWork = deactivateEntityTypeWork.bind(null, context);
   const archiveCurrentEntity = archiveEntity.bind(null, context);
   const restoreCurrentEntity = restoreEntity.bind(null, context);
   const deleteCurrentEntity = deleteEntity.bind(null, context);
@@ -663,7 +663,7 @@ export default async function EntityPage({
           <CollapsibleSection
             title="Work settings"
             description="Make this object's records eligible for My Work and assignment notifications."
-            defaultOpen={workSettingsConfig.workEnabled}
+            defaultOpen={workSettingsConfig.workEnabled || Boolean(workSettingsConfig.assignmentFieldId)}
           >
             <EntityTypeWorkSettingsForm
               entityTypeId={entityType.id}
@@ -672,8 +672,8 @@ export default async function EntityPage({
               choiceFields={fields.filter((field) => field.type === "choice" && !field.archivedAt)}
               optionsByFieldId={choiceOptionsByFieldId}
               config={workSettingsConfig}
-              mappingAction={updateWorkMapping}
-              enabledAction={updateWorkEnabled}
+              saveAction={saveWorkConfiguration}
+              deactivateAction={deactivateWork}
             />
           </CollapsibleSection>
         ) : null}

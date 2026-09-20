@@ -4,9 +4,11 @@ import { requireE2eEnv } from "./helpers/env";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseTestClient, deleteE2eUsers } from "./helpers/supabase-test-data";
 
-// Focused UI coverage for the Record Work / Work Settings v1a worker-facing
-// slice: builder configuration on Manage Object, the Assigned Records
-// section on My Work, and the authority boundary (assignment never grants
+// Focused UI coverage for the Record Work / Work Settings corrective slice:
+// the redesigned single-card Work Settings UX (state badge, unsaved-changes
+// indicator, combined save/activate, non-destructive deactivate), the
+// unified "Needs attention"/"Coming later" My Work information
+// architecture, and the authority boundary (assignment never grants
 // mutation rights). RPC-level behavior -- validation, dependency safety,
 // notification semantics, people-sensitive visibility, timezone -- is
 // already fully covered by lib/domain/work-settings-commit.test.ts and is
@@ -20,6 +22,8 @@ type Fixture = {
   entityTypeId: string;
   nameFieldKey: string;
   assigneeFieldId: string;
+  dueFieldKey: string;
+  dueFieldId: string;
   statusFieldId: string;
   openOptionId: string;
   doneOptionId: string;
@@ -30,6 +34,12 @@ type Fixture = {
 };
 
 let fixture: Fixture;
+
+function isoDateDaysFromNow(days: number) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 async function createUser(label: string): Promise<TestUser> {
   const admin = createSupabaseTestClient();
@@ -85,9 +95,9 @@ function workSettingsSection(page: Page) {
 }
 
 // The Work settings CollapsibleSection is a controlled <details open={...}>
-// bound to the server's own workEnabled state, so it is already open on any
-// fresh navigation once Work is enabled -- only click to open it when it is
-// still closed, otherwise a click would toggle it shut.
+// bound to the server's own "configured or active" state, so it is already
+// open on any fresh navigation once a mapping exists -- only click to open
+// it when it is still closed, otherwise a click would toggle it shut.
 async function openWorkSettings(page: Page) {
   const details = workSettingsSection(page);
   const isOpen = await details.evaluate((element) => (element as HTMLDetailsElement).open);
@@ -152,6 +162,13 @@ test.beforeAll(async () => {
   });
   if (assigneeFieldError) throw new Error(assigneeFieldError.message);
 
+  const dueFieldKey = "due";
+  const { data: dueFieldId, error: dueFieldError } = await builderClient.rpc("add_field_definition", {
+    p_workspace_id: workspaceId, p_entity_type_id: entityTypeId, p_name: "Due", p_slug: dueFieldKey,
+    p_key: dueFieldKey, p_type: "date", p_required: false, p_related_entity_type_id: null,
+  });
+  if (dueFieldError) throw new Error(dueFieldError.message);
+
   const { data: statusFieldId, error: statusFieldError } = await builderClient.rpc("add_field_definition", {
     p_workspace_id: workspaceId, p_entity_type_id: entityTypeId, p_name: "Status", p_slug: "status",
     p_key: "status", p_type: "choice", p_required: false, p_related_entity_type_id: null,
@@ -172,6 +189,8 @@ test.beforeAll(async () => {
     entityTypeId,
     nameFieldKey,
     assigneeFieldId: assigneeFieldId as string,
+    dueFieldKey,
+    dueFieldId: dueFieldId as string,
     statusFieldId: statusFieldId as string,
     openOptionId: openOptionId as string,
     doneOptionId: doneOptionId as string,
@@ -189,29 +208,47 @@ test.afterAll(async () => {
   await deleteE2eUsers([fixture.builder.id, fixture.userA.id, fixture.userB.id, fixture.readOnlyUser.id], admin);
 });
 
-test("configure Work Settings, assign/reassign/complete a record, and keep it distinct from Process work", async ({ page }) => {
-  test.setTimeout(120_000);
+test("Work Settings: unsaved selections never look configured, save/activate/deactivate are truthful, and My Work is unified", async ({ page }) => {
+  test.setTimeout(150_000);
 
-  // 1. Builder configures Work Settings on Manage Object.
+  // 1. Fresh object: unmistakably "Not configured".
   await signIn(page, fixture.builder);
   await page.goto(`/entities/${fixture.entityTypeId}?manage=true`);
   await openWorkSettings(page);
-  await expect(workSettingsSection(page).getByText("Add a Workspace Member field to this object before turning on Work.")).toHaveCount(0);
-  await workSettingsSection(page).locator('select[name="assignmentFieldId"]').selectOption(fixture.assigneeFieldId);
-  await workSettingsSection(page).locator('select[name="statusFieldId"]').selectOption(fixture.statusFieldId);
-  await workSettingsSection(page).getByRole("checkbox", { name: "Done" }).check();
-  await workSettingsSection(page).getByRole("button", { name: "Save mapping" }).click();
-  await expect(workSettingsSection(page).getByText("Work Settings mapping saved.")).toBeVisible();
-  await workSettingsSection(page).getByRole("button", { name: "Enable Work" }).click();
-  await expect(workSettingsSection(page).getByText("Work enabled.")).toBeVisible();
-  await expect(workSettingsSection(page).getByText("Work is currently")).toContainText("enabled");
+  const section = workSettingsSection(page);
+  await expect(section.getByText("Not configured")).toBeVisible();
+  await expect(section.getByText("Add a Workspace Member field to this object before turning on Work.")).toHaveCount(0);
+  // Blocked until a mapping exists -- the activate control itself is
+  // disabled, not just documented as unavailable.
+  await expect(section.getByRole("button", { name: "Save and activate" })).toBeDisabled();
 
-  // 2. Create a record and assign it to userA via the ordinary record edit
-  // form -- the same generic surface every other field type already uses,
-  // no special assignment UI.
+  // 2. Selecting a value alone must not look configured: still "Not
+  // configured", plus an explicit unsaved-changes signal.
+  await section.locator('select[name="assignmentFieldId"]').selectOption(fixture.assigneeFieldId);
+  await expect(section.getByText("Not configured")).toBeVisible();
+  await expect(section.getByText(/Unsaved changes/)).toBeVisible();
+  await expect(section.getByRole("button", { name: "Save and activate" })).toBeEnabled();
+
+  // 3. Saving without activating produces the "configured, not active"
+  // state -- proving Work is never silently auto-enabled by a mapping save.
+  await section.getByRole("button", { name: "Save without activating" }).click();
+  await expect(section.getByText("Configuration saved. Not active yet")).toBeVisible();
+  await expect(section.getByText("Configured, not active")).toBeVisible();
+
+  // 4. Complete the mapping and activate in one deliberate action.
+  await section.locator('select[name="dueFieldId"]').selectOption(fixture.dueFieldId);
+  await section.locator('select[name="statusFieldId"]').selectOption(fixture.statusFieldId);
+  await section.getByRole("checkbox", { name: "Done" }).check();
+  await section.getByRole("button", { name: "Save and activate" }).click();
+  await expect(section.getByText("Saved and activated.")).toBeVisible();
+  await expect(section.getByText("Active", { exact: true })).toBeVisible();
+
+  // 5. Create an overdue record and assign it to userA via the ordinary
+  // record edit form -- the same generic surface every other field type
+  // already uses, no special assignment UI.
   const { data: recordId, error: recordError } = await (await authenticatedClient(fixture.builder)).rpc(
     "create_entity_record_with_relations_authorized",
-    { p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.entityTypeId, p_values: { [fixture.nameFieldKey]: "Renew the annual filing" }, p_relations: [] },
+    { p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.entityTypeId, p_values: { [fixture.nameFieldKey]: "Renew the annual filing", [fixture.dueFieldKey]: isoDateDaysFromNow(-3) }, p_relations: [] },
   );
   expect(recordError).toBeNull();
 
@@ -221,19 +258,26 @@ test("configure Work Settings, assign/reassign/complete a record, and keep it di
   await page.getByRole("button", { name: "Save Changes" }).click();
   await page.waitForURL(new RegExp(`/entities/${fixture.entityTypeId}(/records/${recordId})?$`));
 
-  // 3. userA sees it under Assigned records, distinct from Process work.
+  // 6. userA sees it under "Needs attention", overdue-flagged at the item
+  // level (not a separate top-level section), alongside its entity-type
+  // source cue -- and "Coming later" exists and is empty, proving Process
+  // work and Record Work stay visibly distinct kinds within one unified
+  // worker-facing composition.
   await signIn(page, fixture.userA);
   await page.goto("/my-work");
-  await expect(page.getByRole("heading", { name: "Process work" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Assigned records" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Needs attention" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Coming later" })).toBeVisible();
   await expect(page.getByText("Renew the annual filing")).toBeVisible();
   await expect(page.getByText("Household Task")).toBeVisible();
-  // Process work's own three buckets remain their original, unrelated
-  // "step(s)" copy -- proving the two sections were not merged into one
-  // undifferentiated list.
-  await expect(page.getByText(/^0 steps?$/).first()).toBeVisible();
+  await expect(page.getByText("Overdue")).toBeVisible();
+  await expect(page.getByText("Nothing coming later.")).toBeVisible();
+  // No implementation-driven "No due date" bucket, and Process work's own
+  // former top-level section labels are gone from the page entirely.
+  await expect(page.getByRole("heading", { name: "No due date" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Process work" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Assigned records" })).toHaveCount(0);
 
-  // 4. Genuine reassignment: userA -> userB moves the record.
+  // 7. Genuine reassignment: userA -> userB moves the record.
   await signIn(page, fixture.builder);
   await page.goto(`/entities/${fixture.entityTypeId}/records/${recordId}/edit`);
   await page.locator(`[name="assignee"]`).selectOption(fixture.userB.id);
@@ -248,8 +292,8 @@ test("configure Work Settings, assign/reassign/complete a record, and keep it di
   await page.goto("/my-work");
   await expect(page.getByText("Renew the annual filing")).toBeVisible();
 
-  // 5. Configured completion status removes the record from Assigned
-  // records.
+  // 8. Configured completion status removes the record from "Needs
+  // attention" entirely.
   await signIn(page, fixture.builder);
   await page.goto(`/entities/${fixture.entityTypeId}/records/${recordId}/edit`);
   await page.locator(`[name="status"]`).selectOption(fixture.doneOptionId);
@@ -260,8 +304,8 @@ test("configure Work Settings, assign/reassign/complete a record, and keep it di
   await page.goto("/my-work");
   await expect(page.getByText("Renew the annual filing")).toHaveCount(0);
 
-  // 6. Disabling Work removes it from My Work while preserving the mapping
-  // in Manage Object (re-opened, not cleared).
+  // 9. Turning off Work removes it from My Work while non-destructively
+  // preserving the mapping in Manage Object.
   await signIn(page, fixture.builder);
   await page.goto(`/entities/${fixture.entityTypeId}/records/${recordId}/edit`);
   await page.locator(`[name="status"]`).selectOption(fixture.openOptionId);
@@ -270,30 +314,30 @@ test("configure Work Settings, assign/reassign/complete a record, and keep it di
 
   await page.goto(`/entities/${fixture.entityTypeId}?manage=true`);
   await openWorkSettings(page);
-  await workSettingsSection(page).getByRole("button", { name: "Disable Work" }).click();
-  // The Work settings section is the shared, pre-existing CollapsibleSection
-  // primitive with defaultOpen bound to workEnabled (same as Quality
-  // Review's own section) -- disabling flips workEnabled to false and the
-  // section re-collapses on the very same render as the confirmation
-  // message, so the message is real but momentarily inside a closed
-  // <details>. Verified below via the outcome (My Work + the reopened,
-  // preserved mapping) rather than asserting transient visibility.
-  await page.waitForLoadState("networkidle");
+  await workSettingsSection(page).getByRole("button", { name: "Turn off Work" }).click();
+  await expect(workSettingsSection(page).getByText("Work turned off. The configuration is preserved")).toBeVisible();
+  await expect(workSettingsSection(page).getByText("Configured, not active")).toBeVisible();
 
   await signIn(page, fixture.userB);
   await page.goto("/my-work");
   await expect(page.getByText("Renew the annual filing")).toHaveCount(0);
 
+  // 10. Reload reflects the truly persisted state (not a client-side
+  // artifact): mapping and completion selection are exactly as saved.
   await signIn(page, fixture.builder);
   await page.goto(`/entities/${fixture.entityTypeId}?manage=true`);
   await openWorkSettings(page);
-  await expect(workSettingsSection(page).locator('select[name="assignmentFieldId"]')).toHaveValue(fixture.assigneeFieldId);
-  await expect(workSettingsSection(page).locator('select[name="statusFieldId"]')).toHaveValue(fixture.statusFieldId);
-  await expect(workSettingsSection(page).getByRole("checkbox", { name: "Done" })).toBeChecked();
+  const reopened = workSettingsSection(page);
+  await expect(reopened.getByText("Configured, not active")).toBeVisible();
+  await expect(reopened.locator('select[name="assignmentFieldId"]')).toHaveValue(fixture.assigneeFieldId);
+  await expect(reopened.locator('select[name="dueFieldId"]')).toHaveValue(fixture.dueFieldId);
+  await expect(reopened.locator('select[name="statusFieldId"]')).toHaveValue(fixture.statusFieldId);
+  await expect(reopened.getByRole("checkbox", { name: "Done" })).toBeChecked();
+  await expect(reopened.getByText(/Unsaved changes/)).toHaveCount(0);
 
-  // Re-enable so the remaining assertions exercise a live configuration.
-  await workSettingsSection(page).getByRole("button", { name: "Enable Work" }).click();
-  await expect(workSettingsSection(page).getByText("Work enabled.")).toBeVisible();
+  // Re-activate so the remaining test exercises a live configuration.
+  await reopened.getByRole("button", { name: "Save and activate" }).click();
+  await expect(reopened.getByText("Saved and activated.")).toBeVisible();
 });
 
 test("a read-only assignee sees an assigned record in My Work but gains no mutation authority", async ({ page }) => {
@@ -315,6 +359,7 @@ test("a read-only assignee sees an assigned record in My Work but gains no mutat
 
   await signIn(page, fixture.readOnlyUser);
   await page.goto("/my-work");
+  await expect(page.getByRole("heading", { name: "Needs attention" })).toBeVisible();
   await expect(page.getByText("Read-only assignment check")).toBeVisible();
   await page.getByText("Read-only assignment check").click();
   await expect(page).toHaveURL(new RegExp(`/entities/${fixture.entityTypeId}/records/${recordId}$`));

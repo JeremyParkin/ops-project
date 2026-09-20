@@ -27,26 +27,115 @@ function formatAssignedRecordDueDate(dueDate: string) {
   }).format(new Date(`${dueDate}T00:00:00Z`));
 }
 
-// A distinct row shape from MyWorkItemRow, deliberately: a Record Work
-// assignment has no "complete" action here (Status, when configured, is an
-// ordinary field on the record itself) and no assignee-only authority --
-// the link goes to the record's own detail page, whose existing
-// authorization decides what the viewer can actually do there.
-function AssignedRecordItemRow({ item }: { item: AssignedRecordWorkItem }) {
+// Worker-facing composition only -- the underlying domain models stay
+// exactly as separate as they already are (a ProcessStepRun is never a
+// Record Work item and vice versa). This union exists purely to let one
+// "Needs attention" list interleave both kinds by priority, with each row
+// still visibly identifying what it actually is and linking to its own
+// correct surface. Record Work has no "not yet ready" state to invent, so
+// it is never a candidate for "Coming later" -- see buildAttentionItems.
+type AttentionItem =
+  | { kind: "process"; dueAtMs: number | null; overdue: boolean; item: MyWorkItem; originEntityTypeName?: string }
+  | { kind: "record"; dueAtMs: number | null; overdue: boolean; item: AssignedRecordWorkItem };
+
+// Overdue items first (both kinds mixed together), then by due date
+// ascending, then items with no due date last -- Array.prototype.sort is
+// stable, so within each of those buckets the original relative order
+// (Process's own overdue/ready-now ordering, then Record Work's own order)
+// is preserved rather than re-shuffled.
+function buildAttentionItems({
+  activeProcessItems,
+  assignedRecords,
+  entityTypeNameById,
+}: {
+  activeProcessItems: MyWorkItem[];
+  assignedRecords: AssignedRecordWorkItem[];
+  entityTypeNameById: Map<string, string>;
+}): AttentionItem[] {
+  const processItems: AttentionItem[] = activeProcessItems.map((item) => {
+    const dueAtMs = item.stepRun.dueAt ? Date.parse(item.stepRun.dueAt) : null;
+    return {
+      kind: "process",
+      dueAtMs,
+      overdue: dueAtMs !== null && dueAtMs < Date.now(),
+      item,
+      originEntityTypeName: entityTypeNameById.get(item.run.originEntityTypeId),
+    };
+  });
+  const recordItems: AttentionItem[] = assignedRecords.map((item) => ({
+    kind: "record",
+    dueAtMs: item.dueDate ? Date.parse(`${item.dueDate}T00:00:00Z`) : null,
+    overdue: item.isOverdue,
+    item,
+  }));
+
+  return [...processItems, ...recordItems].sort((a, b) => {
+    if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+    if (a.dueAtMs !== null && b.dueAtMs !== null) return a.dueAtMs - b.dueAtMs;
+    if (a.dueAtMs !== null) return -1;
+    if (b.dueAtMs !== null) return 1;
+    return 0;
+  });
+}
+
+// Every row here is currently actionable (Process "active" steps and every
+// Record Work row the projection returns are both, by construction,
+// current work) -- overdue is a per-item accent, not a separate section or
+// a different button treatment.
+function AttentionItemRow({ attentionItem }: { attentionItem: AttentionItem }) {
+  if (attentionItem.kind === "process") {
+    const { item, overdue, originEntityTypeName } = attentionItem;
+    return (
+      <li className="border border-grit border-l-4 border-l-brass-deep p-3">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-semibold text-graphite">{item.stepRun.name}</p>
+          <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-stone">Process step</span>
+        </div>
+        {item.stepRun.nodeType === "approval" ? (
+          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-brass-deep">Approval</p>
+        ) : null}
+        <p className="mt-1 text-sm text-stone">{item.run.processTemplateName}</p>
+        <p className="mt-1 text-sm text-stone">
+          <Link href={item.originHref} className="underline-offset-4 hover:underline">
+            {item.originRecordLabel}
+          </Link>
+          {originEntityTypeName ? ` · ${originEntityTypeName}` : ""}
+        </p>
+        {item.stepRun.dueAt ? (
+          <p className={`mt-1 text-xs font-medium ${overdue ? "text-red-700" : "text-stone"}`}>
+            <ProcessDueAt dueAt={item.stepRun.dueAt} />
+            {overdue ? " · Overdue" : ""}
+          </p>
+        ) : null}
+        <div className="mt-2">
+          <Link
+            href={`/process-runs/${item.run.id}`}
+            className="inline-flex h-8 items-center justify-center bg-brass px-3 text-xs font-medium text-graphite hover:bg-brass-deep hover:text-paper"
+          >
+            Open
+          </Link>
+        </div>
+      </li>
+    );
+  }
+
+  const { item, overdue } = attentionItem;
   return (
-    <li
-      className={`border border-grit p-3 ${item.isOverdue ? "border-l-4 border-l-brass-deep" : ""}`}
-    >
-      <p className="text-sm font-semibold text-graphite">
-        <Link href={item.href} className="underline-offset-4 hover:underline">
-          {item.recordLabel}
-        </Link>
-      </p>
-      <p className="mt-1 text-sm text-stone">{item.entityTypeName}</p>
+    <li className="border border-grit border-l-4 border-l-brass-deep p-3">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold text-graphite">
+          <Link href={item.href} className="underline-offset-4 hover:underline">
+            {item.recordLabel}
+          </Link>
+        </p>
+        <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-stone">
+          {item.entityTypeName}
+        </span>
+      </div>
       {item.dueDate ? (
-        <p className={`mt-1 text-xs font-medium ${item.isOverdue ? "text-red-700" : "text-stone"}`}>
+        <p className={`mt-1 text-xs font-medium ${overdue ? "text-red-700" : "text-stone"}`}>
           Due {formatAssignedRecordDueDate(item.dueDate)}
-          {item.isOverdue ? " · Overdue" : ""}
+          {overdue ? " · Overdue" : ""}
         </p>
       ) : null}
       <div className="mt-2">
@@ -61,21 +150,18 @@ function AssignedRecordItemRow({ item }: { item: AssignedRecordWorkItem }) {
   );
 }
 
-// "Ready now" rows get a restrained Brass Deep left edge — the one
-// deliberate accent on this page — "Upcoming" rows stay plain and quiet.
-function MyWorkItemRow({
+// Pending Process steps only -- genuinely not-yet-ready, unlike everything
+// in "Needs attention". Record Work never renders here: its model has no
+// "assigned but not yet actionable" state to represent.
+function ComingLaterItemRow({
   item,
-  primary,
   originEntityTypeName,
 }: {
   item: MyWorkItem;
-  primary: boolean;
   originEntityTypeName?: string;
 }) {
   return (
-    <li
-      className={`border border-grit p-3 ${primary ? "border-l-4 border-l-brass-deep" : ""}`}
-    >
+    <li className="border border-grit p-3">
       <p className="text-sm font-semibold text-graphite">{item.stepRun.name}</p>
       {item.stepRun.nodeType === "approval" ? (
         <p className="mt-1 text-xs font-medium uppercase tracking-wide text-brass-deep">Approval</p>
@@ -87,21 +173,12 @@ function MyWorkItemRow({
         </Link>
         {originEntityTypeName ? ` · ${originEntityTypeName}` : ""}
       </p>
-      {item.stepRun.dueAt ? (
-        <p className="mt-1 text-xs font-medium text-stone">
-          <ProcessDueAt dueAt={item.stepRun.dueAt} />
-        </p>
-      ) : null}
       <div className="mt-2">
         <Link
           href={`/process-runs/${item.run.id}`}
-          className={
-            primary
-              ? "inline-flex h-8 items-center justify-center bg-brass px-3 text-xs font-medium text-graphite hover:bg-brass-deep hover:text-paper"
-              : "text-xs font-medium text-stone underline-offset-4 hover:underline"
-          }
+          className="text-xs font-medium text-stone underline-offset-4 hover:underline"
         >
-          {primary ? "Open" : "View process"}
+          View process
         </Link>
       </div>
     </li>
@@ -125,9 +202,12 @@ export default async function MyWorkPage() {
   const entityTypeNameById = new Map(
     allEntityTypes.map((entityType) => [entityType.id, entityType.name]),
   );
-  const assignedRecordsOverdue = assignedRecords.filter((item) => item.isOverdue);
-  const assignedRecordsUpcoming = assignedRecords.filter((item) => !item.isOverdue && item.dueDate);
-  const assignedRecordsNoDueDate = assignedRecords.filter((item) => !item.isOverdue && !item.dueDate);
+
+  const attentionItems = buildAttentionItems({
+    activeProcessItems: [...summary.overdue, ...summary.readyNow],
+    assignedRecords,
+    entityTypeNameById,
+  });
 
   return (
     <WorkspacePageLayout>
@@ -137,23 +217,23 @@ export default async function MyWorkPage() {
         description="Process steps and business records assigned to you in this workspace."
       />
 
-      <h2 className="mx-auto w-full max-w-6xl text-xl font-semibold text-graphite">Process work</h2>
-
       <section className="mx-auto w-full max-w-6xl border border-grit bg-white p-5">
         <SectionHeader
-          title="Overdue"
-          description={`${summary.overdue.length} step${summary.overdue.length === 1 ? "" : "s"}`}
+          title="Needs attention"
+          description={`${attentionItems.length} item${attentionItems.length === 1 ? "" : "s"}`}
         />
-        {summary.overdue.length === 0 ? (
-          <p className="mt-4 text-sm text-stone">Nothing overdue. You&apos;re on track.</p>
+        {attentionItems.length === 0 ? (
+          <p className="mt-4 text-sm text-stone">Nothing needs your attention right now.</p>
         ) : (
           <ul className="mt-4 flex flex-col gap-3">
-            {summary.overdue.map((item) => (
-              <MyWorkItemRow
-                key={item.stepRun.id}
-                item={item}
-                primary
-                originEntityTypeName={entityTypeNameById.get(item.run.originEntityTypeId)}
+            {attentionItems.map((attentionItem) => (
+              <AttentionItemRow
+                key={
+                  attentionItem.kind === "process"
+                    ? `process:${attentionItem.item.stepRun.id}`
+                    : `record:${attentionItem.item.entityTypeId}:${attentionItem.item.recordId}`
+                }
+                attentionItem={attentionItem}
               />
             ))}
           </ul>
@@ -162,91 +242,19 @@ export default async function MyWorkPage() {
 
       <section className="mx-auto w-full max-w-6xl border border-grit bg-white p-5">
         <SectionHeader
-          title="Ready now"
-          description={`${summary.readyNow.length} step${summary.readyNow.length === 1 ? "" : "s"}`}
-        />
-        {summary.readyNow.length === 0 ? (
-          <p className="mt-4 text-sm text-stone">No steps are ready for you right now.</p>
-        ) : (
-          <ul className="mt-4 flex flex-col gap-3">
-            {summary.readyNow.map((item) => (
-              <MyWorkItemRow
-                key={item.stepRun.id}
-                item={item}
-                primary
-                originEntityTypeName={entityTypeNameById.get(item.run.originEntityTypeId)}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mx-auto w-full max-w-6xl border border-grit bg-white p-5">
-        <SectionHeader
-          title="Upcoming"
+          title="Coming later"
           description={`${summary.upcoming.length} step${summary.upcoming.length === 1 ? "" : "s"}`}
         />
         {summary.upcoming.length === 0 ? (
-          <p className="mt-4 text-sm text-stone">Nothing upcoming.</p>
+          <p className="mt-4 text-sm text-stone">Nothing coming later.</p>
         ) : (
           <ul className="mt-4 flex flex-col gap-3">
             {summary.upcoming.map((item) => (
-              <MyWorkItemRow
+              <ComingLaterItemRow
                 key={item.stepRun.id}
                 item={item}
-                primary={false}
                 originEntityTypeName={entityTypeNameById.get(item.run.originEntityTypeId)}
               />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <h2 className="mx-auto mt-2 w-full max-w-6xl text-xl font-semibold text-graphite">Assigned records</h2>
-
-      <section className="mx-auto w-full max-w-6xl border border-grit bg-white p-5">
-        <SectionHeader
-          title="Overdue"
-          description={`${assignedRecordsOverdue.length} record${assignedRecordsOverdue.length === 1 ? "" : "s"}`}
-        />
-        {assignedRecordsOverdue.length === 0 ? (
-          <p className="mt-4 text-sm text-stone">Nothing overdue. You&apos;re on track.</p>
-        ) : (
-          <ul className="mt-4 flex flex-col gap-3">
-            {assignedRecordsOverdue.map((item) => (
-              <AssignedRecordItemRow key={`${item.entityTypeId}:${item.recordId}`} item={item} />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mx-auto w-full max-w-6xl border border-grit bg-white p-5">
-        <SectionHeader
-          title="Upcoming"
-          description={`${assignedRecordsUpcoming.length} record${assignedRecordsUpcoming.length === 1 ? "" : "s"}`}
-        />
-        {assignedRecordsUpcoming.length === 0 ? (
-          <p className="mt-4 text-sm text-stone">Nothing due soon.</p>
-        ) : (
-          <ul className="mt-4 flex flex-col gap-3">
-            {assignedRecordsUpcoming.map((item) => (
-              <AssignedRecordItemRow key={`${item.entityTypeId}:${item.recordId}`} item={item} />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mx-auto w-full max-w-6xl border border-grit bg-white p-5">
-        <SectionHeader
-          title="No due date"
-          description={`${assignedRecordsNoDueDate.length} record${assignedRecordsNoDueDate.length === 1 ? "" : "s"}`}
-        />
-        {assignedRecordsNoDueDate.length === 0 ? (
-          <p className="mt-4 text-sm text-stone">Nothing here.</p>
-        ) : (
-          <ul className="mt-4 flex flex-col gap-3">
-            {assignedRecordsNoDueDate.map((item) => (
-              <AssignedRecordItemRow key={`${item.entityTypeId}:${item.recordId}`} item={item} />
             ))}
           </ul>
         )}
