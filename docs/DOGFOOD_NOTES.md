@@ -310,6 +310,96 @@ The field should reference stable same-workspace member identity, not copy names
 
 Keep later operational semantics explicit and separately configured. Merely adding a Workspace Member field must not automatically mean the record appears in My Work, changes record permissions, confers process authority, or triggers notifications. Those behaviors can be layered deliberately later if justified.
 
+Hosted verification after migrations `0143_workspace_member_fields.sql` and `0144_workspace_member_assignment_deactivation_lock.sql`:
+Workspace Member is now available as a first-class configurable field type in Create/Manage Fields and works on ordinary records. Household dogfood confirmed an `Assigned To` field can select a real workspace member, persist the stable member identity, and render it in record/table views. The implementation preserves deactivated historical references, rejects new deactivated assignments, supports saved-view filtering/export/API behavior, and serializes assignment against member deactivation using deterministic workspace-membership row locking.
+
+The core missing primitive is therefore resolved. Operational semantics such as My Work, notifications, and record ownership remain intentionally separate and are tracked as distinct product questions rather than being implied by every Workspace Member field.
+
+Status:
+Resolved
+
+
+### [2026-09-20] Workspace Member fields display email instead of a human name
+
+Context:
+Jeremy dogfooded the newly deployed Workspace Member field in the hosted Household workspace by adding an `Assigned To` field to Household Task and assigning a real workspace member.
+
+What I was trying to do:
+Choose and recognize a person naturally while assigning a record.
+
+What happened:
+The picker and record/table display use the member's email address as the visible identity label. This is technically unambiguous, but it reads like account metadata rather than a person's identity.
+
+Why it matters:
+Workspace Member is a human-facing operational primitive. Builders and workers should generally see recognizable person names, with email available only as secondary disambiguation where useful. Using email as the primary label makes ordinary assignment feel more technical than the rest of the workflow.
+
+Initial classification:
+UX friction / missing identity presentation primitive
+
+Possible direction:
+Introduce a canonical user-level display/full name associated with the Kinema account identity rather than duplicating names per workspace membership. Prefer one flexible display/full-name field over mandatory first-name/last-name structure. Collect it during invitation acceptance, account setup, or another appropriate onboarding point; preserve email as fallback for existing users and as secondary picker text where needed.
+
+Do not change Workspace Member's stable storage identity: references should continue to use `user_id`, with names resolved for presentation.
+
+Status:
+Open
+
+
+### [2026-09-20] Record Actions column hides two small lifecycle actions behind an oversized disclosure
+
+Context:
+Jeremy reviewed a Household Task row after adding the new Workspace Member field.
+
+What I was trying to do:
+Scan and manage an ordinary record from the table.
+
+What happened:
+The Actions column renders a relatively wide `More actions` disclosure/expander, which then reveals only Archive and Delete. The disclosure itself occupies almost as much space as the actions it hides.
+
+Why it matters:
+This creates unnecessary horizontal and interaction overhead in a dense operational table. Archive and Delete are already familiar record-lifecycle actions and do not benefit much from an abstract extra layer when there are only two of them.
+
+Initial classification:
+Minor UX / table-density polish
+
+Possible direction:
+Replace the current disclosure with compact direct action controls, likely conventional Archive and Delete/trash icons with accessible labels/tooltips and the existing confirmation/safety behavior. Keep Archive visually safer/more prominent than Delete, and do not make destructive behavior easier to trigger accidentally.
+
+Prefer a small consistent icon vocabulary rather than another one-off action-menu treatment.
+
+Status:
+Open
+
+
+### [2026-09-20] Assigning a record to a Workspace Member does not create My Work or notification behavior
+
+Context:
+Jeremy created a real Household Task record, set an `Assigned To` Workspace Member field to himself, and then checked Notifications and My Work.
+
+What I was trying to do:
+Use a configured Task record as personally assigned operational work.
+
+What happened:
+The record correctly stores and displays the Workspace Member reference, but no assignment notification was created and nothing appeared in My Work. My Work currently represents Process StepRuns assigned to the current user, while Workspace Member fields intentionally have no automatic operational semantics.
+
+Why it matters:
+The current implementation is behaving as designed, but the dogfood expectation is strong product evidence. Once a builder creates fields named things like `Assigned To`, `Due Date`, and `Status`, a normal user reasonably expects Kinema to understand that the record represents work. The distinction between "member reference" and "work assignment" is architecturally important but invisible in the resulting worker experience.
+
+Initial classification:
+Product-model gap / strategic operational semantics
+
+Possible direction:
+Do not make every Workspace Member field imply assignment, notification, permissions, or My Work membership. Objects may legitimately contain Workspace Member fields such as Account Manager, Reviewer, Sponsor, or Approver that are not equivalent to personal work assignment.
+
+Investigate an explicit builder-configured work-semantics layer for an EntityType. A future design could let the builder designate, deliberately and independently:
+- which Workspace Member field represents assignment;
+- which Date field represents due date;
+- which Status/Choice field and values represent active/completed work.
+
+Deterministic software could then use those declared semantics to power My Work and assignment/due-date notifications without inferring meaning from field names or conflating ordinary member references with Process authority.
+
+Keep Process StepRun assignment as its own existing operational model. PLAN ONLY before implementation.
+
 Status:
 Open
 
