@@ -383,8 +383,11 @@ For border treatment, use a complete four-sided border or no enclosing border. A
 
 Do not solve this as an isolated CSS tweak if the underlying scope remains unclear.
 
+Implemented in commit `0f9a53757305133a053db4bf0ea4bac86218e198`:
+The quickbar now uses a complete four-sided border and explicitly labels its scope with a visible `View controls` heading plus either `All Records` or `View: <name>`. Filter/sort/column behavior, URL-state semantics, pending-edit handling, and saved-view persistence are unchanged. Focused browser verification confirmed the scope label tracks the selected view, filters still narrow results, and the block remains usable at 375px without overflow.
+
 Status:
-Open
+Resolved
 
 
 ### [2026-09-20] Record Actions column hides two small lifecycle actions behind an oversized disclosure
