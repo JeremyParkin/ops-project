@@ -221,8 +221,17 @@ export function EntityViewQuickBar({
   return (
     <section
       data-testid="entity-view-quickbar"
-      className="mx-auto w-full max-w-6xl border border-slate-200 border-t-0 bg-chalk px-4 py-3"
+      className="mx-auto w-full max-w-6xl border border-slate-200 bg-chalk px-4 py-3"
     >
+      <div className="mb-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-stone">
+          View controls
+        </h2>
+        <p className="mt-1 text-sm text-graphite">
+          {selectedViewName ? `View: ${selectedViewName}` : "All Records"}
+        </p>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         {effectiveFilters.map((filter, index) => {
           const field = activeFieldById.get(filter.fieldDefinitionId);

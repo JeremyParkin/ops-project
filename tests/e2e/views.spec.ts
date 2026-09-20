@@ -425,6 +425,42 @@ test("quick filter bar narrows records live and can be saved as a new view", asy
   await expect(page.getByText('Status contains "qa"')).toBeVisible();
 });
 
+test("quick view controls show a scope heading and label matching the selected view", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { work } = await createViewsScenario(run);
+  await createView({
+    entity: work,
+    name: `${run.label} Scope Label View`,
+  });
+
+  await gotoEntity(page, work);
+  const quickBar = page.getByTestId("entity-view-quickbar");
+  await expect(quickBar.getByRole("heading", { name: "View controls" })).toBeVisible();
+  await expect(quickBar.getByText("All Records", { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: `${run.label} Scope Label View` }).click();
+  await expect(
+    quickBar.getByText(`View: ${run.label} Scope Label View`, { exact: true }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "+ Add filter" }).click();
+  await selectReactOption(page.getByLabel("Quick filter field"), {
+    label: "Status (text)",
+  });
+  await selectReactOption(page.getByLabel("Quick filter operator"), {
+    value: "contains",
+  });
+  await page.getByLabel("Quick filter value").fill("qa");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  await expect(page.getByText('Status contains "qa"')).toBeVisible();
+  await expect(
+    page.getByText(`Unsaved changes to ${run.label} Scope Label View`),
+  ).toBeVisible();
+});
+
 test("clicking a column header cycles sort ascending, descending, then back to unsorted", async ({
   page,
 }) => {
