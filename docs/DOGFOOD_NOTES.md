@@ -645,3 +645,31 @@ Keep dark text on Kinema's gold/brass primary-action buttons in both light and d
 Status:
 Open
 
+### [2026-09-19] Field-type recovery UI has poor dark-mode contrast
+
+Context:
+Jeremy verified the new pristine-field type-change flow in the hosted Household workspace after migrations 0141/0142 and deployment.
+
+What happened:
+The recovery flow works functionally, but the dark-theme presentation is inconsistent and in places inaccessible-looking:
+- the expanded "New type" panel uses a very light surface while its label and controls retain light-theme-derived foreground styling, producing light text on a light background;
+- the immutable field-type chip is also rendered as a very light rectangle in dark mode, making it look visually disconnected from the surrounding dark surface and less polished than the equivalent light-theme treatment.
+
+Why it matters:
+This is a newly introduced builder recovery surface. Functional correctness is not enough if the control becomes hard to read or visually broken in one supported theme. The problem also suggests these elements are using fixed light surfaces or theme-inappropriate tokens rather than semantic surface/foreground pairs.
+
+Initial classification:
+Accessibility / dark-theme visual regression
+
+Possible direction:
+Fix this narrowly before closing the field-type-recovery slice:
+- make the type-change panel use theme-aware surface, border, label, input, and button tokens so foreground/background contrast remains correct in dark mode;
+- restyle the read-only field-type metadata chip to use a subdued dark-theme-compatible surface rather than a near-white fill;
+- preserve the lighter neutral metadata treatment in light mode without making the chip look like an editable input;
+- verify hover/focus/disabled states in both themes rather than only the resting state.
+
+Avoid a broad theme-system refactor in this pass; treat this as local semantic-token cleanup for the newly added field-type-recovery UI and its adjacent type metadata.
+
+Status:
+Open
+
