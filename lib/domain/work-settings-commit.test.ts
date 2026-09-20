@@ -169,20 +169,20 @@ async function createRecordWithAssignment(
   assignmentFieldId: string | null,
   assigneeUserId: string | null,
 ) {
-  const { data, error } = await client
-    .rpc("create_entity_record_with_relations_authorized", {
-      p_workspace_id: workspaceId,
-      p_entity_type_id: entityTypeId,
-      p_values: values,
-      p_relations: [],
-      p_workspace_members: assignmentFieldId && assigneeUserId
-        ? [{ field_definition_id: assignmentFieldId, member_user_id: assigneeUserId }]
-        : [],
-      p_originating_process_step_run_id: null,
-    })
-    .single<{ id: string }>();
+  // create_entity_record_with_relations_authorized returns a bare uuid
+  // scalar, not a row -- data is the id itself, never data.id.
+  const { data, error } = await client.rpc("create_entity_record_with_relations_authorized", {
+    p_workspace_id: workspaceId,
+    p_entity_type_id: entityTypeId,
+    p_values: values,
+    p_relations: [],
+    p_workspace_members: assignmentFieldId && assigneeUserId
+      ? [{ field_definition_id: assignmentFieldId, member_user_id: assigneeUserId }]
+      : [],
+    p_originating_process_step_run_id: null,
+  });
   if (error) throw new Error(error.message);
-  return data!.id;
+  return data as string;
 }
 
 async function updateRecordAssignment(
@@ -472,7 +472,67 @@ describe("Record Work assignment/reassignment notifications", () => {
     const notifications = (await notificationsFor(workspaceId, userA.id)).filter((n) => n.entity_record_id === recordId);
     expect(notifications).toHaveLength(2);
     expect(new Set(notifications.map((n) => n.dedup_key)).size).toBe(2);
+    // Semantic proof, not just distinct infrastructure ids: both episodes
+    // are genuinely "unassigned -> A" from the hook's own old/new member
+    // diff (the record's assignment was cleared in between), so both are
+    // record_work_assigned, neither is a reassignment.
+    expect(notifications.every((n) => n.event_type === "record_work_assigned")).toBe(true);
   });
+
+  it("proves the notification no-op/reassignment invariant from old/new assignee identity, not value-row identity", async () => {
+    const { workspaceId, client, taskType, memberField, openOption, userA, userB } = await setup();
+    await createField(client, workspaceId, taskType, { key: "notes", name: "Notes", type: "text" });
+    const recordId = await createRecordWithAssignment(client, workspaceId, taskType, { status: openOption }, memberField, userA.id);
+    const initial = (await notificationsFor(workspaceId, userA.id)).filter((n) => n.entity_record_id === recordId);
+    expect(initial).toHaveLength(1);
+    expect(initial[0].event_type).toBe("record_work_assigned");
+
+    // (a) unrelated field changes (a plain text field, not even a
+    // Workspace Member field), same assignee resubmitted verbatim -- the
+    // hook's own old/new diff on the configured assignment field sees no
+    // change, so this must be a strict no-op regardless of what else
+    // changed on the record.
+    await client.rpc("update_entity_record_with_relations_authorized", {
+      p_workspace_id: workspaceId, p_entity_type_id: taskType, p_record_id: recordId,
+      p_values: { status: openOption, notes: "unrelated edit" }, p_relation_field_ids: [], p_relations: [],
+      p_workspace_member_field_ids: [memberField],
+      p_workspace_members: [{ field_definition_id: memberField, member_user_id: userA.id }],
+    });
+    let aAfterUnrelatedEdit = (await notificationsFor(workspaceId, userA.id)).filter((n) => n.entity_record_id === recordId);
+    expect(aAfterUnrelatedEdit).toHaveLength(1);
+
+    // (b) explicitly resubmitting the identical assignee (no other field
+    // touched this time either) must also be a no-op.
+    await client.rpc("update_entity_record_with_relations_authorized", {
+      p_workspace_id: workspaceId, p_entity_type_id: taskType, p_record_id: recordId,
+      p_values: { status: openOption, notes: "unrelated edit" }, p_relation_field_ids: [], p_relations: [],
+      p_workspace_member_field_ids: [memberField],
+      p_workspace_members: [{ field_definition_id: memberField, member_user_id: userA.id }],
+    });
+    aAfterUnrelatedEdit = (await notificationsFor(workspaceId, userA.id)).filter((n) => n.entity_record_id === recordId);
+    expect(aAfterUnrelatedEdit).toHaveLength(1);
+
+    // (c) a genuine A -> B reassignment: exactly one reassignment
+    // notification to B, none to A, verified by event_type + recipient,
+    // not merely a count.
+    await updateRecordAssignment(client, workspaceId, taskType, recordId, { status: openOption, notes: "unrelated edit" }, memberField, userB.id);
+    const bNotifications = (await notificationsFor(workspaceId, userB.id)).filter((n) => n.entity_record_id === recordId);
+    expect(bNotifications).toHaveLength(1);
+    expect(bNotifications[0].event_type).toBe("record_work_reassigned");
+    expect(bNotifications[0].recipient_user_id).toBe(userB.id);
+    const aAfterReassignment = (await notificationsFor(workspaceId, userA.id)).filter((n) => n.entity_record_id === recordId);
+    expect(aAfterReassignment.filter((n) => n.event_type === "record_work_reassigned")).toHaveLength(0);
+
+    // (d) B -> null -> B again is a genuinely new assignment episode (old
+    // member id null both times in the hook's own diff), so it may -- and
+    // must -- notify B again, as record_work_assigned (not reassigned).
+    await updateRecordAssignment(client, workspaceId, taskType, recordId, { status: openOption, notes: "unrelated edit" }, memberField, null);
+    await updateRecordAssignment(client, workspaceId, taskType, recordId, { status: openOption, notes: "unrelated edit" }, memberField, userB.id);
+    const bFinal = (await notificationsFor(workspaceId, userB.id)).filter((n) => n.entity_record_id === recordId);
+    expect(bFinal).toHaveLength(2);
+    expect(bFinal.filter((n) => n.event_type === "record_work_assigned")).toHaveLength(1);
+    expect(bFinal.filter((n) => n.event_type === "record_work_reassigned")).toHaveLength(1);
+  }, 20_000);
 });
 
 describe("Assigned Records projection", () => {
@@ -543,41 +603,43 @@ describe("Assigned Records projection", () => {
 
     const subjectUser = await memberWithCapabilities(workspaceId, "subject", ["records.operate"]);
     const outsideAssignee = await memberWithCapabilities(workspaceId, "outside", ["records.operate"]);
-    const { data: personRecordId, error: personError } = await client
-      .rpc("create_entity_record_with_relations_authorized", {
-        p_workspace_id: workspaceId, p_entity_type_id: personType, p_values: {}, p_relations: [],
-      })
-      .single<{ id: string }>();
+    // create_entity_record_with_relations_authorized returns a bare uuid
+    // scalar, not a row -- data is the id itself, never data.id.
+    const { data: personRecordId, error: personError } = await client.rpc(
+      "create_entity_record_with_relations_authorized",
+      { p_workspace_id: workspaceId, p_entity_type_id: personType, p_values: {}, p_relations: [] },
+    );
     expect(personError).toBeNull();
     const { error: linkError } = await client.rpc("set_person_link_authorized", {
-      p_workspace_id: workspaceId, p_entity_record_id: personRecordId!.id, p_user_id: subjectUser.id,
+      p_workspace_id: workspaceId, p_entity_record_id: personRecordId as string, p_user_id: subjectUser.id,
     });
     expect(linkError).toBeNull();
 
-    const { data: taskRecordId, error: taskError } = await client
-      .rpc("create_entity_record_with_relations_authorized", {
+    const { data: taskRecordId, error: taskError } = await client.rpc(
+      "create_entity_record_with_relations_authorized",
+      {
         p_workspace_id: workspaceId, p_entity_type_id: taskType,
-        p_values: {}, p_relations: [{ field_definition_id: subjectField, target_entity_type_id: personType, target_record_id: personRecordId!.id }],
+        p_values: {}, p_relations: [{ field_definition_id: subjectField, target_entity_type_id: personType, target_record_id: personRecordId as string }],
         p_workspace_members: [{ field_definition_id: memberField, member_user_id: outsideAssignee.id }],
         p_originating_process_step_run_id: null,
-      })
-      .single<{ id: string }>();
+      },
+    );
     expect(taskError).toBeNull();
 
     const outsideClient = await authenticatedClient(outsideAssignee);
     const outsideView = await assignedRecordWork(outsideClient, workspaceId);
-    expect(outsideView.some((r) => r.record_id === taskRecordId!.id)).toBe(false);
+    expect(outsideView.some((r) => r.record_id === taskRecordId)).toBe(false);
 
     const subjectClient = await authenticatedClient(subjectUser);
     // subjectUser is not the assignee, so even though they can VIEW the
     // record, it must not appear in their Assigned Records -- assignment
     // and visibility are independent axes, proven from both directions.
-    expect((await assignedRecordWork(subjectClient, workspaceId)).some((r) => r.record_id === taskRecordId!.id)).toBe(false);
+    expect((await assignedRecordWork(subjectClient, workspaceId)).some((r) => r.record_id === taskRecordId)).toBe(false);
   }, 30_000);
 
   it("derives overdue from the workspace's own timezone, not UTC", async () => {
     const workspaceId = await createWorkspace("Work Timezone");
-    const builder = await memberWithCapabilities(workspaceId, "builder", BUILDER_WORKER_CAPS);
+    const builder = await memberWithCapabilities(workspaceId, "builder", [...BUILDER_WORKER_CAPS, "workspace.manage_settings"]);
     const client = await authenticatedClient(builder);
     // A timezone far enough ahead of UTC that "now" in workspace-local time
     // has already rolled over to the next calendar date while UTC has not --
