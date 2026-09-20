@@ -1,14 +1,9 @@
 // DB/RPC-level verification for Record Work / Work Settings v1a (migrations
-// 0146-0150): configuration RPCs, archival/hard-delete/type-change/Choice-
+// 0146-0151): configuration RPCs, archival/hard-delete/type-change/Choice-
 // option dependency protection, assignment/reassignment notifications, and
 // the derived Assigned Records projection (including people-sensitive
-// visibility and workspace-timezone overdue semantics).
-//
-// NOT YET RUN: written against migrations 0146-0150, which have not been
-// applied to the live database this test suite targets as of authoring.
-// Do not run this file until migration application is confirmed -- see the
-// implementation report for the explicit stop point. Once confirmed, run:
-//   npx vitest run lib/domain/work-settings-commit.test.ts
+// visibility, workspace-timezone overdue semantics, and exclusion of
+// records belonging to an archived EntityType -- 0151's corrective fix).
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, describe, expect, it } from "vitest";
@@ -664,4 +659,38 @@ describe("Assigned Records projection", () => {
     // therefore already overdue in workspace-local terms.
     expect(row!.is_overdue).toBe(true);
   }, 20_000);
+
+  it("excludes assigned records belonging to an archived EntityType, and includes them again after restore (0151)", async () => {
+    const workspaceId = await createWorkspace("Work Entity Type Archive");
+    const builder = await memberWithCapabilities(workspaceId, "builder", BUILDER_WORKER_CAPS);
+    const client = await authenticatedClient(builder);
+    const taskType = await createEntityType(workspaceId, "Task");
+    const memberField = await createField(client, workspaceId, taskType, { key: "assignee", name: "Assignee", type: "workspace_member" });
+    await setWorkMapping(client, workspaceId, taskType, { assignmentFieldId: memberField });
+    await setWorkEnabled(client, workspaceId, taskType, true);
+    const userA = await memberWithCapabilities(workspaceId, "a", ["records.operate"]);
+    const clientA = await authenticatedClient(userA);
+
+    const recordId = await createRecordWithAssignment(client, workspaceId, taskType, {}, memberField, userA.id);
+    // Active EntityType + eligible assigned record -> projected.
+    expect((await assignedRecordWork(clientA, workspaceId)).some((r) => r.record_id === recordId)).toBe(true);
+
+    const { error: archiveError } = await client.rpc("archive_entity_type_authorized", {
+      p_workspace_id: workspaceId, p_entity_type_id: taskType,
+    });
+    expect(archiveError).toBeNull();
+    // Archiving the EntityType removes the record from the projection even
+    // though the record itself, the mapping, and the assignment are all
+    // untouched -- archived EntityTypes are not active operational surfaces.
+    expect((await assignedRecordWork(clientA, workspaceId)).some((r) => r.record_id === recordId)).toBe(false);
+
+    const { error: restoreError } = await client.rpc("restore_entity_type_authorized", {
+      p_workspace_id: workspaceId, p_entity_type_id: taskType,
+    });
+    expect(restoreError).toBeNull();
+    // Restoring the EntityType brings the record back since it remains
+    // otherwise eligible (still assigned, still unarchived, no completion
+    // status configured).
+    expect((await assignedRecordWork(clientA, workspaceId)).some((r) => r.record_id === recordId)).toBe(true);
+  }, 30_000);
 });
