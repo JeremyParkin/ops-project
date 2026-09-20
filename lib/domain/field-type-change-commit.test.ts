@@ -171,11 +171,11 @@ async function attemptChangeType(
 
 async function createRecordWithValue(client: SupabaseClient, workspaceId: string, entityTypeId: string, key: string, value: unknown) {
   const { data, error } = await client
-    .rpc("create_entity_record_with_relations", {
+    .rpc("create_entity_record_with_relations_authorized", {
       p_workspace_id: workspaceId,
       p_entity_type_id: entityTypeId,
       p_values: { [key]: value },
-      p_relations: {},
+      p_relations: [],
     })
     .single<{ id: string }>();
   if (error) throw new Error(error.message);
@@ -220,6 +220,10 @@ async function insertWorkflow(
 }
 
 function processTemplateSteps(fieldDefinitionId?: string) {
+  // Three distinct nodes, not two: process_edges_non_approval_source_target_key
+  // (0035) allows only one non-approval edge per (source, target) pair, so a
+  // conditional route and its default fallback from the same source must
+  // target two DIFFERENT nodes, not the same one twice.
   return [
     {
       client_key: "first",
@@ -244,7 +248,7 @@ function processTemplateSteps(fieldDefinitionId?: string) {
             : [],
         },
         {
-          target_client_key: "second",
+          target_client_key: "third",
           is_default: true,
           is_parallel: false,
           approval_outcome_id: null,
@@ -259,6 +263,19 @@ function processTemplateSteps(fieldDefinitionId?: string) {
       node_type: "human_task",
       parallel_group_id: null,
       name: "Approve",
+      assignee_user_id: "",
+      due_rule: null,
+      wait_rule: null,
+      condition_wait_rule: null,
+      action_config: null,
+      routes: [],
+    },
+    {
+      client_key: "third",
+      node_id: "",
+      node_type: "human_task",
+      parallel_group_id: null,
+      name: "Otherwise",
       assignee_user_id: "",
       due_rule: null,
       wait_rule: null,
@@ -424,13 +441,24 @@ describe("Safe pristine-only field type change", () => {
       const { id: fieldId } = await createField(client, workspaceId, entityTypeId, {
         key, name: "Owner", type: "relation", position: 1, relatedEntityTypeId: targetEntityTypeId,
       });
-      const targetRecordId = await createRecordWithValue(client, workspaceId, targetEntityTypeId, "irrelevant", null);
-      const { error: recordError } = await client
-        .rpc("create_entity_record_with_relations", {
-          p_workspace_id: workspaceId, p_entity_type_id: entityTypeId, p_values: {},
-          p_relations: { [key]: targetRecordId },
-        });
-      expect(recordError).toBeNull();
+
+      // Direct admin fixture setup, not the interactive record-creation RPC:
+      // this test proves the type-change RPC's own relation_value_count
+      // query against entity_record_relation_values, not record-creation's
+      // full validation stack (which independently also checks people-
+      // sensitive visibility, irrelevant here).
+      const admin = createSupabaseTestClient();
+      const sourceRecordId = randomUUID();
+      const targetRecordId = randomUUID();
+      const setup = [
+        await admin.from("entity_records").insert({ id: sourceRecordId, workspace_id: workspaceId, entity_type_id: entityTypeId, values: {} }),
+        await admin.from("entity_records").insert({ id: targetRecordId, workspace_id: workspaceId, entity_type_id: targetEntityTypeId, values: {} }),
+        await admin.from("entity_record_relation_values").insert({
+          workspace_id: workspaceId, source_entity_type_id: entityTypeId, source_record_id: sourceRecordId,
+          field_definition_id: fieldId, target_entity_type_id: targetEntityTypeId, target_record_id: targetRecordId,
+        }),
+      ];
+      for (const step of setup) expect(step.error).toBeNull();
 
       const result = await attemptChangeType(client, workspaceId, entityTypeId, fieldId, "text");
       expect(result.error).toBeNull();
@@ -480,9 +508,34 @@ describe("Safe pristine-only field type change", () => {
       const workspaceId = await createWorkspace("Field Type Block QR");
       const builder = await memberWithCapabilities(workspaceId, "builder", ["schema.manage"]);
       const client = await authenticatedClient(builder);
+      const personEntityTypeId = await createEntityType(workspaceId, "Person");
+      const { error: personError } = await client.rpc("set_person_entity_type_authorized", {
+        p_workspace_id: workspaceId, p_entity_type_id: personEntityTypeId,
+      });
+      expect(personError).toBeNull();
+
       const entityTypeId = await createEntityType(workspaceId, "Review");
+      const { id: subjectFieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Subject", type: "relation", position: 1,
+        relatedEntityTypeId: personEntityTypeId,
+      });
+      const { id: reviewerFieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Reviewer", type: "relation", position: 2,
+        relatedEntityTypeId: personEntityTypeId,
+      });
+      // Quality Review requires sensitive access already configured with a
+      // subject field, a reviewer (author) field, and reviewer visibility
+      // enabled (0105's own precondition) -- not itself part of what this
+      // test is proving, just a real setup requirement.
+      const { error: sensitiveError } = await client.rpc("set_entity_type_people_sensitive_access_authorized", {
+        p_workspace_id: workspaceId, p_entity_type_id: entityTypeId, p_people_sensitive: true,
+        p_subject_person_field_id: subjectFieldId, p_author_person_field_id: reviewerFieldId,
+        p_subject_can_view: true, p_manager_can_view: true, p_author_can_view: true,
+      });
+      expect(sensitiveError).toBeNull();
+
       const { id: fieldId } = await createField(client, workspaceId, entityTypeId, {
-        key: `f_${randomUUID().slice(0, 8)}`, name: "Status", type: "choice", position: 1,
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Status", type: "choice", position: 3,
       });
       const draft = await client.rpc("add_field_choice_option", {
         p_workspace_id: workspaceId, p_field_definition_id: fieldId, p_label: "Draft", p_color: "gray",
