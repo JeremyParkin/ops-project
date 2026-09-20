@@ -444,28 +444,21 @@ export function EntityRecordsTable({
                             </span>
                           ) : null}
                         {actionContext ? (
-                          <details className="text-sm">
-                            <summary className="cursor-pointer font-medium text-stone underline-offset-4 hover:underline">
-                              More actions
-                            </summary>
-                            <div className="mt-3 rounded-sm border border-grit bg-white p-3">
-                              <RecordRowActions
-                                isArchived={Boolean(record.archivedAt)}
-                                archiveRecordAction={archiveRecord.bind(
-                                  null,
-                                  actionContext,
-                                )}
-                                restoreRecordAction={restoreRecord.bind(
-                                  null,
-                                  actionContext,
-                                )}
-                                deleteRecordAction={deleteRecord.bind(
-                                  null,
-                                  actionContext,
-                                )}
-                              />
-                            </div>
-                          </details>
+                          <RecordRowActions
+                            isArchived={Boolean(record.archivedAt)}
+                            archiveRecordAction={archiveRecord.bind(
+                              null,
+                              actionContext,
+                            )}
+                            restoreRecordAction={restoreRecord.bind(
+                              null,
+                              actionContext,
+                            )}
+                            deleteRecordAction={deleteRecord.bind(
+                              null,
+                              actionContext,
+                            )}
+                          />
                         ) : null}
                       </div>
                     </td>

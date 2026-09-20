@@ -105,3 +105,63 @@ test("keeps saved-view configuration and record lifecycle controls secondary", a
   await page.getByText("More actions", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
 });
+
+test("record table exposes compact direct archive and delete actions", async ({ page }) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const entity = await createEntity(supabase, run, "Action Client", [
+    { slug: "name", name: "Name", type: "text", required: true },
+  ]);
+  const archiveRecordId = await createEntityRecord({
+    entity,
+    valuesBySlug: { name: `${run.label} Archive candidate` },
+  });
+  const deleteRecordId = await createEntityRecord({
+    entity,
+    valuesBySlug: { name: `${run.label} Delete candidate` },
+  });
+
+  await page.goto(`/entities/${entity.id}`);
+  const archiveRow = rowForText(page, `${run.label} Archive candidate`);
+  const deleteRow = rowForText(page, `${run.label} Delete candidate`);
+  await expect(archiveRow.getByText("More actions", { exact: true })).toHaveCount(0);
+  await expect(archiveRow.getByRole("button", { name: "Archive" })).toHaveAttribute("title", "Archive");
+  await expect(deleteRow.getByRole("button", { name: "Delete" })).toHaveAttribute("title", "Delete");
+
+  await archiveRow.getByRole("button", { name: "Archive" }).click();
+  await expect(archiveRow).toHaveCount(0);
+  const archivedRecord = await supabase
+    .from("entity_records")
+    .select("archived_at")
+    .eq("id", archiveRecordId)
+    .single<{ archived_at: string | null }>();
+  expect(archivedRecord.error).toBeNull();
+  expect(archivedRecord.data?.archived_at).not.toBeNull();
+
+  let deleteDialogSeen = false;
+  page.once("dialog", async (dialog) => {
+    deleteDialogSeen = true;
+    expect(dialog.message()).toBe("Delete this record permanently? This cannot be undone.");
+    await dialog.dismiss();
+  });
+  await deleteRow.getByRole("button", { name: "Delete" }).click();
+  expect(deleteDialogSeen).toBe(true);
+  await expect(deleteRow).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await deleteRow.getByRole("button", { name: "Delete" }).click();
+  await expect(deleteRow).toHaveCount(0);
+  const deletedRecord = await supabase
+    .from("entity_records")
+    .select("id")
+    .eq("id", deleteRecordId)
+    .maybeSingle<{ id: string }>();
+  expect(deletedRecord.error).toBeNull();
+  expect(deletedRecord.data).toBeNull();
+
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto(`/entities/${entity.id}?showArchived=true`);
+  const restoredArchiveRow = rowForText(page, `${run.label} Archive candidate`);
+  await expect(restoredArchiveRow.getByRole("button", { name: "Restore" })).toBeVisible();
+  await expect(restoredArchiveRow.getByRole("button", { name: "Delete" })).toBeVisible();
+});
