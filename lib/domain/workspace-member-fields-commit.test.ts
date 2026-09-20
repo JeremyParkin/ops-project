@@ -6,6 +6,10 @@ const migrationSql = readFileSync(
   path.join(process.cwd(), "supabase/migrations/0143_workspace_member_fields.sql"),
   "utf8",
 );
+const assignmentLockMigrationSql = readFileSync(
+  path.join(process.cwd(), "supabase/migrations/0144_workspace_member_assignment_deactivation_lock.sql"),
+  "utf8",
+);
 
 function functionBody(name: string, signatureFragment: string) {
   let start = migrationSql.indexOf(`create or replace function ${name}(\n${signatureFragment}`);
@@ -85,6 +89,19 @@ describe("Workspace Member field migration contract", () => {
     expect(migrationSql).toContain("Workspace Member payload included a field outside p_workspace_member_field_ids.");
     expect(migrationSql).toContain("must reference an active workspace member.");
     expect(migrationSql).toContain("is required.");
+  });
+
+  it("serializes Workspace Member assignment against membership deactivation", () => {
+    expect(assignmentLockMigrationSql).toContain(
+      "create or replace function private.apply_workspace_member_record_values",
+    );
+    expect(assignmentLockMigrationSql).toMatch(
+      /select distinct \(member ->> 'member_user_id'\)::uuid\s+from jsonb_array_elements\(p_workspace_members\) member\s+order by \(member ->> 'member_user_id'\)::uuid/i,
+    );
+    expect(assignmentLockMigrationSql).toMatch(
+      /from workspace_memberships\s+where workspace_id = p_workspace_id\s+and user_id = v_locked_member_user_id\s+for update;/i,
+    );
+    expect(assignmentLockMigrationSql).toContain("must reference an active workspace member.");
   });
 
   it("counts Workspace Member values in safe delete and field-type recovery dependencies", () => {
