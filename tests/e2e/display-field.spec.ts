@@ -257,7 +257,7 @@ test("archiving configured display field is blocked", async ({ page }) => {
     .filter({ has: page.locator('input[name="fieldName"][value="Code"]') })
     .locator("..");
 
-  await fieldRow.getByRole("button", { name: "Archive Field" }).click();
+  await fieldRow.getByRole("button", { name: "Archive", exact: true }).click();
   await expect(
     page.getByText(
       `This field is used as the display field for ${client.name}. Choose another display field before archiving it.`,

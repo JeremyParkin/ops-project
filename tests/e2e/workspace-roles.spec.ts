@@ -166,12 +166,18 @@ test("enforces capability-gated reads, mutations, and direct role-management RPC
     p_values: { name: "Updated" }, p_relation_field_ids: [], p_relations: [],
   });
   expect(operatorRecordUpdate.error).toBeNull();
-  const memberViewWrite = await memberClient.from("entity_views").insert({
-    workspace_id: fixture.workspaceId, entity_type_id: fixture.entityId, name: "Denied view", position: 1,
+  // entity_views INSERT was revoked from authenticated in 0137 -- creation
+  // goes through this SECURITY DEFINER RPC now, not a raw table write, so
+  // the capability boundary below is enforced by the RPC's own
+  // records.operate check rather than by the table grant.
+  const memberViewWrite = await memberClient.rpc("create_entity_view_authorized", {
+    p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.entityId, p_name: "Denied view",
+    p_filters: [], p_sorts: [], p_column_field_definition_ids: [],
   });
   expect(memberViewWrite.error).not.toBeNull();
-  const operatorViewWrite = await operatorClient.from("entity_views").insert({
-    workspace_id: fixture.workspaceId, entity_type_id: fixture.entityId, name: "Allowed view", position: 1,
+  const operatorViewWrite = await operatorClient.rpc("create_entity_view_authorized", {
+    p_workspace_id: fixture.workspaceId, p_entity_type_id: fixture.entityId, p_name: "Allowed view",
+    p_filters: [], p_sorts: [], p_column_field_definition_ids: [],
   });
   expect(operatorViewWrite.error).toBeNull();
 

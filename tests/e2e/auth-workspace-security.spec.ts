@@ -579,18 +579,30 @@ test("RLS blocks cross-workspace table and RPC access while own operations work"
   });
   expect(rawRelationInsert.error).not.toBeNull();
 
-  const ownView = await client.from("entity_views").insert({
-    workspace_id: fixture.workspaceAId,
-    entity_type_id: relatedEntityTypeId,
-    name: "Authenticated view",
-    position: 1,
-  }).select("id").single();
+  // entity_views INSERT/UPDATE were revoked from authenticated in 0137 --
+  // create/update go through these SECURITY DEFINER RPCs now, not a raw
+  // table write (DELETE is untouched, since removing a view is harmless).
+  const ownView = await client
+    .rpc("create_entity_view_authorized", {
+      p_workspace_id: fixture.workspaceAId,
+      p_entity_type_id: relatedEntityTypeId,
+      p_name: "Authenticated view",
+      p_filters: [],
+      p_sorts: [],
+      p_column_field_definition_ids: [],
+    })
+    .single<{ id: string }>();
   expect(ownView.error).toBeNull();
   const ownViewId = String(ownView.data?.id);
-  const updatedView = await client
-    .from("entity_views")
-    .update({ name: "Authenticated view updated" })
-    .eq("id", ownViewId);
+  const updatedView = await client.rpc("update_entity_view_authorized", {
+    p_workspace_id: fixture.workspaceAId,
+    p_entity_type_id: relatedEntityTypeId,
+    p_view_id: ownViewId,
+    p_name: "Authenticated view updated",
+    p_filters: [],
+    p_sorts: [],
+    p_column_field_definition_ids: [],
+  });
   expect(updatedView.error).toBeNull();
 
   const ownWorkflow = await client.from("workflows").insert({
