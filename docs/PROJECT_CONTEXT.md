@@ -606,6 +606,8 @@ Important directories/files:
 
 Playwright E2E tests live in `tests/e2e/`.
 
+Limited parallel-lane E2E experiments were deliberately rejected for now: concurrent Playwright runs against the shared development/E2E backend produced backend statement timeouts and post-mutation UI settle failures, even with separate local Next.js servers. The durable cleanup improvement from that work was retained: workflow-heavy specs now use owner-scoped `cleanupE2eRun(run)`, with age-gated `cleanupAbandonedE2eData({ olderThanMs })` available for abandoned fixture recovery, while the default suite remains serial.
+
 Current spec files:
 
 - `entity-record.spec.ts`
@@ -1702,4 +1704,3 @@ My Work now composes the two work sources for the worker instead of exposing the
 Dogfood exposed two important integration issues before closure. First, the original Work Settings two-form UX made it possible to select a mapping without actually saving/enabling it; audit evidence showed no Work Settings governance event had been written, so the backend had correctly produced neither a notification nor a My Work item. The revised coherent configuration card removes that ambiguity. Second, the first worker-facing implementation fetched the `schema.manage`-gated Work Settings config unconditionally from the entity page and therefore 404'd the page for non-builders; the page now skips that builder-only config fetch for callers without `schema.manage` while still surfacing genuine builder-side config errors.
 
 Verification: focused Work Settings/backend suites, focused My Work/Process regressions, lint, typecheck, and webpack build are clean. The milestone-close full E2E run also exposed several stale tests and a real non-builder page regression; those deterministic issues were corrected. Remaining full-suite failures were generic timeout/navigation contention cases that did not reproduce on targeted isolated reruns, so they are recorded as test-harness reliability work rather than product defects. Hosted `kinema-dogfood` acceptance then passed the complete intended flow: configure and activate Task Work, receive assignment notification, see the Task under `Needs attention`, complete it through ordinary record status, and confirm it leaves My Work; disabling/re-enabling Work preserves configuration as designed.
-
