@@ -825,3 +825,30 @@ The New type panel and immutable field-type chip now use dedicated theme-aware s
 Status:
 Resolved
 
+### [2026-09-20] Record Work setup looked configured before it was actually saved, and My Work exposed implementation taxonomy
+
+Context:
+Jeremy dogfooded the first hosted Record Work / Work Settings flow on the Household Task object after the backend and initial worker-facing UI shipped.
+
+What I was trying to do:
+Configure Task records as actionable work, assign a Task to myself, receive the assignment notification, and see it in My Work.
+
+What happened:
+The initial Work Settings UI split field mapping and activation into separate forms. It was easy to select an assignment field and leave with the impression that Work had been configured even though the mapping had never been submitted. The persisted Task assignment itself was correct, but `work_assignment_field_id` remained null, so the backend correctly produced neither a Record Work notification nor a My Work row. Governance audit history confirmed no mapping or enable event had ever been written.
+
+The first My Work presentation also rendered separate Process work and Assigned records sections, each with their own Overdue/Upcoming-style buckets. In real use this felt repetitive and exposed Kinema's implementation distinction more strongly than the worker's actual question: what needs my attention now?
+
+Why it matters:
+A builder-facing configuration surface must make persisted vs. unsaved state unmistakable, especially when downstream behavior depends on an explicit opt-in. Separately, a person being referenced on a record does not necessarily mean the record is that person's work; durable ownership/oversight fields such as Account Manager or Executive Sponsor should not flood My Work.
+
+Resolution:
+Work Settings is now one coherent configuration card with persisted state badges (`Not configured`, `Configured, not active`, `Active`), explicit unsaved-change feedback, clear save/activate actions, and non-destructive disable behavior. Builder copy now says Work is for records that themselves represent something a person is expected to act on and explicitly warns against treating ordinary ownership relationships as personal work.
+
+My Work now uses two worker-oriented sections: `Needs attention` combines active/ready Process work with eligible Record Work, while `Coming later` contains pending Process work only. Overdue is item-level treatment; records without due dates do not get a separate bucket. The underlying Process and Record Work domain models remain distinct.
+
+Hosted verification:
+The revised dogfood flow passed end to end: Task Work was configured and activated, assignment produced the expected notification and `Needs attention` item, completing the Task removed it from My Work, and disabling/re-enabling Work preserved the mapping as intended.
+
+Status:
+Resolved
+
