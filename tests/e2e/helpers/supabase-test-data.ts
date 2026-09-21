@@ -313,10 +313,6 @@ function throwAggregatedCleanupFailures(context: string, failures: string[]) {
 }
 
 export async function cleanupStaleE2eData() {
-  if (process.env.E2E_SKIP_STALE_CLEANUP === "1") {
-    return;
-  }
-
   const supabase = createSupabaseTestClient();
   const failures: string[] = [];
 

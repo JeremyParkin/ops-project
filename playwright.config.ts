@@ -2,7 +2,6 @@ import { defineConfig, devices } from "@playwright/test";
 import { E2E_AUTH_STORAGE_STATE } from "./tests/e2e/helpers/auth-state";
 
 const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3100";
-const skipWebServer = process.env.E2E_SKIP_WEB_SERVER === "1";
 
 export default defineConfig({
   globalSetup: "./tests/e2e/global-setup.ts",
@@ -19,16 +18,12 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  ...(skipWebServer
-    ? {}
-    : {
-        webServer: {
-          command: "npm run build -- --webpack && npm run start:e2e",
-          url: baseURL,
-          reuseExistingServer: false,
-          timeout: 180_000,
-        },
-      }),
+  webServer: {
+    command: "npm run build -- --webpack && npm run start:e2e",
+    url: baseURL,
+    reuseExistingServer: false,
+    timeout: 180_000,
+  },
   projects: [
     {
       name: "chromium",
