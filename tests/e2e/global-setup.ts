@@ -9,6 +9,10 @@ const email = "e2e-runner@ops-project.test";
 const password = "E2E-runner-password-2026";
 
 export default async function globalSetup() {
+  if (process.env.E2E_SKIP_GLOBAL_SETUP === "1") {
+    return async () => {};
+  }
+
   const admin = createSupabaseTestClient();
   const { data: existing } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   for (const user of existing.users.filter((candidate) => candidate.email === email)) {
@@ -54,6 +58,10 @@ export default async function globalSetup() {
   await browser.close();
 
   return async () => {
+    if (process.env.E2E_KEEP_GLOBAL_SETUP === "1") {
+      return;
+    }
+
     const cleanup = createSupabaseTestClient();
     await cleanup.auth.admin.deleteUser(data.user.id);
   };

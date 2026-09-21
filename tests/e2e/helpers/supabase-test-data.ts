@@ -313,6 +313,10 @@ function throwAggregatedCleanupFailures(context: string, failures: string[]) {
 }
 
 export async function cleanupStaleE2eData() {
+  if (process.env.E2E_SKIP_STALE_CLEANUP === "1") {
+    return;
+  }
+
   const supabase = createSupabaseTestClient();
   const failures: string[] = [];
 
@@ -351,6 +355,50 @@ export async function cleanupStaleE2eData() {
   await attemptCleanupStep(() => cleanupEntitiesById(supabase, entityTypeIds), failures);
 
   throwAggregatedCleanupFailures("clean up stale E2E data", failures);
+}
+
+export async function cleanupAbandonedE2eData({
+  olderThanMs = 24 * 60 * 60 * 1000,
+}: {
+  olderThanMs?: number;
+} = {}) {
+  const supabase = createSupabaseTestClient();
+  const failures: string[] = [];
+  const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+
+  await attemptCleanupStep(
+    () =>
+      throwOnError(
+        () =>
+          supabase
+            .from("workflows")
+            .delete()
+            .eq("workspace_id", DEMO_WORKSPACE_ID)
+            .ilike("name", `${E2E_NAME_PREFIX} %`)
+            .lt("created_at", cutoff),
+        "clean up abandoned E2E workflows",
+      ),
+    failures,
+  );
+
+  let entityTypeIds: string[] = [];
+  await attemptCleanupStep(async () => {
+    const staleEntities = await throwOnError(
+      () =>
+        supabase
+          .from("entity_types")
+          .select("id")
+          .eq("workspace_id", DEMO_WORKSPACE_ID)
+          .ilike("name", `${E2E_NAME_PREFIX} %`)
+          .lt("created_at", cutoff),
+      "find abandoned E2E entities",
+    );
+    entityTypeIds = (staleEntities ?? []).map((entity) => entity.id);
+  }, failures);
+
+  await attemptCleanupStep(() => cleanupEntitiesById(supabase, entityTypeIds), failures);
+
+  throwAggregatedCleanupFailures("clean up abandoned E2E data", failures);
 }
 
 export async function cleanupE2eRun(run: TestRun) {

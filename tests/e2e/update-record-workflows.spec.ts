@@ -2,7 +2,6 @@ import { expect, type Page, test } from "@playwright/test";
 import {
   archiveTestField,
   cleanupE2eRun,
-  cleanupStaleE2eData,
   createRecordUpdatedFixture,
   createTestRun,
   type RecordUpdatedFixture,
@@ -28,10 +27,6 @@ import {
 test.describe.configure({ mode: "serial" });
 
 const runs: TestRun[] = [];
-
-test.beforeAll(async () => {
-  await cleanupStaleE2eData();
-});
 
 test.afterAll(async () => {
   for (const run of runs) {
