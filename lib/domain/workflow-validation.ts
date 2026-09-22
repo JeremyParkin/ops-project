@@ -19,6 +19,7 @@ import {
   parseCanonicalTemplate,
   renderWorkflowTemplate,
 } from "./workflow-template";
+import { isUuid } from "./record-validation";
 import type {
   WorkflowAction,
   WorkflowActionType,
@@ -271,7 +272,11 @@ function parseConstantValue(
       // through the current UI.
       return { value: rawValue };
     case "workspace_member":
-      return { error: `${targetField.name} constants are not supported for Workspace Member fields yet.` };
+      if (!isUuid(rawValue)) {
+        return { error: `${targetField.name} must reference a valid workspace member.` };
+      }
+
+      return { value: rawValue };
   }
 }
 
@@ -289,6 +294,7 @@ export async function validateWorkflowFormData({
   activeEntityContexts,
   processTemplates,
   validateConstantRelationValue,
+  validateWorkspaceMemberValue,
 }: {
   formData: FormData;
   formVersion: number;
@@ -297,6 +303,10 @@ export async function validateWorkflowFormData({
   validateConstantRelationValue: (
     field: FieldDefinition,
     value: string,
+  ) => Promise<boolean>;
+  validateWorkspaceMemberValue: (
+    field: FieldDefinition,
+    userId: string,
   ) => Promise<boolean>;
 }): Promise<
   | {
@@ -786,6 +796,15 @@ export async function validateWorkflowFormData({
               ) {
                 errors[fieldKey("constantValue")] =
                   `${targetField.name} must reference an active record.`;
+              }
+
+              if (
+                targetField.type === "workspace_member" &&
+                typeof parsedValue.value === "string" &&
+                !(await validateWorkspaceMemberValue(targetField, parsedValue.value))
+              ) {
+                errors[fieldKey("constantValue")] =
+                  `${targetField.name} must reference an active workspace member.`;
               }
 
               configMappings.push({

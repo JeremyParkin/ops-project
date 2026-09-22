@@ -44,6 +44,7 @@ type ListEntityRecordsInput = {
   // record of a potentially large entity type just to read a handful.
   ids?: string[];
   supabase?: SupabaseServerClient;
+  allowTrustedWorkspaceMemberValueRead?: boolean;
 };
 
 type CreateEntityRecordInput = Pick<
@@ -403,6 +404,7 @@ export async function listEntityRecords({
   includeArchived = false,
   ids,
   supabase: injectedSupabase,
+  allowTrustedWorkspaceMemberValueRead = false,
 }: ListEntityRecordsInput) {
   if (ids && ids.length === 0) {
     return [];
@@ -486,7 +488,7 @@ export async function listEntityRecords({
     const fieldKeyById = new Map(
       workspaceMemberFields.map((field) => [field.id, field.key]),
     );
-    const { data: memberRows, error: memberError } = await supabase.rpc(
+    const { data: authorizedMemberRows, error: memberError } = await supabase.rpc(
       "list_workspace_member_values_for_records_authorized",
       {
         p_workspace_id: workspaceId,
@@ -494,14 +496,36 @@ export async function listEntityRecords({
         p_record_ids: records.map((record) => record.id),
       },
     );
+    let memberRows = authorizedMemberRows;
 
     if (memberError) {
-      throw new Error(
-        `Unable to load entity record workspace members: ${memberError.message}`,
-      );
+      if (!allowTrustedWorkspaceMemberValueRead) {
+        throw new Error(
+          `Unable to load entity record workspace members: ${memberError.message}`,
+        );
+      }
+
+      const fallback = await supabase
+        .from("entity_record_workspace_member_values")
+        .select("source_record_id, field_definition_id, member_user_id")
+        .eq("workspace_id", workspaceId)
+        .eq("source_entity_type_id", entityTypeId)
+        .in(
+          "source_record_id",
+          records.map((record) => record.id),
+        )
+        .returns<Array<Pick<WorkspaceMemberValueRow, "source_record_id" | "field_definition_id" | "member_user_id">>>();
+
+      if (fallback.error) {
+        throw new Error(
+          `Unable to load entity record workspace members: ${memberError.message}`,
+        );
+      }
+
+      memberRows = fallback.data;
     }
 
-    ((memberRows ?? []) as WorkspaceMemberValueRow[]).forEach((memberRow) => {
+    ((memberRows ?? []) as Array<Pick<WorkspaceMemberValueRow, "source_record_id" | "field_definition_id" | "member_user_id">>).forEach((memberRow) => {
       const record = recordById.get(memberRow.source_record_id);
       const fieldKey = fieldKeyById.get(memberRow.field_definition_id);
 
@@ -693,6 +717,7 @@ export async function getEntityRecord({
   recordId,
   fields,
   supabase,
+  allowTrustedWorkspaceMemberValueRead,
 }: GetEntityRecordInput) {
   const records = await listEntityRecords({
     workspaceId,
@@ -700,6 +725,7 @@ export async function getEntityRecord({
     fields,
     includeArchived: true,
     supabase,
+    allowTrustedWorkspaceMemberValueRead,
   });
   const record = records.find((candidate) => candidate.id === recordId);
 

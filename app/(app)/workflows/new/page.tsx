@@ -7,15 +7,16 @@ import {
   listEntityTypes,
 } from "@/lib/domain/metadata-repository";
 import { getRelationLookups } from "@/lib/domain/record-repository";
-import { listProcessTemplates } from "@/lib/domain/process-repository";
+import { listProcessTemplates, listWorkspaceMemberIdentities } from "@/lib/domain/process-repository";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewWorkflowPage() {
   const { workspaceId } = await getActiveWorkspaceId();
-  const [entityTypes, processTemplates] = await Promise.all([
+  const [entityTypes, processTemplates, workspaceMembers] = await Promise.all([
     listEntityTypes({ workspaceId }),
     listProcessTemplates({ workspaceId, includeArchived: true }),
+    listWorkspaceMemberIdentities({ workspaceId }),
   ]);
   const entityContexts = await Promise.all(
     entityTypes.map(async (entityType) => {
@@ -46,6 +47,7 @@ export default async function NewWorkflowPage() {
         mode="create"
         entityContexts={entityContexts}
         processTemplates={processTemplates}
+        workspaceMembers={workspaceMembers}
         submitAction={createWorkflow}
       />
     </WorkspacePageLayout>

@@ -8,7 +8,7 @@ import {
   listEntityTypes,
 } from "@/lib/domain/metadata-repository";
 import { getRelationLookups } from "@/lib/domain/record-repository";
-import { listProcessTemplates } from "@/lib/domain/process-repository";
+import { listProcessTemplates, listWorkspaceMemberIdentities } from "@/lib/domain/process-repository";
 import {
   createWorkflowFormStateFromDefinition,
 } from "@/lib/domain/workflow-validation";
@@ -49,19 +49,21 @@ async function getWorkflowEntityContexts(workspaceId: string) {
 
 async function loadEditWorkflowPageData(workspaceId: string, workflowId: string) {
   try {
-    const [{ entityContexts }, workflow, processTemplates] = await Promise.all([
+    const [{ entityContexts }, workflow, processTemplates, workspaceMembers] = await Promise.all([
       getWorkflowEntityContexts(workspaceId),
       getWorkflow({
         workspaceId,
         workflowId,
       }),
       listProcessTemplates({ workspaceId, includeArchived: true }),
+      listWorkspaceMemberIdentities({ workspaceId }),
     ]);
 
     return {
       entityContexts,
       workflow,
       processTemplates,
+      workspaceMembers,
     };
   } catch {
     return null;
@@ -83,7 +85,7 @@ export default async function EditWorkflowPage({
     notFound();
   }
 
-  const { entityContexts, workflow, processTemplates } = pageData;
+  const { entityContexts, workflow, processTemplates, workspaceMembers } = pageData;
   const sourceEntityContext = entityContexts.find(
     (context) => context.entityType.id === workflow.triggerEntityTypeId,
   );
@@ -103,6 +105,7 @@ export default async function EditWorkflowPage({
         mode="edit"
         entityContexts={entityContexts}
         processTemplates={processTemplates}
+        workspaceMembers={workspaceMembers}
         initialState={createWorkflowFormStateFromDefinition({
           workflow,
           sourceEntityContext,

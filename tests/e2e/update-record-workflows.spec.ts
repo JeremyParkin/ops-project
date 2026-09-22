@@ -1,9 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
 import {
   archiveTestField,
   cleanupE2eRun,
+  createSupabaseTestClient,
   createRecordUpdatedFixture,
   createTestRun,
+  DEMO_WORKSPACE_ID,
+  getE2eWorkspaceAdministratorRoleId,
   type RecordUpdatedFixture,
   type TestField,
   type TestRun,
@@ -27,10 +31,25 @@ import {
 test.describe.configure({ mode: "serial" });
 
 const runs: TestRun[] = [];
+const userIds: string[] = [];
 
 test.afterAll(async () => {
+  const admin = createSupabaseTestClient();
   for (const run of runs) {
+    await admin
+      .from("entity_types")
+      .update({
+        work_enabled: false,
+        work_assignment_field_id: null,
+        work_due_field_id: null,
+        work_status_field_id: null,
+      })
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .ilike("name", `${run.label}%`);
     await cleanupE2eRun(run);
+  }
+  for (const userId of userIds) {
+    await admin.auth.admin.deleteUser(userId);
   }
 });
 
@@ -218,6 +237,31 @@ function workflowLogRow(page: Page, workflowName: string, text: string) {
     .filter({ hasText: text });
 }
 
+async function signIn(page: Page, email: string, password: string) {
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
+}
+
+async function createWorkspaceMember(label: string) {
+  const admin = createSupabaseTestClient();
+  const password = `WorkflowMember-${randomUUID()}!`;
+  const email = `e2e-workflow-member-${label}-${randomUUID()}@example.test`;
+  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  if (error || !data.user) throw new Error(error?.message ?? "Unable to create test user.");
+  userIds.push(data.user.id);
+  const roleId = await getE2eWorkspaceAdministratorRoleId(admin, DEMO_WORKSPACE_ID);
+  const { error: membershipError } = await admin.from("workspace_memberships").insert({
+    workspace_id: DEMO_WORKSPACE_ID,
+    user_id: data.user.id,
+    role_id: roleId,
+  });
+  if (membershipError) throw new Error(membershipError.message);
+  return { id: data.user.id, email, password };
+}
+
 async function expectWorkflowLog({
   page,
   workflowName,
@@ -271,6 +315,142 @@ test("record_created updates the triggering record", async ({ page }) => {
 
   await expectTicketRow({ page, fixture, title, text: "New" });
   await expectWorkflowLog({ page, workflowName, status: "succeeded" });
+});
+
+test("builder saves fixed Workspace Member and Record Work appears in My Work", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+
+  const run = createTestRun();
+  runs.push(run);
+  const assignee = await createWorkspaceMember("fixed");
+  const admin = createSupabaseTestClient();
+  const entityId = randomUUID();
+  const titleFieldId = randomUUID();
+  const assigneeFieldId = randomUUID();
+  const entityName = `${run.label} Assignable Task`;
+  const entity = {
+    id: entityId,
+    name: entityName,
+    slug: `assignable-task-${run.id}`,
+    fields: {
+      title: {
+        id: titleFieldId,
+        key: `fld_e2e_${run.id}_title`.replace(/-/g, "_"),
+        slug: "title",
+        name: "Title",
+        type: "text",
+        position: 1,
+      },
+      assignee: {
+        id: assigneeFieldId,
+        key: `fld_e2e_${run.id}_assignee`.replace(/-/g, "_"),
+        slug: "assignee",
+        name: "Assignee",
+        type: "workspace_member",
+        position: 2,
+      },
+    },
+  } as unknown as import("./helpers/supabase-test-data").TestEntity;
+  const workflowName = `${run.label} Assign Fixed Member`;
+  const recordTitle = `${run.label} Fixed member task`;
+
+  expect((await admin.from("entity_types").insert({
+    id: entityId,
+    workspace_id: DEMO_WORKSPACE_ID,
+    name: entityName,
+    slug: entity.slug,
+  })).error).toBeNull();
+  expect((await admin.from("field_definitions").insert([
+    {
+      id: titleFieldId,
+      workspace_id: DEMO_WORKSPACE_ID,
+      entity_type_id: entityId,
+      name: "Title",
+      slug: "title",
+      key: entity.fields.title.key,
+      type: "text",
+      required: false,
+      position: 1,
+    },
+    {
+      id: assigneeFieldId,
+      workspace_id: DEMO_WORKSPACE_ID,
+      entity_type_id: entityId,
+      name: "Assignee",
+      slug: "assignee",
+      key: entity.fields.assignee.key,
+      type: "workspace_member",
+      required: false,
+      position: 2,
+    },
+  ])).error).toBeNull();
+  expect((await admin.from("entity_types").update({
+    work_enabled: true,
+    work_assignment_field_id: assigneeFieldId,
+  }).eq("id", entityId)).error).toBeNull();
+
+  await page.goto("/workflows/new");
+  await waitForWorkflowFormReady(page);
+  await page.getByLabel("Automation Name").fill(workflowName);
+  await selectReactOption(page.getByLabel("Trigger", { exact: true }), { value: "record_created" });
+  await selectReactOption(page.getByLabel("Trigger Entity", { exact: true }), { value: entityId });
+  await selectReactOption(page.getByLabel("Action", { exact: true }), { value: "update_record" });
+  await selectReactOption(workflowMappingType(page, entity.fields.assignee), { value: "constant" });
+  await selectReactOption(workflowConstantValue(page, entity.fields.assignee), { value: assignee.id });
+  await page.getByRole("button", { name: "Create Automation" }).click();
+  await expectAfterMutation(page.getByRole("link", { name: workflowName }));
+
+  const { data: workflowRow, error: workflowError } = await admin
+    .from("workflows")
+    .select("id")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("name", workflowName)
+    .single<{ id: string }>();
+  expect(workflowError).toBeNull();
+  await page.goto(`/workflows/${workflowRow!.id}/edit`);
+  await waitForWorkflowFormReady(page);
+  await expect(workflowConstantValue(page, entity.fields.assignee)).toHaveValue(assignee.id);
+
+  await gotoEntity(page, entity);
+  const form = addRecordSection(page, entity);
+  await fillRecordField(form, entity.fields.title, recordTitle);
+  await submitAddRecord(page, entity);
+  await expect(page.getByText(`${entity.name} created.`)).toBeVisible();
+  const { data: createdRecord, error: createdRecordError } = await admin
+    .from("entity_records")
+    .select("id")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("entity_type_id", entityId)
+    .contains("values", { [entity.fields.title.key]: recordTitle })
+    .single<{ id: string }>();
+  expect(createdRecordError).toBeNull();
+  await expect
+    .poll(async () => {
+      const { data } = await admin
+        .from("notifications")
+        .select("event_type")
+        .eq("workspace_id", DEMO_WORKSPACE_ID)
+        .eq("recipient_user_id", assignee.id)
+        .eq("entity_record_id", createdRecord!.id);
+      return data?.map((row) => row.event_type) ?? [];
+    })
+    .toEqual(["record_work_assigned"]);
+
+  const assigneeContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const assigneePage = await assigneeContext.newPage();
+  try {
+    await signIn(assigneePage, assignee.email, assignee.password);
+    await assigneePage.goto("/my-work");
+    await expect(assigneePage.getByText(recordTitle)).toBeVisible();
+  } finally {
+    await assigneeContext.close();
+  }
+
+  expect((await admin.from("workspace_memberships").update({ deactivated_at: new Date().toISOString() }).eq("workspace_id", DEMO_WORKSPACE_ID).eq("user_id", assignee.id)).error).toBeNull();
+  await page.goto(`/workflows/${workflowRow!.id}/edit`);
+  await waitForWorkflowFormReady(page);
+  await expect(workflowConstantValue(page, entity.fields.assignee)).toHaveValue(assignee.id);
+  await expect(workflowConstantValue(page, entity.fields.assignee)).toContainText("Deactivated or unavailable");
 });
 
 test("record_updated updates the triggering record with a constant", async ({

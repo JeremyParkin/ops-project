@@ -3153,6 +3153,11 @@ export async function createWorkflow(
         recordId: value,
       });
     },
+    validateWorkspaceMemberValue: async (_field, userId) =>
+      workspaceMemberExists({
+        workspaceId,
+        userId,
+      }),
   });
 
   if (!validation.success) {
@@ -3227,6 +3232,11 @@ export async function updateWorkflow(
         recordId: value,
       });
     },
+    validateWorkspaceMemberValue: async (_field, userId) =>
+      workspaceMemberExists({
+        workspaceId,
+        userId,
+      }),
   });
 
   if (!validation.success) {

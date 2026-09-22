@@ -57,6 +57,10 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown workflow error.";
 }
 
+function allowAutomationWorkspaceMemberValueRead(context?: ActionExecutionContext) {
+  return Boolean(context?.originatingWorkflowId);
+}
+
 async function executeCreateRecordAction({
   workspaceId,
   sourceContext,
@@ -95,6 +99,7 @@ async function executeCreateRecordAction({
     recordId: triggerRecord.id,
     fields: sourceContext.fields,
     supabase: context?.supabase,
+    allowTrustedWorkspaceMemberValueRead: allowAutomationWorkspaceMemberValueRead(context),
   });
   const activeTargetFields = targetContext.fields.filter(
     (field) => !field.archivedAt,
@@ -130,6 +135,7 @@ async function executeCreateRecordAction({
         recordId,
         fields: relationContext.fields,
         supabase: context?.supabase,
+        allowTrustedWorkspaceMemberValueRead: allowAutomationWorkspaceMemberValueRead(context),
       });
       const label = getRelationOptionLabel(
         relationContext.entityType,
@@ -189,7 +195,11 @@ function valuesEqual(left: unknown, right: unknown) {
   return normalizedLeft === normalizedRight;
 }
 
-async function createRelationLabelResolver(workspaceId: string, supabase?: SupabaseServerClient) {
+async function createRelationLabelResolver(
+  workspaceId: string,
+  supabase?: SupabaseServerClient,
+  allowTrustedWorkspaceMemberValueRead = false,
+) {
   const relationLabelCache = new Map<string, string>();
 
   return async (field: Awaited<ReturnType<typeof getEntityContext>>["fields"][number], recordId: string) => {
@@ -216,6 +226,7 @@ async function createRelationLabelResolver(workspaceId: string, supabase?: Supab
       recordId,
       fields: relationContext.fields,
       supabase,
+      allowTrustedWorkspaceMemberValueRead,
     });
     const label = getRelationOptionLabel(
       relationContext.entityType,
@@ -332,7 +343,11 @@ async function executeRecordUpdate({
       sourceFields: sourceContext.fields,
       targetFields: targetContext.fields,
       sourceRecord,
-      resolveRelationLabel: await createRelationLabelResolver(workspaceId, context?.supabase),
+      resolveRelationLabel: await createRelationLabelResolver(
+        workspaceId,
+        context?.supabase,
+        allowAutomationWorkspaceMemberValueRead(context),
+      ),
     });
 
     proposedValues[targetField.key] = targetValues[targetField.key] ?? null;
@@ -415,6 +430,7 @@ async function executeUpdateRecordAction({
     recordId: triggerRecord.id,
     fields: sourceContext.fields,
     supabase: context?.supabase,
+    allowTrustedWorkspaceMemberValueRead: allowAutomationWorkspaceMemberValueRead(context),
   });
 
   return executeRecordUpdate({
@@ -447,6 +463,7 @@ async function executeUpdateRelatedRecordAction({
     recordId: triggerRecord.id,
     fields: sourceContext.fields,
     supabase: context?.supabase,
+    allowTrustedWorkspaceMemberValueRead: allowAutomationWorkspaceMemberValueRead(context),
   });
   const relatedField = sourceContext.fields.find(
     (field) => field.id === action.relatedFieldDefinitionId,
@@ -478,6 +495,7 @@ async function executeUpdateRelatedRecordAction({
     recordId: relatedRecordId,
     fields: targetContext.fields,
     supabase: context?.supabase,
+    allowTrustedWorkspaceMemberValueRead: allowAutomationWorkspaceMemberValueRead(context),
   });
 
   if (targetContext.entityType.archivedAt) {

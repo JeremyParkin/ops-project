@@ -565,6 +565,7 @@ test("Start Process save validation rejects crafted configuration without a part
       activeEntityContexts,
       processTemplates,
       validateConstantRelationValue: async () => false,
+      validateWorkspaceMemberValue: async () => false,
     });
 
   const valid = await validate(buildForm("start_process"));
@@ -598,6 +599,7 @@ test("Start Process save validation rejects crafted configuration without a part
     activeEntityContexts,
     processTemplates: [],
     validateConstantRelationValue: async () => false,
+    validateWorkspaceMemberValue: async () => false,
   });
   expect(foreignTemplate).toMatchObject({
     success: false,

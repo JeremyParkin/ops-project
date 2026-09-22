@@ -11,8 +11,9 @@ import { getWorkflowFieldLabel } from "@/lib/domain/workflow-field-labels";
 import type { WorkflowFormState } from "@/lib/domain/workflow-validation";
 import { initialWorkflowFormState } from "@/lib/domain/workflow-validation";
 import type { EntityType, FieldDefinition } from "@/lib/domain/types";
-import type { ProcessTemplate } from "@/lib/domain/process-types";
+import type { ProcessTemplate, WorkspaceMemberIdentity } from "@/lib/domain/process-types";
 import type { RelationRecordOption } from "@/lib/domain/record-repository";
+import { pickerUserLabel } from "@/lib/domain/user-identity-label";
 import type {
   WorkflowActionType,
   WorkflowConditionOperator,
@@ -29,6 +30,7 @@ type WorkflowDefinitionFormProps = {
   mode: "create" | "edit";
   entityContexts: WorkflowEntityContext[];
   processTemplates: ProcessTemplate[];
+  workspaceMembers: WorkspaceMemberIdentity[];
   initialState?: WorkflowFormState;
   submitAction: (
     state: WorkflowFormState,
@@ -246,6 +248,7 @@ function ConstantInput({
   value,
   name,
   options,
+  workspaceMembers,
   error,
   onChange,
 }: {
@@ -253,6 +256,7 @@ function ConstantInput({
   value: string;
   name: string;
   options: RelationRecordOption[];
+  workspaceMembers: WorkspaceMemberIdentity[];
   error?: string;
   onChange: (value: string) => void;
 }) {
@@ -287,6 +291,35 @@ function ConstantInput({
           {options.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
+            </option>
+          ))}
+        </select>
+        <FieldError message={error} />
+      </>
+    );
+  }
+
+  if (field.type === "workspace_member") {
+    const selectedMember = workspaceMembers.find((member) => member.userId === value);
+    const selectedValueIsInactiveOrUnavailable = value && !selectedMember;
+
+    return (
+      <>
+        <select
+          name={name}
+          value={value}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+        >
+          <option value="">Choose member</option>
+          {selectedValueIsInactiveOrUnavailable ? (
+            <option value={value}>
+              Configured member {value.slice(0, 8)} (Deactivated or unavailable)
+            </option>
+          ) : null}
+          {workspaceMembers.map((member) => (
+            <option key={member.userId} value={member.userId}>
+              {pickerUserLabel({ email: member.email, displayName: member.displayName })}
             </option>
           ))}
         </select>
@@ -381,6 +414,7 @@ export function WorkflowDefinitionForm({
   mode,
   entityContexts,
   processTemplates,
+  workspaceMembers,
   initialState = initialWorkflowFormState,
   submitAction,
 }: WorkflowDefinitionFormProps) {
@@ -412,6 +446,7 @@ export function WorkflowDefinitionForm({
           mode={mode}
           entityContexts={entityContexts}
           processTemplates={processTemplates}
+          workspaceMembers={workspaceMembers}
           initialState={initialState}
           submitAction={submitAction}
           state={state}
@@ -426,6 +461,7 @@ function WorkflowDefinitionFormFields({
   mode,
   entityContexts,
   processTemplates,
+  workspaceMembers,
   state,
   pending,
 }: WorkflowDefinitionFormFieldsProps) {
@@ -1572,6 +1608,7 @@ function WorkflowDefinitionFormFields({
                                     targetField.id
                                   ] ?? []
                                 }
+                                workspaceMembers={workspaceMembers}
                                 error={state.errors[fieldKey("constantValue")]}
                                 onChange={(value) =>
                                   updateActionMapping(
