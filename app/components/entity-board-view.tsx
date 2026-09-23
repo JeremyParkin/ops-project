@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { updateRecordField } from "@/app/actions";
 import { ChoicePill } from "@/app/components/choice-pill";
-import { EntityBoardMoveForm } from "@/app/components/entity-board-move-form";
+import {
+  EntityBoardCard,
+  EntityBoardDndProvider,
+  EntityBoardDroppableLane,
+} from "@/app/components/entity-board-dnd";
 import { buildBoardLanes } from "@/lib/domain/board-view";
 import { activeChoiceOptions } from "@/lib/domain/choice-display";
 import { getRecordLabel } from "@/lib/domain/record-repository";
@@ -124,81 +128,84 @@ export function EntityBoardView({
         role="region"
         aria-label={`${entityType.name} board grouped by ${boardField.name}`}
         tabIndex={0}
+        data-board-scroll-container="true"
         className="overflow-x-auto border border-grit bg-chalk p-4"
       >
-        <div className="flex min-w-max gap-4">
-          {lanes.map((lane) => (
-            <section
-              key={`${lane.kind}-${lane.id}`}
-              aria-labelledby={`board-lane-${lane.kind}-${lane.id}`}
-              className="w-72 shrink-0 border border-grit bg-paper"
-            >
-              <header className="border-b border-grit bg-white px-3 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2
-                      id={`board-lane-${lane.kind}-${lane.id}`}
-                      className="text-sm font-semibold text-graphite"
-                    >
-                      {laneTitle(lane)}
-                      {lane.kind === "archived" ? (
-                        <span className="ml-1 text-xs font-medium text-stone">(Archived option)</span>
-                      ) : null}
-                    </h2>
-                    <p className="mt-1 text-xs text-stone">
-                      {lane.records.length} record{lane.records.length === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                  {lane.kind === "active" || lane.kind === "archived" ? (
-                    <ChoicePill option={lane.option} />
-                  ) : null}
-                </div>
-              </header>
-              <div className="grid gap-3 p-3">
-                {lane.records.length === 0 ? (
-                  <p className="border border-dashed border-grit bg-chalk px-3 py-6 text-center text-sm text-stone">
-                    No records.
-                  </p>
-                ) : null}
-                {lane.records.map((record) => {
-                  const actionContext = recordActionContext
-                    ? {
-                        ...recordActionContext,
-                        recordId: record.id,
-                      }
-                    : undefined;
-                  const currentValue = record.values[boardField.key];
-                  const destinations = moveDestinations({
-                    field: boardField,
-                    activeOptions,
-                    currentValue,
-                  });
-                  const moveAction = actionContext
-                    ? updateRecordField.bind(null, actionContext)
-                    : undefined;
-
-                  return (
-                    <article key={record.id} className="border border-grit bg-white p-3 shadow-sm">
-                      <Link
-                        href={`/entities/${entityType.id}/records/${record.id}`}
-                        className="font-medium text-graphite underline-offset-4 hover:underline"
+        <EntityBoardDndProvider>
+          <div className="flex min-w-max gap-4">
+            {lanes.map((lane) => (
+              <EntityBoardDroppableLane
+                key={`${lane.kind}-${lane.id}`}
+                labelledBy={`board-lane-${lane.kind}-${lane.id}`}
+                label={laneTitle(lane)}
+                destinationValue={
+                  lane.kind === "active" ? lane.option.id : lane.kind === "unset" ? "" : undefined
+                }
+              >
+                <header className="border-b border-grit bg-white px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2
+                        id={`board-lane-${lane.kind}-${lane.id}`}
+                        className="text-sm font-semibold text-graphite"
                       >
-                        {getRecordLabel({ entityType, fields, record })}
-                      </Link>
-                      {moveAction ? (
-                        <EntityBoardMoveForm
-                          fieldKey={boardField.key}
-                          destinations={destinations}
-                          moveAction={moveAction}
-                        />
-                      ) : null}
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
+                        {laneTitle(lane)}
+                        {lane.kind === "archived" ? (
+                          <span className="ml-1 text-xs font-medium text-stone">(Archived option)</span>
+                        ) : null}
+                      </h2>
+                      <p className="mt-1 text-xs text-stone">
+                        {lane.records.length} record{lane.records.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    {lane.kind === "active" || lane.kind === "archived" ? (
+                      <ChoicePill option={lane.option} />
+                    ) : null}
+                  </div>
+                </header>
+                <div className="grid gap-3 p-3">
+                  {lane.records.length === 0 ? (
+                    <p className="border border-dashed border-grit bg-chalk px-3 py-6 text-center text-sm text-stone">
+                      No records.
+                    </p>
+                  ) : null}
+                  {lane.records.map((record) => {
+                    const actionContext = recordActionContext
+                      ? {
+                          ...recordActionContext,
+                          recordId: record.id,
+                        }
+                      : undefined;
+                    const currentValue = record.values[boardField.key];
+                    const destinations = moveDestinations({
+                      field: boardField,
+                      activeOptions,
+                      currentValue,
+                    });
+                    const moveAction = actionContext
+                      ? updateRecordField.bind(null, actionContext)
+                      : undefined;
+                    const label = getRecordLabel({ entityType, fields, record });
+
+                    return (
+                      <EntityBoardCard
+                        key={record.id}
+                        entityTypeId={entityType.id}
+                        recordId={record.id}
+                        label={label}
+                        href={`/entities/${entityType.id}/records/${record.id}`}
+                        fieldKey={boardField.key}
+                        currentValue={currentValue}
+                        destinations={destinations}
+                        moveAction={moveAction}
+                      />
+                    );
+                  })}
+                </div>
+              </EntityBoardDroppableLane>
+            ))}
+          </div>
+        </EntityBoardDndProvider>
       </div>
     </section>
   );

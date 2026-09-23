@@ -385,6 +385,12 @@ function cardInLane(page: Page, laneLabel: string, cardLabel: string) {
   });
 }
 
+async function openMoveDisclosure(page: Page, cardLabel: string, boardCard = page.locator("article").filter({
+  has: page.getByRole("link", { name: cardLabel, exact: true }),
+})) {
+  await boardCard.getByRole("button", { name: `Move ${cardLabel}` }).click();
+}
+
 async function moveCard({
   page,
   from,
@@ -399,14 +405,95 @@ async function moveCard({
   keyboard?: boolean;
 }) {
   const boardCard = cardInLane(page, from, card);
+  await openMoveDisclosure(page, card, boardCard);
   await boardCard.getByLabel("Move to").selectOption({ label: to });
-  const button = boardCard.getByRole("button", { name: "Move" });
+  const button = boardCard.getByRole("button", { name: "Confirm move" });
   if (keyboard) {
     await button.focus();
     await page.keyboard.press("Enter");
   } else {
     await button.click();
   }
+}
+
+async function dragCard({
+  page,
+  from,
+  card,
+  to,
+}: {
+  page: Page;
+  from: string;
+  card: string;
+  to: string;
+}) {
+  const boardCard = cardInLane(page, from, card);
+  const handle = boardCard.locator("[data-board-drag-handle]");
+  const targetLane = lane(page, to);
+  await expect(handle).toBeVisible();
+  await expect(targetLane).toBeVisible();
+
+  const handleBox = await handle.boundingBox();
+  const targetBox = await targetLane.boundingBox();
+  expect(handleBox).toBeTruthy();
+  expect(targetBox).toBeTruthy();
+
+  const startX = handleBox!.x + handleBox!.width / 2;
+  const startY = handleBox!.y + handleBox!.height / 2;
+  const endX = targetBox!.x + targetBox!.width * 0.75;
+  const endY = targetBox!.y + Math.min(160, targetBox!.height / 2);
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 12, startY + 12, { steps: 4 });
+  await page.waitForTimeout(75);
+  await page.mouse.move(endX, endY, { steps: 12 });
+  await page.mouse.up();
+}
+
+async function startCardDrag(page: Page, from: string, card: string) {
+  const boardCard = cardInLane(page, from, card);
+  const handle = boardCard.locator("[data-board-drag-handle]");
+  await expect(handle).toBeVisible();
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).toBeTruthy();
+
+  const startX = handleBox!.x + handleBox!.width / 2;
+  const startY = handleBox!.y + handleBox!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 12, startY + 12, { steps: 4 });
+  await page.waitForTimeout(75);
+
+  return { startX, startY };
+}
+
+async function dragCardOutside({
+  page,
+  from,
+  card,
+}: {
+  page: Page;
+  from: string;
+  card: string;
+}) {
+  await startCardDrag(page, from, card);
+  await page.mouse.move(20, 20, { steps: 10 });
+  await page.mouse.up();
+}
+
+async function cancelCardDragWithEscape({
+  page,
+  from,
+  card,
+}: {
+  page: Page;
+  from: string;
+  card: string;
+}) {
+  await startCardDrag(page, from, card);
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
 }
 
 async function createPresentationViewsScenario(run: TestRun) {
@@ -1190,7 +1277,7 @@ test("board Move uses the canonical update path and preserves record_updated aut
   expect(workflow.error).toBeNull();
 
   await page.goto(`/entities/${work.id}?view=${boardViewId}`);
-  await moveCard({
+  await dragCard({
     page,
     from: "Todo",
     card: `${run.label} Alpha`,
@@ -1218,8 +1305,10 @@ test("board Move uses the canonical update path and preserves record_updated aut
   await expect(cardInLane(page, "Unset", `${run.label} Beta`)).toBeVisible();
 
   const archivedCard = cardInLane(page, "Parked", `${run.label} Archived Value`);
+  await openMoveDisclosure(page, `${run.label} Archived Value`, archivedCard);
   await expect(archivedCard.getByLabel("Move to")).not.toContainText("Parked");
-  await moveCard({
+  await page.keyboard.press("Escape");
+  await dragCard({
     page,
     from: "Parked",
     card: `${run.label} Archived Value`,
@@ -1264,7 +1353,8 @@ test("board hides Move for read-only users and failed moves stay local", async (
     await signIn(readOnlyPage, readOnly.email, readOnly.password);
     await readOnlyPage.goto(`/entities/${work.id}?view=${boardViewId}`);
     await expect(readOnlyPage.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
-    await expect(readOnlyPage.getByLabel("Move to")).toHaveCount(0);
+    await expect(readOnlyPage.getByRole("button", { name: /^Move / })).toHaveCount(0);
+    await expect(readOnlyPage.locator("[data-board-drag-handle]")).toHaveCount(0);
   } finally {
     await context.close();
   }
@@ -1277,7 +1367,96 @@ test("required Choice board omits Unset lane and destination", async ({ page }) 
   await page.goto(`/entities/${work.id}?view=${boardViewId}`);
   await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
   await expect(lane(page, "Unset")).toHaveCount(0);
-  await expect(cardInLane(page, "Todo", `${run.label} Alpha`).getByLabel("Move to")).not.toContainText("Unset");
+  const alpha = cardInLane(page, "Todo", `${run.label} Alpha`);
+  await openMoveDisclosure(page, `${run.label} Alpha`, alpha);
+  await expect(alpha.getByLabel("Move to")).not.toContainText("Unset");
+});
+
+test("optional Choice board supports pointer drag from active lane to Unset", async ({ page }) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const work = await createEntity(supabase, run, "Minimal Board Work", [
+    { slug: "title", name: "Title", type: "text", required: true },
+  ]);
+  const stage = await addChoiceField(work, "stage", "Stage");
+  const todoId = await addChoiceOption({
+    fieldId: stage.id,
+    label: "Todo",
+    color: "gray",
+    position: 1,
+  });
+  await createEntityRecord({
+    entity: work,
+    valuesBySlug: {
+      title: `${run.label} Alpha`,
+      stage: todoId,
+    },
+  });
+  await createEntityRecord({
+    entity: work,
+    valuesBySlug: {
+      title: `${run.label} Already Unset`,
+      stage: null,
+    },
+  });
+  const boardViewId = await createView({
+    entity: work,
+    name: `${run.label} Minimal Board`,
+    presentationMode: "board",
+    presentationConfig: { choiceFieldDefinitionId: stage.id },
+  });
+
+  await page.goto(`/entities/${work.id}?view=${boardViewId}`);
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+  await dragCard({
+    page,
+    from: "Todo",
+    card: `${run.label} Alpha`,
+    to: "Unset",
+  });
+  await expect(cardInLane(page, "Unset", `${run.label} Alpha`)).toBeVisible();
+});
+
+test("board pointer drag no-op and cancellation paths do not mutate", async ({ page }) => {
+  const run = createScenarioRun();
+  const { work, boardViewId } = await createBoardScenario(run);
+
+  await page.goto(`/entities/${work.id}?view=${boardViewId}`);
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+  await expect(lane(page, "Parked")).not.toHaveAttribute("data-board-drop-target", "true");
+
+  await cardInLane(page, "Todo", `${run.label} Aardvark`)
+    .getByRole("link", { name: `${run.label} Aardvark`, exact: true })
+    .click();
+  await page.waitForURL(new RegExp(`/entities/${work.id}/records/`));
+  await page.goBack();
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+
+  await dragCard({
+    page,
+    from: "Todo",
+    card: `${run.label} Alpha`,
+    to: "Todo",
+  });
+  await expect(cardInLane(page, "Todo", `${run.label} Alpha`)).toBeVisible();
+  await expect(cardInLane(page, "Done", `${run.label} Alpha`)).toHaveCount(0);
+
+  await dragCardOutside({
+    page,
+    from: "Todo",
+    card: `${run.label} Alpha`,
+  });
+  await expect(cardInLane(page, "Todo", `${run.label} Alpha`)).toBeVisible();
+  await expect(cardInLane(page, "Done", `${run.label} Alpha`)).toHaveCount(0);
+
+  await cancelCardDragWithEscape({
+    page,
+    from: "Todo",
+    card: `${run.label} Alpha`,
+  });
+  await expect(cardInLane(page, "Todo", `${run.label} Alpha`)).toBeVisible();
+  await expect(cardInLane(page, "Done", `${run.label} Alpha`)).toHaveCount(0);
+  await expect(page.locator("[data-board-drop-target='true'].border-brass")).toHaveCount(0);
 });
 
 test("board Move controls stay readable in light, dark, and system themes", async ({
@@ -1301,8 +1480,13 @@ test("board Move controls stay readable in light, dark, and system themes", asyn
       await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
 
       const alpha = cardInLane(page, "Todo", `${run.label} Alpha`);
+      const trigger = alpha.getByRole("button", { name: `Move ${run.label} Alpha` });
+      const handle = alpha.locator("[data-board-drag-handle]");
+      await expect((await computedTextContrast(trigger)).ratio).toBeGreaterThanOrEqual(4.5);
+      await expect((await computedTextContrast(handle)).ratio).toBeGreaterThanOrEqual(3);
+      await trigger.click();
       const select = alpha.getByLabel("Move to");
-      const button = alpha.getByRole("button", { name: "Move" });
+      const button = alpha.getByRole("button", { name: "Confirm move" });
       await expect(button).toBeDisabled();
       await expect((await computedTextContrast(button)).ratio).toBeGreaterThanOrEqual(4.5);
       await expect((await computedTextContrast(select)).ratio).toBeGreaterThanOrEqual(4.5);
@@ -1324,6 +1508,9 @@ test("board Move controls stay readable in light, dark, and system themes", asyn
       await expect((await computedTextContrast(lane(page, "Todo").locator("[title='Todo']"))).ratio).toBeGreaterThanOrEqual(4.5);
       await expect((await computedTextContrast(lane(page, "Doing").locator("[title='Doing']"))).ratio).toBeGreaterThanOrEqual(4.5);
       await expect((await computedTextContrast(lane(page, "Parked").locator("[title='Parked (Archived)']"))).ratio).toBeGreaterThanOrEqual(4.5);
+      await page.keyboard.press("Escape");
+      await expect(select).toHaveCount(0);
+      await expect(trigger).toBeFocused();
     }
 
     await setE2eRunnerTheme(runnerUserId, "dark");
@@ -1347,10 +1534,13 @@ test("board Move controls stay readable in light, dark, and system themes", asyn
     });
 
     const alpha = cardInLane(page, "Todo", `${run.label} Alpha`);
+    await openMoveDisclosure(page, `${run.label} Alpha`, alpha);
     await alpha.getByLabel("Move to").selectOption({ label: "Done" });
-    await alpha.getByRole("button", { name: "Move" }).click();
-    const pendingButton = alpha.getByRole("button", { name: "Moving..." });
+    await alpha.getByRole("button", { name: "Confirm move" }).click();
+    const pendingButton = alpha.getByRole("button", { name: "Moving..." }).first();
     await expect(pendingButton).toBeVisible();
+    await expect(pendingButton).toBeDisabled();
+    await expect(cardInLane(page, "Doing", `${run.label} Beta`).getByRole("button", { name: `Move ${run.label} Beta` })).toBeEnabled();
     await expect((await computedTextContrast(pendingButton)).ratio).toBeGreaterThanOrEqual(4.5);
     await expect((await computedTextContrast(alpha.getByLabel("Move to"))).ratio).toBeGreaterThanOrEqual(4.5);
     const alert = alpha.getByRole("alert");
