@@ -380,9 +380,60 @@ function lane(page: Page, label: string) {
 }
 
 function cardInLane(page: Page, laneLabel: string, cardLabel: string) {
-  return lane(page, laneLabel).locator("article").filter({
-    has: page.getByRole("link", { name: cardLabel, exact: true }),
+  return lane(page, laneLabel).locator("article:not([hidden])").filter({
+    hasText: cardLabel,
   });
+}
+
+function pendingCardInLane(page: Page, laneLabel: string, cardLabel: string) {
+  return cardInLane(page, laneLabel, cardLabel).filter({
+    has: page.getByText(/Saving/i),
+  });
+}
+
+async function holdNextBoardMoveAction(page: Page) {
+  let release!: () => void;
+  let matched = false;
+  const actionUrl = page.url();
+  let continued!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const routeContinued = new Promise<void>((resolve) => {
+    continued = resolve;
+  });
+  const matchedRequest = new Promise<void>((resolve) => {
+    void page.route(actionUrl, async (route, request) => {
+      const headers = request.headers();
+      const isBoardMove =
+        request.method() === "POST" &&
+        Boolean(headers["next-action"]);
+
+      if (!matched && isBoardMove) {
+        matched = true;
+        resolve();
+        await released;
+        await route.continue();
+        continued();
+        return;
+      }
+
+      await route.continue();
+    });
+  });
+
+  return {
+    matchedRequest,
+    release: async () => {
+      release();
+      await routeContinued;
+      await page.unroute(actionUrl);
+    },
+  };
+}
+
+async function expectNoPendingBoardCards(page: Page) {
+  await expect(page.locator("[data-board-card-pending='true']")).toHaveCount(0);
 }
 
 async function openMoveDisclosure(page: Page, cardLabel: string, boardCard = page.locator("article").filter({
@@ -1277,13 +1328,14 @@ test("board Move uses the canonical update path and preserves record_updated aut
   expect(workflow.error).toBeNull();
 
   await page.goto(`/entities/${work.id}?view=${boardViewId}`);
-  await dragCard({
+  await moveCard({
     page,
     from: "Todo",
     card: `${run.label} Alpha`,
     to: "Done",
   });
   await expect(cardInLane(page, "Done", `${run.label} Alpha`)).toBeVisible();
+  await expectNoPendingBoardCards(page);
 
   const alpha = await supabase
     .from("entity_records")
@@ -1315,6 +1367,100 @@ test("board Move uses the canonical update path and preserves record_updated aut
     to: "Todo",
   });
   await expect(cardInLane(page, "Todo", `${run.label} Archived Value`)).toBeVisible();
+});
+
+test("board compact Move shares the same optimistic pending projection", async ({ page }) => {
+  const run = createScenarioRun();
+  const { work, boardViewId } = await createBoardScenario(run);
+
+  await page.goto(`/entities/${work.id}?view=${boardViewId}`);
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+
+  const boardCard = cardInLane(page, "Doing", `${run.label} Beta`);
+  await openMoveDisclosure(page, `${run.label} Beta`, boardCard);
+  await boardCard.getByLabel("Move to").selectOption({ label: "Unset" });
+  const heldAction = await holdNextBoardMoveAction(page);
+  await boardCard.getByRole("button", { name: "Confirm move" }).click();
+  await heldAction.matchedRequest;
+
+  const pending = pendingCardInLane(page, "Unset", `${run.label} Beta`);
+  await expect(cardInLane(page, "Doing", `${run.label} Beta`)).toHaveCount(0);
+  await expect(pending).toBeVisible();
+  await expect(pending.getByText(/Saving/)).toBeVisible();
+  await expect(pending.getByRole("link", { name: `${run.label} Beta`, exact: true })).toHaveCount(0);
+  await expect(pending.getByRole("button", { name: `Move ${run.label} Beta` })).toHaveCount(0);
+
+  await heldAction.release();
+  await expectNoPendingBoardCards(page);
+  await expect(cardInLane(page, "Unset", `${run.label} Beta`)).toBeVisible();
+});
+
+test("board optimistic move reconciles when filters or automation choose final placement", async ({ page }) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const { work, stage, options, boardViewId } = await createBoardScenario(run);
+  const filteredViewId = await createView({
+    entity: work,
+    name: `${run.label} Todo Only Board`,
+    filters: [
+      {
+        fieldDefinitionId: stage.id,
+        operator: "equals",
+        value: options.todoId,
+      },
+    ],
+    presentationMode: "board",
+    presentationConfig: { choiceFieldDefinitionId: stage.id },
+  });
+
+  await page.goto(`/entities/${work.id}?view=${filteredViewId}`);
+  await expect(cardInLane(page, "Todo", `${run.label} Alpha`)).toBeVisible();
+  await moveCard({
+    page,
+    from: "Todo",
+    card: `${run.label} Alpha`,
+    to: "Done",
+  });
+  await expectNoPendingBoardCards(page);
+  await expect(page.locator("article:not([hidden])").filter({ hasText: `${run.label} Alpha` })).toHaveCount(0);
+
+  const workflow = await supabase.from("workflows").insert({
+    workspace_id: DEMO_WORKSPACE_ID,
+    name: `${run.label} Board Final Lane Automation`,
+    enabled: true,
+    trigger_type: "record_updated",
+    trigger_entity_type_id: work.id,
+    action_config: {
+      triggerConfig: { watchedFieldDefinitionIds: [stage.id] },
+      conditions: [],
+    },
+    actions: [
+      {
+        actionType: "update_record",
+        fieldMappings: [
+          {
+            targetFieldDefinitionId: stage.id,
+            source: {
+              type: "constant",
+              value: options.doingId,
+            },
+          },
+        ],
+      },
+    ],
+  });
+  expect(workflow.error).toBeNull();
+
+  await page.goto(`/entities/${work.id}?view=${boardViewId}`);
+  await dragCard({
+    page,
+    from: "Todo",
+    card: `${run.label} Aardvark`,
+    to: "Done",
+  });
+  await expectNoPendingBoardCards(page);
+  await expect(cardInLane(page, "Doing", `${run.label} Aardvark`)).toBeVisible();
+  await expect(cardInLane(page, "Done", `${run.label} Aardvark`)).toHaveCount(0);
 });
 
 test("board hides Move for read-only users and failed moves stay local", async ({
@@ -1524,30 +1670,25 @@ test("board Move controls stay readable in light, dark, and system themes", asyn
       .eq("id", records.alphaId);
     expect(archived.error).toBeNull();
 
-    let delayedPost = false;
-    await page.route("**/entities/**", async (route) => {
-      if (route.request().method() === "POST" && !delayedPost) {
-        delayedPost = true;
-        await new Promise((resolve) => setTimeout(resolve, 400));
-      }
-      await route.continue();
-    });
-
     const alpha = cardInLane(page, "Todo", `${run.label} Alpha`);
     await openMoveDisclosure(page, `${run.label} Alpha`, alpha);
     await alpha.getByLabel("Move to").selectOption({ label: "Done" });
+    const heldAction = await holdNextBoardMoveAction(page);
     await alpha.getByRole("button", { name: "Confirm move" }).click();
-    const pendingButton = alpha.getByRole("button", { name: "Moving..." }).first();
-    await expect(pendingButton).toBeVisible();
-    await expect(pendingButton).toBeDisabled();
+    await heldAction.matchedRequest;
+    const pendingCard = pendingCardInLane(page, "Done", `${run.label} Alpha`);
+    await expect(cardInLane(page, "Todo", `${run.label} Alpha`)).toHaveCount(0);
+    await expect(pendingCard).toBeVisible();
+    await expect(pendingCard.getByText(/Saving/)).toBeVisible();
+    await expect(pendingCard.getByRole("button", { name: `Move ${run.label} Alpha` })).toHaveCount(0);
     await expect(cardInLane(page, "Doing", `${run.label} Beta`).getByRole("button", { name: `Move ${run.label} Beta` })).toBeEnabled();
-    await expect((await computedTextContrast(pendingButton)).ratio).toBeGreaterThanOrEqual(4.5);
-    await expect((await computedTextContrast(alpha.getByLabel("Move to"))).ratio).toBeGreaterThanOrEqual(4.5);
-    const alert = alpha.getByRole("alert");
+    await expect((await computedTextContrast(pendingCard.getByText(/Saving/))).ratio).toBeGreaterThanOrEqual(4.5);
+    await heldAction.release();
+    const restoredAlpha = cardInLane(page, "Todo", `${run.label} Alpha`);
+    const alert = restoredAlpha.getByRole("alert");
     await expect(alert).toContainText("Archived records are read-only.");
     await expect((await computedTextContrast(alert)).ratio).toBeGreaterThanOrEqual(4.5);
     await expect(cardInLane(page, "Todo", `${run.label} Alpha`)).toBeVisible();
-    await page.unroute("**/entities/**");
   } finally {
     await restoreE2eRunnerPreferences(runnerUserId, preferences);
     await page.emulateMedia({ colorScheme: "light" });

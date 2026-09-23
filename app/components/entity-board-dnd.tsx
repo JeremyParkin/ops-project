@@ -25,13 +25,20 @@ import {
   useEffect,
   useId,
   useMemo,
+  useOptimistic,
   useRef,
   useState,
   type ReactNode,
   type RefObject,
 } from "react";
-import { useRouter } from "next/navigation";
 import type { RecordFieldFormState } from "@/app/actions";
+import { ChoicePill } from "@/app/components/choice-pill";
+import {
+  applyOptimisticBoardMoveToLanes,
+  type OptimisticBoardCard,
+  type OptimisticBoardLane,
+} from "@/lib/domain/board-optimistic";
+import type { ChoiceOption } from "@/lib/domain/types";
 
 export type MoveDestination = {
   value: string;
@@ -43,19 +50,38 @@ export type MoveAction = (
   formData: FormData,
 ) => Promise<RecordFieldFormState>;
 
-type RegisteredCard = {
-  recordId: string;
+export type BoardCardModel = OptimisticBoardCard & {
+  entityTypeId: string;
   label: string;
-  currentValue: string;
+  href: string;
+  fieldKey: string;
   destinations: MoveDestination[];
+  moveAction?: MoveAction;
+};
+
+export type BoardLaneModel = OptimisticBoardLane<BoardCardModel> & {
+  kind: "active" | "unset" | "archived" | "unknown";
+  title: string;
+  option?: ChoiceOption;
+};
+
+type InitiatingInteraction = "pointer" | "move";
+
+type RegisteredCard = {
+  card: BoardCardModel;
   pending: boolean;
-  submitMove: (destinationValue: string) => void;
+  dispatchMove: (destinationValue: string, initiatingInteraction: InitiatingInteraction) => void;
 };
 
 type BoardDragContextValue = {
   activeRecordId: string | null;
   overLaneValue: string | null;
   registerCard: (card: RegisteredCard) => () => void;
+  requestMove: (
+    recordId: string,
+    destinationValue: string,
+    initiatingInteraction: InitiatingInteraction,
+  ) => void;
 };
 
 type DroppableLaneData = {
@@ -117,11 +143,15 @@ function destinationLabel(destinations: MoveDestination[], value: string) {
 }
 
 function canSubmitTo(card: RegisteredCard, destinationValue: string | null) {
-  if (destinationValue === null || card.pending) {
+  if (destinationValue === null || card.pending || card.card.pending) {
     return false;
   }
 
-  return card.destinations.some((destination) => destination.value === destinationValue);
+  return card.card.destinations.some((destination) => destination.value === destinationValue);
+}
+
+function visibleCards(cards: BoardCardModel[]) {
+  return cards.filter((card) => !card.optimisticHidden);
 }
 
 function scrollBoardAtEdge(clientX: number, clientY: number) {
@@ -143,13 +173,29 @@ function scrollBoardAtEdge(clientX: number, clientY: number) {
   }
 }
 
-export function EntityBoardDndProvider({ children }: { children: ReactNode }) {
+function laneTitle(lane: Pick<BoardLaneModel, "title">) {
+  return lane.title;
+}
+
+export function EntityBoardDndProvider({
+  entityName,
+  boardFieldName,
+  lanes,
+}: {
+  entityName: string;
+  boardFieldName: string;
+  lanes: BoardLaneModel[];
+}) {
   const registryRef = useRef(new Map<string, RegisteredCard>());
   const pointerPositionRef = useRef<{ x: number; y: number } | null>(null);
   const dragStartPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
-  const [activeOverlayCard, setActiveOverlayCard] = useState<Pick<RegisteredCard, "label"> | null>(null);
+  const [activeOverlayCard, setActiveOverlayCard] = useState<Pick<RegisteredCard["card"], "label"> | null>(null);
   const [overLaneValue, setOverLaneValue] = useState<string | null>(null);
+  const [optimisticLanes, addOptimisticMove] = useOptimistic(
+    lanes,
+    applyOptimisticBoardMoveToLanes<BoardCardModel, BoardLaneModel>,
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -159,15 +205,34 @@ export function EntityBoardDndProvider({ children }: { children: ReactNode }) {
   );
 
   const registerCard = useCallback((card: RegisteredCard) => {
-    registryRef.current.set(card.recordId, card);
+    registryRef.current.set(card.card.recordId, card);
 
     return () => {
-      const registered = registryRef.current.get(card.recordId);
+      const registered = registryRef.current.get(card.card.recordId);
       if (registered === card) {
-        registryRef.current.delete(card.recordId);
+        registryRef.current.delete(card.card.recordId);
       }
     };
   }, []);
+
+  const requestMove = useCallback((
+    recordId: string,
+    destinationValue: string,
+    initiatingInteraction: InitiatingInteraction,
+  ) => {
+    const registered = registryRef.current.get(recordId);
+    if (!registered || !canSubmitTo(registered, destinationValue)) {
+      return;
+    }
+
+    addOptimisticMove({
+      recordId,
+      sourceValue: registered.card.currentValue,
+      destinationValue,
+      card: registered.card,
+    });
+    registered.dispatchMove(destinationValue, initiatingInteraction);
+  }, [addOptimisticMove]);
 
   useEffect(() => {
     const registry = registryRef.current;
@@ -245,7 +310,7 @@ export function EntityBoardDndProvider({ children }: { children: ReactNode }) {
     const recordId = recordIdFromDragId(event.active.id);
     const card = recordId ? registryRef.current.get(recordId) : undefined;
     setActiveRecordId(recordId);
-    setActiveOverlayCard(card ? { label: card.label } : null);
+    setActiveOverlayCard(card ? { label: card.card.label } : null);
     setOverLaneValue(null);
   }, []);
 
@@ -286,12 +351,14 @@ export function EntityBoardDndProvider({ children }: { children: ReactNode }) {
 
     finishDrag();
 
-    if (!card || destinationValue === null || !canSubmitTo(card, destinationValue)) {
+    if (!recordId || !card || destinationValue === null || !canSubmitTo(card, destinationValue)) {
       return;
     }
 
-    card.submitMove(destinationValue);
-  }, [destinationValueFromPointer, finishDrag]);
+    startTransition(() => {
+      requestMove(recordId, destinationValue, "pointer");
+    });
+  }, [destinationValueFromPointer, finishDrag, requestMove]);
 
   const handleDragCancel = useCallback(() => {
     finishDrag();
@@ -302,46 +369,109 @@ export function EntityBoardDndProvider({ children }: { children: ReactNode }) {
       activeRecordId,
       overLaneValue,
       registerCard,
+      requestMove,
     }),
-    [activeRecordId, overLaneValue, registerCard],
+    [activeRecordId, overLaneValue, registerCard, requestMove],
   );
 
   return (
     <BoardDragContext.Provider value={contextValue}>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        autoScroll={{
-          enabled: true,
-          threshold: {
-            x: 0.18,
-            y: 0.1,
-          },
-        }}
-        onDragStart={handleDragStart}
-        onDragMove={handleDragMove}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
-      >
-        {children}
-        <DragOverlay>
-          {activeOverlayCard ? (
-            <div
-              data-board-drag-overlay="true"
-              className="w-64 border border-border bg-surface p-3 text-sm font-medium text-foreground shadow-lg"
-              style={{ pointerEvents: "none" }}
-            >
-              {activeOverlayCard.label}
+      <section className="mx-auto grid w-full max-w-6xl gap-4">
+        <div
+          role="region"
+          aria-label={`${entityName} board grouped by ${boardFieldName}`}
+          tabIndex={0}
+          data-board-scroll-container="true"
+          className="overflow-x-auto border border-grit bg-chalk p-4"
+        >
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            autoScroll={{
+              enabled: true,
+              threshold: {
+                x: 0.18,
+                y: 0.1,
+              },
+            }}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <div className="flex min-w-max gap-4">
+              {optimisticLanes.map((lane) => (
+                <EntityBoardDroppableLane
+                  key={`${lane.kind}-${lane.id}`}
+                  labelledBy={`board-lane-${lane.kind}-${lane.id}`}
+                  label={laneTitle(lane)}
+                  destinationValue={lane.destinationValue}
+                >
+                  <header className="border-b border-grit bg-white px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h2
+                          id={`board-lane-${lane.kind}-${lane.id}`}
+                          className="text-sm font-semibold text-graphite"
+                        >
+                          {laneTitle(lane)}
+                          {lane.kind === "archived" ? (
+                            <span className="ml-1 text-xs font-medium text-stone">(Archived option)</span>
+                          ) : null}
+                        </h2>
+                        <p className="mt-1 text-xs text-stone">
+                          {visibleCards(lane.cards).length} record{visibleCards(lane.cards).length === 1 ? "" : "s"}
+                          {visibleCards(lane.cards).some((card) => card.pending) ? (
+                            <> · {visibleCards(lane.cards).filter((card) => card.pending).length} saving</>
+                          ) : null}
+                        </p>
+                      </div>
+                      {lane.option ? <ChoicePill option={lane.option} /> : null}
+                    </div>
+                  </header>
+                  <div className="grid gap-3 p-3">
+                    {visibleCards(lane.cards).length === 0 ? (
+                      <p className="border border-dashed border-grit bg-chalk px-3 py-6 text-center text-sm text-stone">
+                        No records.
+                      </p>
+                    ) : null}
+                    {lane.cards.map((card) =>
+                      card.pending ? (
+                        <EntityBoardPendingCard
+                          key={`${card.recordId}-pending`}
+                          card={card}
+                        />
+                      ) : (
+                        <EntityBoardActionCard
+                          key={`${card.recordId}-authoritative`}
+                          card={card}
+                        />
+                      ),
+                    )}
+                  </div>
+                </EntityBoardDroppableLane>
+              ))}
             </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+            <DragOverlay>
+              {activeOverlayCard ? (
+                <div
+                  data-board-drag-overlay="true"
+                  className="w-64 border border-border bg-surface p-3 text-sm font-medium text-foreground shadow-lg"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {activeOverlayCard.label}
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        </div>
+      </section>
     </BoardDragContext.Provider>
   );
 }
 
-export function EntityBoardDroppableLane({
+function EntityBoardDroppableLane({
   children,
   destinationValue,
   labelledBy,
@@ -385,43 +515,51 @@ export function EntityBoardDroppableLane({
   );
 }
 
-export function EntityBoardCard({
-  entityTypeId,
-  recordId,
-  label,
-  href,
-  fieldKey,
-  currentValue,
-  destinations,
-  moveAction,
+function EntityBoardPendingCard({
+  card,
 }: {
-  entityTypeId: string;
-  recordId: string;
-  label: string;
-  href: string;
-  fieldKey: string;
-  currentValue: unknown;
-  destinations: MoveDestination[];
-  moveAction?: MoveAction;
+  card: BoardCardModel;
+}) {
+  return (
+    <article
+      className="border border-brass bg-surface p-3 shadow-sm"
+      data-board-card={card.recordId}
+      data-board-card-pending="true"
+      data-entity-type-id={card.entityTypeId}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="min-w-0 font-medium text-graphite">{card.label}</span>
+      </div>
+      <p className="mt-2 text-xs text-muted" aria-live="polite">
+        Saving to {destinationLabel(card.destinations, card.currentValue)}...
+      </p>
+    </article>
+  );
+}
+
+function EntityBoardActionCard({
+  card,
+}: {
+  card: BoardCardModel;
 }) {
   const dragContext = useContext(BoardDragContext);
-  const router = useRouter();
-  const [state, formAction, actionPending] = useActionState(moveAction ?? noopMoveAction, initialState);
+  const [state, formAction, actionPending] = useActionState(card.moveAction ?? noopMoveAction, initialState);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
+  const lastInitiatingInteractionRef = useRef<InitiatingInteraction | null>(null);
   const panelId = useId();
   const selectId = useId();
-  const currentValueText = typeof currentValue === "string" ? currentValue : "";
-  const canMove = Boolean(moveAction && destinations.length > 0);
+  const canMove = Boolean(card.moveAction && card.destinations.length > 0);
+  const pending = actionPending;
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, isDragging } = useDraggable({
-    id: cardDragId(recordId),
-    disabled: !canMove || actionPending,
+    id: cardDragId(card.recordId),
+    disabled: !canMove || pending,
     data: {
-      recordId,
-      currentValue: currentValueText,
-      label,
+      recordId: card.recordId,
+      currentValue: card.currentValue,
+      label: card.label,
     },
     attributes: {
       role: "presentation",
@@ -429,15 +567,30 @@ export function EntityBoardCard({
     },
   });
 
-  const submitMove = useCallback((destinationValue: string) => {
-    if (!moveAction || actionPending) {
+  const dispatchMove = useCallback((
+    destinationValue: string,
+    initiatingInteraction: InitiatingInteraction,
+  ) => {
+    if (!card.moveAction || actionPending) {
+      return;
+    }
+
+    lastInitiatingInteractionRef.current = initiatingInteraction;
+    formAction(buildMoveFormData(card.fieldKey, destinationValue));
+  }, [actionPending, card.fieldKey, card.moveAction, formAction]);
+
+  const submitMove = useCallback((
+    destinationValue: string,
+    initiatingInteraction: InitiatingInteraction,
+  ) => {
+    if (!dragContext || !canMove || actionPending) {
       return;
     }
 
     startTransition(() => {
-      formAction(buildMoveFormData(fieldKey, destinationValue));
+      dragContext.requestMove(card.recordId, destinationValue, initiatingInteraction);
     });
-  }, [actionPending, fieldKey, formAction, moveAction]);
+  }, [actionPending, canMove, card.recordId, dragContext]);
 
   useEffect(() => {
     if (!dragContext || !canMove) {
@@ -445,20 +598,19 @@ export function EntityBoardCard({
     }
 
     return dragContext.registerCard({
-      recordId,
-      label,
-      currentValue: currentValueText,
-      destinations,
+      card,
       pending: actionPending,
-      submitMove,
+      dispatchMove,
     });
-  }, [actionPending, canMove, currentValueText, destinations, dragContext, label, recordId, submitMove]);
+  }, [actionPending, canMove, card, dispatchMove, dragContext]);
 
   useEffect(() => {
-    if (state.success) {
-      router.refresh();
+    if (state.message && !state.success && !actionPending) {
+      if (lastInitiatingInteractionRef.current === "move") {
+        triggerRef.current?.focus();
+      }
     }
-  }, [router, state.success]);
+  }, [actionPending, state.message, state.success]);
 
   useEffect(() => {
     if (!open) {
@@ -496,21 +648,34 @@ export function EntityBoardCard({
     };
   }, [actionPending, open, state.message]);
 
+  if (card.optimisticHidden) {
+    return (
+      <article
+        ref={setNodeRef}
+        hidden
+        data-board-card={card.recordId}
+        data-board-card-hidden="true"
+      >
+        {card.label}
+      </article>
+    );
+  }
+
   return (
     <article
       ref={setNodeRef}
       className={`border border-grit bg-white p-3 shadow-sm transition-opacity ${
         isDragging ? "opacity-60" : ""
       }`}
-      data-board-card={recordId}
-      data-entity-type-id={entityTypeId}
+      data-board-card={card.recordId}
+      data-entity-type-id={card.entityTypeId}
     >
       <div className="flex items-start justify-between gap-3">
         <Link
-          href={href}
+          href={card.href}
           className="min-w-0 font-medium text-graphite underline-offset-4 hover:underline"
         >
-          {label}
+          {card.label}
         </Link>
         {canMove ? (
           <span
@@ -520,8 +685,8 @@ export function EntityBoardCard({
             aria-hidden="true"
             tabIndex={-1}
             className="mt-0.5 inline-flex h-7 w-7 shrink-0 touch-none select-none items-center justify-center border border-border bg-surface text-muted hover:bg-background hover:text-foreground data-[pending=true]:cursor-not-allowed data-[pending=false]:cursor-grab"
-            data-pending={actionPending}
-            data-board-drag-handle={recordId}
+            data-pending={pending}
+            data-board-drag-handle={card.recordId}
             title=""
           >
             <span aria-hidden="true" className="text-base leading-none">
@@ -532,11 +697,9 @@ export function EntityBoardCard({
       </div>
       {canMove ? (
         <EntityBoardMoveDisclosure
-          action={formAction}
           state={state}
-          pending={actionPending}
-          fieldKey={fieldKey}
-          destinations={destinations}
+          pending={pending}
+          destinations={card.destinations}
           panelId={panelId}
           selectId={selectId}
           open={open}
@@ -544,7 +707,8 @@ export function EntityBoardCard({
           triggerRef={triggerRef}
           panelRef={panelRef}
           selectRef={selectRef}
-          recordLabel={label}
+          recordLabel={card.label}
+          submitMove={(destinationValue) => submitMove(destinationValue, "move")}
         />
       ) : null}
       {state.message && !state.success && !open ? (
@@ -552,9 +716,9 @@ export function EntityBoardCard({
           {state.message}
         </p>
       ) : null}
-      {actionPending ? (
+      {pending ? (
         <p className="mt-2 text-xs text-muted" aria-live="polite">
-          Moving to {destinationLabel(destinations, state.value)}...
+          Saving to {destinationLabel(card.destinations, state.value || card.currentValue)}...
         </p>
       ) : null}
     </article>
@@ -562,10 +726,8 @@ export function EntityBoardCard({
 }
 
 function EntityBoardMoveDisclosure({
-  action,
   state,
   pending,
-  fieldKey,
   destinations,
   panelId,
   selectId,
@@ -575,11 +737,10 @@ function EntityBoardMoveDisclosure({
   panelRef,
   selectRef,
   recordLabel,
+  submitMove,
 }: {
-  action: (payload: FormData) => void;
   state: RecordFieldFormState;
   pending: boolean;
-  fieldKey: string;
   destinations: MoveDestination[];
   panelId: string;
   selectId: string;
@@ -589,6 +750,7 @@ function EntityBoardMoveDisclosure({
   panelRef: RefObject<HTMLDivElement | null>;
   selectRef: RefObject<HTMLSelectElement | null>;
   recordLabel: string;
+  submitMove: (destinationValue: string) => void;
 }) {
   const [selectedValue, setSelectedValue] = useState("");
   const submittedValue = selectedValue === unsetDestinationValue ? "" : selectedValue;
@@ -605,7 +767,7 @@ function EntityBoardMoveDisclosure({
         onClick={() => setOpen(!open)}
         className="inline-flex h-8 items-center justify-center border border-border bg-surface px-2.5 text-xs font-medium text-muted hover:bg-background hover:text-foreground focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground disabled:cursor-not-allowed disabled:bg-background disabled:text-muted"
       >
-        {pending ? "Moving..." : "Move"}
+        {pending ? "Saving..." : "Move"}
       </button>
       {open ? (
         <div
@@ -615,9 +777,13 @@ function EntityBoardMoveDisclosure({
           aria-label={`Move ${recordLabel}`}
           className="absolute left-0 z-20 mt-2 w-64 border border-border bg-surface p-3 shadow-lg"
         >
-          <form action={action} className="grid gap-2">
-            <input type="hidden" name="fieldKey" value={fieldKey} />
-            <input type="hidden" name="value" value={submittedValue} />
+          <form
+            className="grid gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitMove(submittedValue);
+            }}
+          >
             <label htmlFor={selectId} className="text-xs font-medium text-muted">
               Move to
             </label>
@@ -646,7 +812,7 @@ function EntityBoardMoveDisclosure({
               disabled={pending || selectedValue === ""}
               className="inline-flex h-9 items-center justify-center border border-border bg-surface px-3 text-sm font-medium text-muted hover:bg-background hover:text-foreground focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground disabled:cursor-not-allowed disabled:bg-background disabled:text-muted"
             >
-              {pending ? "Moving..." : "Confirm move"}
+              {pending ? "Saving..." : "Confirm move"}
             </button>
           </form>
           {state.message && !state.success ? (
