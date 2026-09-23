@@ -1,6 +1,10 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { FieldDefinition } from "./types";
-import type { EntityView, ViewFilter, ViewSort } from "./view-types";
+import {
+  parsePersistedViewPresentation,
+  presentationReferencesField,
+} from "./view-presentation";
+import type { EntityView, SavedViewPresentation, ViewFilter, ViewSort } from "./view-types";
 
 type EntityViewRow = {
   id: string;
@@ -12,6 +16,8 @@ type EntityViewRow = {
   filters: unknown;
   sorts: unknown;
   column_field_definition_ids: unknown;
+  presentation_mode?: unknown;
+  presentation_config?: unknown;
   created_at: string;
   updated_at: string;
 };
@@ -24,6 +30,7 @@ type ViewMutationInput = {
   filters: ViewFilter[];
   sorts: ViewSort[];
   columnFieldDefinitionIds: FieldDefinition["id"][];
+  presentation: SavedViewPresentation;
   isDefault: boolean;
 };
 
@@ -31,7 +38,7 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-function mapEntityView(row: EntityViewRow): EntityView {
+export function mapEntityView(row: EntityViewRow): EntityView {
   return {
     id: row.id,
     workspaceId: row.workspace_id,
@@ -42,6 +49,10 @@ function mapEntityView(row: EntityViewRow): EntityView {
     filters: asArray<ViewFilter>(row.filters),
     sorts: asArray<ViewSort>(row.sorts),
     columnFieldDefinitionIds: asArray<string>(row.column_field_definition_ids),
+    presentation: parsePersistedViewPresentation({
+      mode: row.presentation_mode ?? "table",
+      config: row.presentation_config ?? {},
+    }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -97,6 +108,7 @@ export async function createEntityView({
   filters,
   sorts,
   columnFieldDefinitionIds,
+  presentation,
   isDefault,
 }: ViewMutationInput) {
   const supabase = await createServerSupabaseClient();
@@ -114,6 +126,8 @@ export async function createEntityView({
       p_filters: filters,
       p_sorts: sorts,
       p_column_field_definition_ids: columnFieldDefinitionIds,
+      p_presentation_mode: presentation.mode,
+      p_presentation_config: presentation.config,
     })
     .single<EntityViewRow>();
 
@@ -143,6 +157,7 @@ export async function updateEntityView({
   filters,
   sorts,
   columnFieldDefinitionIds,
+  presentation,
   isDefault,
 }: ViewMutationInput) {
   if (!viewId) {
@@ -160,6 +175,8 @@ export async function updateEntityView({
       p_filters: filters,
       p_sorts: sorts,
       p_column_field_definition_ids: columnFieldDefinitionIds,
+      p_presentation_mode: presentation.mode,
+      p_presentation_config: presentation.config,
     })
     .single<EntityViewRow>();
 
@@ -230,7 +247,8 @@ export function viewReferencesField(view: EntityView, fieldDefinitionId: string)
   return (
     view.filters.some((filter) => filter.fieldDefinitionId === fieldDefinitionId) ||
     view.sorts.some((sort) => sort.fieldDefinitionId === fieldDefinitionId) ||
-    view.columnFieldDefinitionIds.includes(fieldDefinitionId)
+    view.columnFieldDefinitionIds.includes(fieldDefinitionId) ||
+    presentationReferencesField(view.presentation, fieldDefinitionId)
   );
 }
 

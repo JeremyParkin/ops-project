@@ -281,7 +281,12 @@ These areas are important, but should be sequenced after Phases 8F-10 unless a c
 
 ### Data, Views & Search Beyond Phase 9
 
-- Alternate saved-view modes such as Kanban, calendar, gallery, or dashboards when the table foundation is strong.
+- **Alternate Saved View modes foundation — complete:** shared persistence, TypeScript/domain parsing, validation, Manage Views mode selection, and truthful non-table placeholders are in place. Saved Views can now persist validated Table, Board, and Calendar presentation configuration without changing record storage or table semantics. Implementation and verification detail live in `PROJECT_CONTEXT.md`.
+- **Phase 15.1A Board rendering and accessible Move — complete:** active Choice-option lanes, optional Unset lane, distinct populated historical lanes for archived options, identity-led cards, accessible Move control, and canonical single-field mutation reuse are in place. Identity-only card sufficiency remains a dogfood question.
+- **Phase 15.1B Board pointer drag remains next for Board V1:** pointer drag is still required before Board V1 is considered complete.
+- **Phase 15.2 Calendar remains planned and unstarted after Board review:** month view; URL-backed month navigation; undated section; outside-month count; crowded-day expansion; and no drag-to-reschedule in V1.
+- Board/Table empty-state presentation has a small understood implementation duplication; reconsider extraction only if Calendar would otherwise create another copy or maintenance divergence appears.
+- Gallery, dashboards, and other alternate saved-view modes remain uncommitted.
 - Advanced search across workflows, views, settings, archived records, comments, and files.
 - Fuzzy or indexed search only if real scale or query patterns require it.
 - Schema-from-CSV, multi-object import, relation matching improvements, and background import jobs if synchronous flows stop being sufficient.

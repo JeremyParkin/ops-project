@@ -19,6 +19,7 @@ import {
   saveEntityTypeWorkConfiguration,
 } from "@/app/work-actions";
 import { EntityRecordsTable } from "@/app/components/entity-records-table";
+import { EntityBoardView } from "@/app/components/entity-board-view";
 import { EntitySettingsForm } from "@/app/components/entity-settings-form";
 import { EntityTypeQualityReviewForm } from "@/app/components/entity-type-quality-review-form";
 import { EntityTypeQualityReviewPresentationForm } from "@/app/components/entity-type-quality-review-presentation-form";
@@ -361,6 +362,7 @@ export default async function EntityPage({
     getWorkspacePermissionContext(workspaceId),
   ]);
   const canManageSchema = Boolean(permissions?.capabilities.has("schema.manage"));
+  const canOperateRecords = Boolean(permissions?.capabilities.has("records.operate"));
 
   if (!pageData) {
     notFound();
@@ -471,6 +473,35 @@ export default async function EntityPage({
     choiceOptionsByFieldId,
   });
   const evaluatedView = { ...evaluatedViewState, selectedView };
+  const presentation = selectedView?.presentation;
+  const configuredPresentationMode =
+    presentation?.mode === "board" || presentation?.mode === "calendar"
+      ? presentation.mode
+      : "table";
+  const boardField =
+    presentation?.mode === "board"
+      ? fields.find((candidate) => candidate.id === presentation.config.choiceFieldDefinitionId)
+      : undefined;
+  const presentationWarnings: string[] = [];
+  let invalidPresentation = false;
+
+  if (presentation?.mode === "invalid") {
+    presentationWarnings.push(presentation.reason);
+    invalidPresentation = true;
+  } else if (presentation?.mode === "board") {
+    if (!boardField || boardField.type !== "choice" || boardField.archivedAt) {
+      presentationWarnings.push("Board presentation references a Choice field that is archived, missing, or incompatible.");
+      invalidPresentation = true;
+    }
+  } else if (presentation?.mode === "calendar") {
+    const field = fields.find((candidate) => candidate.id === presentation.config.dateFieldDefinitionId);
+
+    if (!field || field.type !== "date" || field.archivedAt) {
+      presentationWarnings.push("Calendar presentation references a Date field that is archived, missing, or incompatible.");
+      invalidPresentation = true;
+    }
+  }
+  const viewWarnings = [...evaluatedView.warnings, ...presentationWarnings];
 
   const currentSearchParams = rawSearchParamsToUrlSearchParams(rawSearchParams);
   const sortHrefByFieldId: Record<string, string> = {};
@@ -742,8 +773,8 @@ export default async function EntityPage({
             relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
             workspaceMemberOptionsByFieldKey={workspaceMemberLookups.optionsByFieldKey}
             choiceOptionsByFieldKey={choiceOptionsByFieldKey}
-            warnings={evaluatedView.warnings}
-            invalidFilter={evaluatedView.invalidFilter}
+            warnings={viewWarnings}
+            invalidFilter={evaluatedView.invalidFilter || invalidPresentation}
             createViewAction={createEntityView}
             updateViewAction={updateEntityView}
             deleteViewAction={deleteEntityView}
@@ -772,6 +803,7 @@ export default async function EntityPage({
             effectiveColumnIds={effectiveColumnIds}
             hasPendingEdits={hasPendingViewEdits}
             selectedViewName={selectedView?.name}
+            presentationMode={configuredPresentationMode}
           />
         ) : null}
         {!isArchivedEntity && !isManaging ? (
@@ -787,26 +819,54 @@ export default async function EntityPage({
             createRecordAction={createEntityRecord}
           />
         ) : null}
-        <EntityRecordsTable
-          entityType={entityType}
-          fields={evaluatedView.visibleFields}
-          identityFields={fields}
-          records={evaluatedView.records}
-          relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
-          relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
-          workspaceMemberLabelsByFieldKey={workspaceMemberLookups.labelsByFieldKey}
-          workspaceMemberOptionsByFieldKey={workspaceMemberLookups.optionsByFieldKey}
-          choiceOptionsByFieldKey={choiceOptionsByFieldKey}
-          recordEditPathBase={
-            isArchivedEntity ? undefined : `/entities/${entityType.id}/records`
-          }
-          recordActionContext={isArchivedEntity ? undefined : context}
-          emptyState={isArchivedEntity || isManaging ? undefined : emptyState}
-          sortHrefByFieldId={sortHrefByFieldId}
-          sortDirectionByFieldId={sortDirectionByFieldId}
-          sortPositionByFieldId={sortPositionByFieldId}
-          sortFieldCount={effectiveSorts.length}
-        />
+        {invalidPresentation && !isArchivedEntity && !isManaging ? (
+          <section className="mx-auto w-full max-w-6xl border border-amber-300 bg-amber-50 px-5 py-10 text-center">
+            <h2 className="text-lg font-semibold text-amber-950">View needs repair.</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-amber-900">
+              This saved view references invalid presentation configuration and cannot be rendered until it is repaired.
+            </p>
+          </section>
+        ) : !isArchivedEntity && !isManaging && configuredPresentationMode === "board" && boardField ? (
+          <EntityBoardView
+            entityType={entityType}
+            fields={fields}
+            records={evaluatedView.records}
+            boardField={boardField}
+            choiceOptions={choiceOptionsByFieldId[boardField.id] ?? []}
+            recordActionContext={canOperateRecords ? context : undefined}
+            emptyState={emptyState}
+          />
+        ) : !isArchivedEntity && !isManaging && configuredPresentationMode === "calendar" ? (
+          <section className="mx-auto w-full max-w-6xl border border-dashed border-grit bg-chalk px-5 py-10 text-center">
+            <h2 className="text-lg font-semibold text-graphite">
+              Calendar view configured
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone">
+              This saved view is configured for calendar, but that renderer is not available in this implementation slice yet.
+            </p>
+          </section>
+        ) : (
+          <EntityRecordsTable
+            entityType={entityType}
+            fields={evaluatedView.visibleFields}
+            identityFields={fields}
+            records={evaluatedView.records}
+            relationLabelsByFieldKey={relationLookups.labelsByFieldKey}
+            relationOptionsByFieldKey={relationLookups.optionsByFieldKey}
+            workspaceMemberLabelsByFieldKey={workspaceMemberLookups.labelsByFieldKey}
+            workspaceMemberOptionsByFieldKey={workspaceMemberLookups.optionsByFieldKey}
+            choiceOptionsByFieldKey={choiceOptionsByFieldKey}
+            recordEditPathBase={
+              isArchivedEntity ? undefined : `/entities/${entityType.id}/records`
+            }
+            recordActionContext={isArchivedEntity ? undefined : context}
+            emptyState={isArchivedEntity || isManaging ? undefined : emptyState}
+            sortHrefByFieldId={sortHrefByFieldId}
+            sortDirectionByFieldId={sortDirectionByFieldId}
+            sortPositionByFieldId={sortPositionByFieldId}
+            sortFieldCount={effectiveSorts.length}
+          />
+        )}
         {isManaging && !isArchivedEntity ? (
           // Both archive-visibility toggles grouped immediately below the
           // field-preview/table block they affect, rather than "Show

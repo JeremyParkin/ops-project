@@ -5,17 +5,20 @@ import {
   SORTABLE_FIELD_TYPES,
 } from "./view-operators";
 import type {
+  SavedViewPresentation,
   ViewFilter,
   ViewFilterOperator,
   ViewSort,
   ViewSortDirection,
 } from "./view-types";
+import { tablePresentation, validateViewPresentation } from "./view-presentation";
 
 export type ViewFormValues = {
   name: string;
   filters: ViewFilter[];
   sorts: ViewSort[];
   columnFieldDefinitionIds: string[];
+  presentation: SavedViewPresentation;
   isDefault: boolean;
 };
 
@@ -36,6 +39,7 @@ export function createInitialViewFormState(values?: Partial<ViewFormValues>): Vi
       filters: values?.filters ?? [],
       sorts: values?.sorts ?? [],
       columnFieldDefinitionIds: values?.columnFieldDefinitionIds ?? [],
+      presentation: values?.presentation ?? tablePresentation(),
       isDefault: values?.isDefault ?? false,
     },
   };
@@ -277,11 +281,40 @@ export async function validateViewFormData({
     errors.columnFieldDefinitionId = "Choose at least one visible column.";
   }
 
+  const presentationMode = getLastFormString(formData, "presentationMode") || "table";
+  let presentation: SavedViewPresentation = tablePresentation();
+
+  if (presentationMode === "table") {
+    presentation = tablePresentation();
+  } else if (presentationMode === "board") {
+    presentation = {
+      mode: "board",
+      config: {
+        choiceFieldDefinitionId: getLastFormString(formData, "boardChoiceFieldDefinitionId"),
+      },
+    };
+  } else if (presentationMode === "calendar") {
+    presentation = {
+      mode: "calendar",
+      config: {
+        dateFieldDefinitionId: getLastFormString(formData, "calendarDateFieldDefinitionId"),
+      },
+    };
+  } else {
+    errors.presentationMode = "Choose Table, Board, or Calendar.";
+  }
+
+  const presentationError = validateViewPresentation({ presentation, activeFields });
+  if (presentationError) {
+    errors.presentationConfig = presentationError;
+  }
+
   const values: ViewFormValues = {
     name,
     filters,
     sorts,
     columnFieldDefinitionIds,
+    presentation,
     isDefault: getLastFormString(formData, "isDefault") === "true",
   };
 

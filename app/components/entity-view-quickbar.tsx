@@ -32,6 +32,7 @@ type EntityViewQuickBarProps = {
   effectiveColumnIds: string[];
   hasPendingEdits: boolean;
   selectedViewName?: string;
+  presentationMode?: "table" | "board" | "calendar";
 };
 
 function fieldLabel(field: FieldDefinition) {
@@ -77,6 +78,7 @@ export function EntityViewQuickBar({
   effectiveColumnIds,
   hasPendingEdits,
   selectedViewName,
+  presentationMode = "table",
 }: EntityViewQuickBarProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -101,6 +103,7 @@ export function EntityViewQuickBar({
 
   const [sortFieldId, setSortFieldId] = useState(sortableFields[0]?.id ?? "");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const showColumnControls = presentationMode === "table";
 
   function navigateWithState(next: {
     filters: ViewFilter[];
@@ -297,16 +300,18 @@ export function EntityViewQuickBar({
         >
           + Add sort
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            setDraftColumnIds(effectiveColumnIds);
-            setIsColumnsOpen((current) => !current);
-          }}
-          className="border border-grit bg-white px-2 py-1 text-xs font-medium text-stone hover:bg-slab/5"
-        >
-          Columns
-        </button>
+        {showColumnControls ? (
+          <button
+            type="button"
+            onClick={() => {
+              setDraftColumnIds(effectiveColumnIds);
+              setIsColumnsOpen((current) => !current);
+            }}
+            className="border border-grit bg-white px-2 py-1 text-xs font-medium text-stone hover:bg-slab/5"
+          >
+            Columns
+          </button>
+        ) : null}
 
         {hasPendingEdits ? (
           <span className="ml-auto flex items-center gap-2 text-xs text-stone">
@@ -486,7 +491,7 @@ export function EntityViewQuickBar({
         </div>
       ) : null}
 
-      {isColumnsOpen ? (
+      {isColumnsOpen && showColumnControls ? (
         <div className="mt-3 grid gap-2 border-t border-grit pt-3">
           {activeFields.map((field) => {
             const visible = draftColumnIds.includes(field.id);

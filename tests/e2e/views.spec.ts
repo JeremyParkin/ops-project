@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { expect, test, type Page } from "@playwright/test";
 import {
   cleanupE2eRun,
   cleanupStaleE2eData,
@@ -22,14 +23,28 @@ import {
 test.describe.configure({ mode: "serial" });
 
 const runs: TestRun[] = [];
+const createdUserIds: string[] = [];
+const createdRoleIds: string[] = [];
 
 test.beforeAll(async () => {
   await cleanupStaleE2eData();
 });
 
-test.afterAll(async () => {
+test.afterAll(async ({}, testInfo) => {
+  testInfo.setTimeout(120_000);
+  const supabase = createSupabaseTestClient();
   for (const run of runs) {
     await cleanupE2eRun(run);
+  }
+  for (const userId of createdUserIds) {
+    await supabase.auth.admin.deleteUser(userId);
+  }
+  if (createdRoleIds.length > 0) {
+    await supabase
+      .from("workspace_roles")
+      .delete()
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .in("id", createdRoleIds);
   }
 });
 
@@ -46,6 +61,8 @@ async function createView({
   filters = [],
   sorts = [],
   columnFieldDefinitionIds,
+  presentationMode = "table",
+  presentationConfig = {},
   isDefault = false,
 }: {
   entity: TestEntity;
@@ -53,6 +70,8 @@ async function createView({
   filters?: unknown[];
   sorts?: unknown[];
   columnFieldDefinitionIds?: string[];
+  presentationMode?: "table" | "board" | "calendar";
+  presentationConfig?: Record<string, string>;
   isDefault?: boolean;
 }) {
   const supabase = createSupabaseTestClient();
@@ -83,6 +102,8 @@ async function createView({
         Object.values(entity.fields)
           .sort((left, right) => left.position - right.position)
           .map((field) => field.id),
+      presentation_mode: presentationMode,
+      presentation_config: presentationConfig,
     })
     .select("id")
     .single<{ id: string }>();
@@ -90,6 +111,265 @@ async function createView({
   expect(result.error).toBeNull();
 
   return String(result.data?.id);
+}
+
+async function addChoiceField(entity: TestEntity, slug: string, name: string, required = false) {
+  const supabase = createSupabaseTestClient();
+  const field = {
+    id: randomUUID(),
+    key: `fld_e2e_${randomUUID().replace(/-/g, "_")}_${slug}`,
+    position: Object.keys(entity.fields).length + 1,
+    slug,
+    name,
+    type: "choice",
+    required,
+  };
+  const { error } = await supabase.from("field_definitions").insert({
+    id: field.id,
+    workspace_id: DEMO_WORKSPACE_ID,
+    entity_type_id: entity.id,
+    key: field.key,
+    name: field.name,
+    slug: field.slug,
+    type: field.type,
+    related_entity_type_id: null,
+    required,
+    position: field.position,
+  });
+  expect(error).toBeNull();
+
+  entity.fields[slug] = field as TestEntity["fields"][string];
+  return field;
+}
+
+async function addChoiceOption({
+  fieldId,
+  label,
+  color = "gray",
+  position,
+  archived = false,
+}: {
+  fieldId: string;
+  label: string;
+  color?: string;
+  position: number;
+  archived?: boolean;
+}) {
+  const supabase = createSupabaseTestClient();
+  const optionId = randomUUID();
+  const { error } = await supabase.from("field_choice_options").insert({
+    id: optionId,
+    workspace_id: DEMO_WORKSPACE_ID,
+    field_definition_id: fieldId,
+    label,
+    color,
+    position,
+    archived_at: archived ? new Date().toISOString() : null,
+  });
+  expect(error).toBeNull();
+
+  return optionId;
+}
+
+async function signIn(page: Page, email: string, password: string) {
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("/");
+}
+
+async function createReadOnlyUser() {
+  const supabase = createSupabaseTestClient();
+  const password = `Views-${randomUUID()}!`;
+  const email = `e2e-views-readonly-${randomUUID()}@example.test`;
+  const { data, error } = await supabase.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  expect(error).toBeNull();
+  expect(data.user).toBeTruthy();
+  createdUserIds.push(data.user!.id);
+
+  const roleId = randomUUID();
+  const role = await supabase.from("workspace_roles").insert({
+    id: roleId,
+    workspace_id: DEMO_WORKSPACE_ID,
+    name: `E2E Views read-only ${roleId.slice(0, 8)}`,
+  });
+  expect(role.error).toBeNull();
+  createdRoleIds.push(roleId);
+
+  const membership = await supabase.from("workspace_memberships").insert({
+    workspace_id: DEMO_WORKSPACE_ID,
+    user_id: data.user!.id,
+    role_id: roleId,
+  });
+  expect(membership.error).toBeNull();
+
+  return { email, password };
+}
+
+function lane(page: Page, label: string) {
+  return page
+    .getByRole("region", { name: /board grouped by/i })
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: label }) });
+}
+
+function cardInLane(page: Page, laneLabel: string, cardLabel: string) {
+  return lane(page, laneLabel).locator("article").filter({
+    has: page.getByRole("link", { name: cardLabel, exact: true }),
+  });
+}
+
+async function moveCard({
+  page,
+  from,
+  card,
+  to,
+  keyboard = false,
+}: {
+  page: Page;
+  from: string;
+  card: string;
+  to: string;
+  keyboard?: boolean;
+}) {
+  const boardCard = cardInLane(page, from, card);
+  await boardCard.getByLabel("Move to").selectOption({ label: to });
+  const button = boardCard.getByRole("button", { name: "Move" });
+  if (keyboard) {
+    await button.focus();
+    await page.keyboard.press("Enter");
+  } else {
+    await button.click();
+  }
+}
+
+async function createPresentationViewsScenario(run: TestRun) {
+  const supabase = createSupabaseTestClient();
+  const work = await createEntity(supabase, run, "Presentation Work", [
+    { slug: "title", name: "Title", type: "text", required: true },
+    { slug: "due", name: "Due", type: "date" },
+  ]);
+  const stage = await addChoiceField(work, "stage", "Stage");
+
+  await createEntityRecord({
+    entity: work,
+    valuesBySlug: {
+      title: `${run.label} Presentation Record`,
+      due: "2026-08-20",
+    },
+  });
+
+  return { work, stage };
+}
+
+async function createBoardScenario(run: TestRun, required = false) {
+  const supabase = createSupabaseTestClient();
+  const work = await createEntity(supabase, run, required ? "Required Board Work" : "Board Work", [
+    { slug: "title", name: "Title", type: "text", required: true },
+    { slug: "notes", name: "Notes", type: "text" },
+  ]);
+  const stage = await addChoiceField(work, "stage", "Stage", required);
+  const todoId = await addChoiceOption({
+    fieldId: stage.id,
+    label: "Todo",
+    color: "gray",
+    position: 1,
+  });
+  const doingId = await addChoiceOption({
+    fieldId: stage.id,
+    label: "Doing",
+    color: "blue",
+    position: 2,
+  });
+  const doneId = await addChoiceOption({
+    fieldId: stage.id,
+    label: "Done",
+    color: "emerald",
+    position: 3,
+  });
+  const parkedId = await addChoiceOption({
+    fieldId: stage.id,
+    label: "Parked",
+    color: "amber",
+    position: 4,
+  });
+  await addChoiceOption({
+    fieldId: stage.id,
+    label: "Empty Archived",
+    color: "red",
+    position: 5,
+    archived: true,
+  });
+
+  const alphaId = await createEntityRecord({
+    entity: work,
+    valuesBySlug: {
+      title: `${run.label} Alpha`,
+      notes: "",
+      stage: todoId,
+    },
+  });
+  const aardvarkId = await createEntityRecord({
+    entity: work,
+    valuesBySlug: {
+      title: `${run.label} Aardvark`,
+      notes: "",
+      stage: todoId,
+    },
+  });
+  const betaId = await createEntityRecord({
+    entity: work,
+    valuesBySlug: {
+      title: `${run.label} Beta`,
+      notes: "",
+      stage: doingId,
+    },
+  });
+  const gammaId = await createEntityRecord({
+    entity: work,
+    valuesBySlug: {
+      title: `${run.label} Gamma`,
+      notes: "",
+      stage: required ? doneId : null,
+    },
+  });
+  const archivedValueId = await createEntityRecord({
+    entity: work,
+    valuesBySlug: {
+      title: `${run.label} Archived Value`,
+      notes: "",
+      stage: parkedId,
+    },
+  });
+  const { error: archiveParkedError } = await supabase.rpc("archive_field_choice_option", {
+    p_workspace_id: DEMO_WORKSPACE_ID,
+    p_field_definition_id: stage.id,
+    p_option_id: parkedId,
+  });
+  if (archiveParkedError) {
+    throw new Error(`archive board scenario option: ${archiveParkedError.message}`);
+  }
+
+  const boardViewId = await createView({
+    entity: work,
+    name: `${run.label} Board`,
+    presentationMode: "board",
+    presentationConfig: { choiceFieldDefinitionId: stage.id },
+    columnFieldDefinitionIds: [work.fields.title.id, stage.id],
+  });
+
+  return {
+    work,
+    stage,
+    options: { todoId, doingId, doneId, parkedId },
+    records: { alphaId, aardvarkId, betaId, gammaId, archivedValueId },
+    boardViewId,
+  };
 }
 
 async function createViewsScenario(run: TestRun) {
@@ -543,6 +823,300 @@ test("quick bar can update the currently selected saved view", async ({ page }) 
   await expect(rows.nth(1)).toContainText(`${run.label} QA Prep`);
   await expect(rows.nth(2)).toContainText(`${run.label} QA Fix`);
   await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+});
+
+test("presentation modes can be saved, reloaded, and shown as placeholders", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { work, stage } = await createPresentationViewsScenario(run);
+
+  await gotoEntity(page, work);
+  await page.getByText("Manage views", { exact: true }).click();
+  await page.locator("#create-view-name").fill(`${run.label} Board`);
+  await page.locator("#create-presentation-mode").selectOption("board");
+  await page.locator("#create-board-choice-field").selectOption(stage.id);
+  await page.getByRole("button", { name: "Create View" }).click();
+  await expect(page.getByText("View created.")).toBeVisible();
+
+  await page.getByRole("link", { name: `${run.label} Board` }).click();
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Board view configured" })).toHaveCount(0);
+  await expect(page.getByTestId("entity-view-quickbar").getByRole("button", { name: "Columns" })).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+  await page.getByText("Manage views", { exact: true }).click();
+  await expect(page.locator("#edit-presentation-mode")).toHaveValue("board");
+  await expect(page.locator("#edit-board-choice-field")).toHaveValue(stage.id);
+
+  await page.goto(`/entities/${work.id}?newView=true`);
+  await page.locator("#create-view-name").fill(`${run.label} Calendar`);
+  await page.locator("#create-presentation-mode").selectOption("calendar");
+  await page.locator("#create-calendar-date-field").selectOption(work.fields.due.id);
+  await page.getByRole("button", { name: "Create View" }).click();
+  await expect(page.getByText("View created.")).toBeVisible();
+
+  await page.getByRole("link", { name: `${run.label} Calendar` }).click();
+  await expect(page.getByRole("heading", { name: "Calendar view configured" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Calendar view configured" })).toBeVisible();
+});
+
+test("stale presentation config shows repair before placeholder", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const { work, stage } = await createPresentationViewsScenario(run);
+  const viewId = await createView({
+    entity: work,
+    name: `${run.label} Stale Board`,
+    presentationMode: "board",
+    presentationConfig: { choiceFieldDefinitionId: stage.id },
+  });
+
+  const archiveResult = await supabase
+    .from("field_definitions")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("entity_type_id", work.id)
+    .eq("id", stage.id);
+  expect(archiveResult.error).toBeNull();
+
+  await page.goto(`/entities/${work.id}?view=${viewId}`);
+  await expect(page.getByRole("heading", { name: "View needs repair." })).toBeVisible();
+  await expect(page.getByText("invalid presentation configuration")).toBeVisible();
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toHaveCount(0);
+});
+
+test("pending quick edits preserve configured presentation", async ({ page }) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const { work, stage } = await createPresentationViewsScenario(run);
+  const viewId = await createView({
+    entity: work,
+    name: `${run.label} Board Pending`,
+    columnFieldDefinitionIds: [work.fields.title.id, stage.id],
+    presentationMode: "board",
+    presentationConfig: { choiceFieldDefinitionId: stage.id },
+  });
+
+  await page.goto(`/entities/${work.id}?view=${viewId}`);
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+  await expect(page.getByTestId("entity-view-quickbar").getByRole("button", { name: "Columns" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "+ Add sort" }).click();
+  await selectReactOption(page.getByLabel("Quick sort field"), {
+    label: "Title (text)",
+  });
+  await selectReactOption(page.getByLabel("Quick sort direction"), {
+    value: "asc",
+  });
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText(`Unsaved changes to ${run.label} Board Pending`)).toBeVisible();
+
+  await page.getByRole("button", { name: "Update View" }).click();
+  await page.getByRole("button", { name: "Save View" }).click();
+  await expect(page.getByText("View updated.")).toBeVisible();
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+
+  const { data, error } = await supabase
+    .from("entity_views")
+    .select("presentation_mode,presentation_config,sorts")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("id", viewId)
+    .single();
+  expect(error).toBeNull();
+  expect(data?.presentation_mode).toBe("board");
+  expect(data?.presentation_config).toEqual({ choiceFieldDefinitionId: stage.id });
+  expect(data?.sorts).toEqual([{ fieldDefinitionId: work.fields.title.id, direction: "asc" }]);
+});
+
+test("board renders active, unset, archived lanes and respects view filters and sorts", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { work, stage, options } = await createBoardScenario(run);
+  const filteredViewId = await createView({
+    entity: work,
+    name: `${run.label} Todo Board`,
+    filters: [
+      {
+        fieldDefinitionId: stage.id,
+        operator: "equals",
+        value: options.todoId,
+      },
+    ],
+    sorts: [
+      {
+        fieldDefinitionId: work.fields.title.id,
+        direction: "asc",
+      },
+    ],
+    presentationMode: "board",
+    presentationConfig: { choiceFieldDefinitionId: stage.id },
+  });
+
+  await page.goto(`/entities/${work.id}?view=${filteredViewId}`);
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+  await expect(lane(page, "Todo").getByText("2 records")).toBeVisible();
+  await expect(lane(page, "Doing").getByText("0 records")).toBeVisible();
+  await expect(lane(page, "Done").getByText("0 records")).toBeVisible();
+  await expect(lane(page, "Unset").getByText("0 records")).toBeVisible();
+  await expect(lane(page, "Parked")).toHaveCount(0);
+
+  const todoCards = lane(page, "Todo").locator("article");
+  await expect(todoCards.nth(0)).toContainText(`${run.label} Aardvark`);
+  await expect(todoCards.nth(1)).toContainText(`${run.label} Alpha`);
+
+  const emptyParams = new URLSearchParams({
+    view: filteredViewId,
+    "filterField:0": work.fields.title.id,
+    "filterOperator:0": "contains",
+    "filterValue:0": "no-match",
+  });
+  emptyParams.append("columnFieldDefinitionId", work.fields.title.id);
+  emptyParams.append("columnFieldDefinitionId", stage.id);
+  await page.goto(`/entities/${work.id}?${emptyParams.toString()}`);
+  await expect(page.getByRole("heading", { name: "No records match your current filters." })).toBeVisible();
+  await expect(lane(page, "Todo")).toBeVisible();
+
+  const archivedBoardViewId = await createView({
+    entity: work,
+    name: `${run.label} Archived Board`,
+    presentationMode: "board",
+    presentationConfig: { choiceFieldDefinitionId: stage.id },
+  });
+  await page.goto(`/entities/${work.id}?view=${archivedBoardViewId}`);
+  await expect(lane(page, "Parked").getByText("Archived option")).toBeVisible();
+  await expect(cardInLane(page, "Parked", `${run.label} Archived Value`)).toBeVisible();
+  await expect(lane(page, "Empty Archived")).toHaveCount(0);
+});
+
+test("board Move uses the canonical update path and preserves record_updated automation", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const { work, stage, records, boardViewId } = await createBoardScenario(run);
+  const workflowName = `${run.label} Board Move Automation`;
+  const workflow = await supabase.from("workflows").insert({
+    workspace_id: DEMO_WORKSPACE_ID,
+    name: workflowName,
+    enabled: true,
+    trigger_type: "record_updated",
+    trigger_entity_type_id: work.id,
+    action_config: {
+      triggerConfig: { watchedFieldDefinitionIds: [stage.id] },
+      conditions: [],
+    },
+    actions: [
+      {
+        actionType: "update_record",
+        fieldMappings: [
+          {
+            targetFieldDefinitionId: work.fields.notes.id,
+            source: {
+              type: "constant",
+              value: "Moved by board automation",
+            },
+          },
+        ],
+      },
+    ],
+  });
+  expect(workflow.error).toBeNull();
+
+  await page.goto(`/entities/${work.id}?view=${boardViewId}`);
+  await moveCard({
+    page,
+    from: "Todo",
+    card: `${run.label} Alpha`,
+    to: "Done",
+  });
+  await expect(cardInLane(page, "Done", `${run.label} Alpha`)).toBeVisible();
+
+  const alpha = await supabase
+    .from("entity_records")
+    .select("values")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("entity_type_id", work.id)
+    .eq("id", records.alphaId)
+    .single();
+  expect(alpha.error).toBeNull();
+  expect(alpha.data?.values?.[work.fields.notes.key]).toBe("Moved by board automation");
+
+  await moveCard({
+    page,
+    from: "Doing",
+    card: `${run.label} Beta`,
+    to: "Unset",
+    keyboard: true,
+  });
+  await expect(cardInLane(page, "Unset", `${run.label} Beta`)).toBeVisible();
+
+  const archivedCard = cardInLane(page, "Parked", `${run.label} Archived Value`);
+  await expect(archivedCard.getByLabel("Move to")).not.toContainText("Parked");
+  await moveCard({
+    page,
+    from: "Parked",
+    card: `${run.label} Archived Value`,
+    to: "Todo",
+  });
+  await expect(cardInLane(page, "Todo", `${run.label} Archived Value`)).toBeVisible();
+});
+
+test("board hides Move for read-only users and failed moves stay local", async ({
+  browser,
+  page,
+}) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const { work, records, boardViewId } = await createBoardScenario(run);
+
+  await page.goto(`/entities/${work.id}?view=${boardViewId}`);
+  const alpha = cardInLane(page, "Todo", `${run.label} Alpha`);
+  await expect(alpha).toBeVisible();
+  const archived = await supabase
+    .from("entity_records")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("entity_type_id", work.id)
+    .eq("id", records.alphaId);
+  expect(archived.error).toBeNull();
+
+  await moveCard({
+    page,
+    from: "Todo",
+    card: `${run.label} Alpha`,
+    to: "Done",
+  });
+  await expect(alpha.getByRole("alert")).toContainText("Archived records are read-only.");
+  await expect(cardInLane(page, "Todo", `${run.label} Alpha`)).toBeVisible();
+  await expect(cardInLane(page, "Done", `${run.label} Alpha`)).toHaveCount(0);
+
+  const readOnly = await createReadOnlyUser();
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const readOnlyPage = await context.newPage();
+  try {
+    await signIn(readOnlyPage, readOnly.email, readOnly.password);
+    await readOnlyPage.goto(`/entities/${work.id}?view=${boardViewId}`);
+    await expect(readOnlyPage.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+    await expect(readOnlyPage.getByLabel("Move to")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("required Choice board omits Unset lane and destination", async ({ page }) => {
+  const run = createScenarioRun();
+  const { work, boardViewId } = await createBoardScenario(run, true);
+
+  await page.goto(`/entities/${work.id}?view=${boardViewId}`);
+  await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+  await expect(lane(page, "Unset")).toHaveCount(0);
+  await expect(cardInLane(page, "Todo", `${run.label} Alpha`).getByLabel("Move to")).not.toContainText("Unset");
 });
 
 test("field hard delete is blocked by saved view dependency and deleting a view preserves records", async () => {

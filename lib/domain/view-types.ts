@@ -33,6 +33,18 @@ export type ViewSort = {
   direction: ViewSortDirection;
 };
 
+export type SavedViewPresentation =
+  | { mode: "table"; config: Record<string, never> }
+  | { mode: "board"; config: { choiceFieldDefinitionId: FieldDefinition["id"] } }
+  | { mode: "calendar"; config: { dateFieldDefinitionId: FieldDefinition["id"] } };
+
+export type InvalidSavedViewPresentation = {
+  mode: "invalid";
+  config: Record<string, never>;
+  reason: string;
+  rawMode?: string;
+};
+
 export type EntityView = {
   id: string;
   workspaceId: string;
@@ -43,6 +55,7 @@ export type EntityView = {
   filters: ViewFilter[];
   sorts: ViewSort[];
   columnFieldDefinitionIds: FieldDefinition["id"][];
+  presentation: SavedViewPresentation | InvalidSavedViewPresentation;
   createdAt: IsoUtcTimestamp;
   updatedAt: IsoUtcTimestamp;
 };

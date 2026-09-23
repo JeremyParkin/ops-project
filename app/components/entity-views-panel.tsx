@@ -15,7 +15,12 @@ import {
   filterOperatorLabel,
 } from "@/lib/domain/view-operators";
 import { getDefaultColumnFieldDefinitionIds } from "@/lib/domain/view-engine";
-import type { EntityView, ViewFilter, ViewSort } from "@/lib/domain/view-types";
+import type {
+  EntityView,
+  SavedViewPresentation,
+  ViewFilter,
+  ViewSort,
+} from "@/lib/domain/view-types";
 import {
   createInitialViewFormState,
   type ViewFormState,
@@ -75,6 +80,12 @@ function fieldLabel(field: FieldDefinition) {
   return `${field.name} (${field.type})`;
 }
 
+function editablePresentationFor(view?: EntityView): SavedViewPresentation {
+  return view?.presentation.mode === "board" || view?.presentation.mode === "calendar"
+    ? view.presentation
+    : { mode: "table", config: {} };
+}
+
 function ViewForm({
   mode,
   view,
@@ -108,6 +119,7 @@ function ViewForm({
         pendingOverride?.columnFieldDefinitionIds ??
         view?.columnFieldDefinitionIds ??
         getDefaultColumnFieldDefinitionIds(activeFields),
+      presentation: editablePresentationFor(view),
       isDefault: view?.isDefault ?? false,
     }),
     // pendingOverride is intentionally excluded: this seeds the form once on
@@ -127,8 +139,23 @@ function ViewForm({
       activeFields.some((field) => field.id === fieldId),
     ),
   );
+  const [presentationMode, setPresentationMode] = useState<SavedViewPresentation["mode"]>(
+    initialValues.presentation.mode,
+  );
+  const [boardChoiceFieldId, setBoardChoiceFieldId] = useState(
+    initialValues.presentation.mode === "board"
+      ? initialValues.presentation.config.choiceFieldDefinitionId
+      : "",
+  );
+  const [calendarDateFieldId, setCalendarDateFieldId] = useState(
+    initialValues.presentation.mode === "calendar"
+      ? initialValues.presentation.config.dateFieldDefinitionId
+      : "",
+  );
   const activeFieldById = new Map(activeFields.map((field) => [field.id, field]));
   const allFieldById = new Map(allFields.map((field) => [field.id, field]));
+  const choiceFields = activeFields.filter((field) => field.type === "choice");
+  const dateFields = activeFields.filter((field) => field.type === "date");
 
   function moveColumn(fieldId: string, direction: -1 | 1) {
     setColumnIds((current) => {
@@ -172,6 +199,84 @@ function ViewForm({
           className="mt-1 block h-10 w-full border border-slate-300 px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
         />
         <FieldError message={state.errors.viewName} />
+      </div>
+
+      <div className="grid gap-3">
+        <div>
+          <label
+            htmlFor={`${mode}-presentation-mode`}
+            className="block text-sm font-medium text-slate-800"
+          >
+            Presentation
+          </label>
+          <select
+            id={`${mode}-presentation-mode`}
+            name="presentationMode"
+            value={presentationMode}
+            onChange={(event) => {
+              const nextMode = event.currentTarget.value as SavedViewPresentation["mode"];
+              setPresentationMode(nextMode);
+            }}
+            className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+          >
+            <option value="table">Table</option>
+            <option value="board">Board</option>
+            <option value="calendar">Calendar</option>
+          </select>
+          <FieldError message={state.errors.presentationMode} />
+        </div>
+
+        {presentationMode === "board" ? (
+          <div>
+            <label
+              htmlFor={`${mode}-board-choice-field`}
+              className="block text-sm font-medium text-slate-800"
+            >
+              Board column field
+            </label>
+            <select
+              id={`${mode}-board-choice-field`}
+              name="boardChoiceFieldDefinitionId"
+              value={boardChoiceFieldId}
+              onChange={(event) => setBoardChoiceFieldId(event.currentTarget.value)}
+              className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+            >
+              <option value="">Choose a Choice field</option>
+              {choiceFields.map((field) => (
+                <option key={field.id} value={field.id}>
+                  {field.name}
+                </option>
+              ))}
+            </select>
+            <FieldError message={state.errors.presentationConfig} />
+          </div>
+        ) : null}
+
+        {presentationMode === "calendar" ? (
+          <div>
+            <label
+              htmlFor={`${mode}-calendar-date-field`}
+              className="block text-sm font-medium text-slate-800"
+            >
+              Calendar date field
+            </label>
+            <select
+              id={`${mode}-calendar-date-field`}
+              name="calendarDateFieldDefinitionId"
+              value={calendarDateFieldId}
+              onChange={(event) => setCalendarDateFieldId(event.currentTarget.value)}
+              className="mt-1 block h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+            >
+              <option value="">Choose a Date field</option>
+              {dateFields.map((field) => (
+                <option key={field.id} value={field.id}>
+                  {field.name}
+                </option>
+              ))}
+            </select>
+            <FieldError message={state.errors.presentationConfig} />
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-3">
