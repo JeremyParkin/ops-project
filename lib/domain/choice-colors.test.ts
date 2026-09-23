@@ -40,8 +40,11 @@ describe("CHOICE_OPTION_COLORS", () => {
       expect(CHOICE_OPTION_COLOR_LABELS[color]).toBe(
         color.charAt(0).toUpperCase() + color.slice(1),
       );
+      const expectedTextClass = color === "gray"
+        ? "text-\\[#0f172a\\]"
+        : `text-${tailwindFamily}-900`;
       expect(CHOICE_OPTION_PILL_CLASSES[color]).toMatch(
-        new RegExp(`border-${tailwindFamily}-400.*bg-${tailwindFamily}-100.*text-${tailwindFamily}-900`),
+        new RegExp(`border-${tailwindFamily}-400.*bg-${tailwindFamily}-100.*${expectedTextClass}`),
       );
       expect(CHOICE_OPTION_SWATCH_CLASSES[color]).toMatch(
         new RegExp(`border-${tailwindFamily}-600.*bg-${tailwindFamily}-400`),
@@ -81,6 +84,7 @@ describe("choiceOptionPillClasses", () => {
 describe("CHOICE_OPTION_ARCHIVED_PILL_CLASSES", () => {
   it("stays a distinct, muted, non-color-keyed treatment", () => {
     expect(CHOICE_OPTION_ARCHIVED_PILL_CLASSES).toContain("line-through");
+    expect(CHOICE_OPTION_ARCHIVED_PILL_CLASSES).toContain("text-[#475569]");
     CHOICE_OPTION_COLORS.forEach((color) => {
       expect(CHOICE_OPTION_ARCHIVED_PILL_CLASSES).not.toBe(CHOICE_OPTION_PILL_CLASSES[color]);
     });

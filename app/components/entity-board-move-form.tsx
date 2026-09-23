@@ -63,7 +63,7 @@ export function EntityBoardMoveForm({
           value={selectedValue}
           onChange={(event) => setSelectedValue(event.target.value)}
           disabled={pending}
-          className="min-w-0 flex-1 border border-grit bg-white px-2 py-1.5 text-sm text-graphite disabled:bg-chalk disabled:text-stone"
+          className="min-w-0 flex-1 border border-border bg-surface px-2 py-1.5 text-sm text-foreground disabled:cursor-not-allowed disabled:bg-background disabled:text-muted"
         >
           <option value="" disabled>
             Choose lane
@@ -80,7 +80,7 @@ export function EntityBoardMoveForm({
         <button
           type="submit"
           disabled={pending || selectedValue === ""}
-          className="inline-flex h-9 items-center justify-center border border-grit px-3 text-sm font-medium text-stone hover:bg-slab/5 disabled:bg-chalk disabled:text-stone"
+          className="inline-flex h-9 items-center justify-center border border-border bg-surface px-3 text-sm font-medium text-muted hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:bg-background disabled:text-muted"
         >
           {pending ? "Moving..." : "Move"}
         </button>

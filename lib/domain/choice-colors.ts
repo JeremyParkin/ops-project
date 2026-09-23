@@ -58,7 +58,7 @@ export const CHOICE_OPTION_COLOR_LABELS: Record<ChoiceOptionColor, string> = {
 // muted status badge. -100/-400/-900 keeps every pair comfortably past
 // WCAG AA (verified per color, not assumed from the shade numbers alone).
 export const CHOICE_OPTION_PILL_CLASSES: Record<ChoiceOptionColor, string> = {
-  gray: "border-slate-400 bg-slate-100 text-slate-900",
+  gray: "border-slate-400 bg-slate-100 text-[#0f172a]",
   red: "border-red-400 bg-red-100 text-red-900",
   amber: "border-amber-400 bg-amber-100 text-amber-900",
   emerald: "border-emerald-400 bg-emerald-100 text-emerald-900",
@@ -105,4 +105,4 @@ export function choiceOptionPillClasses(color: string | undefined | null): strin
 // A muted variant for a selected-but-archived option, so it stays legible
 // as "this was picked" without pretending the option is still active.
 export const CHOICE_OPTION_ARCHIVED_PILL_CLASSES =
-  "border-slate-300 bg-slate-100 text-slate-500 line-through decoration-slate-400";
+  "border-[#cbd5e1] bg-slate-100 text-[#475569] line-through decoration-[#64748b]";

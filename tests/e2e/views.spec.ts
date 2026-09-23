@@ -22,9 +22,20 @@ import {
 
 test.describe.configure({ mode: "serial" });
 
+const E2E_RUNNER_EMAIL = "e2e-runner@ops-project.test";
+
 const runs: TestRun[] = [];
 const createdUserIds: string[] = [];
 const createdRoleIds: string[] = [];
+
+type PreferenceRow = {
+  user_id: string;
+  theme: "system" | "light" | "dark";
+  timezone: string | null;
+  notify_comment_mentions: boolean;
+  notify_input_request_status_updates: boolean;
+  display_name: string | null;
+};
 
 test.beforeAll(async () => {
   await cleanupStaleE2eData();
@@ -209,6 +220,156 @@ async function createReadOnlyUser() {
   expect(membership.error).toBeNull();
 
   return { email, password };
+}
+
+function parseRgb(value: string) {
+  const hex = value.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (hex) {
+    return [parseInt(hex[1], 16), parseInt(hex[2], 16), parseInt(hex[3], 16)] as const;
+  }
+
+  const oklch = value.match(/oklch\(([\d.]+%?)\s+([\d.]+)\s+([\d.]+)/);
+  if (oklch) {
+    const lightness = oklch[1].endsWith("%")
+      ? Number(oklch[1].slice(0, -1)) / 100
+      : Number(oklch[1]);
+    const chroma = Number(oklch[2]);
+    const hueRadians = (Number(oklch[3]) * Math.PI) / 180;
+    const a = chroma * Math.cos(hueRadians);
+    const b = chroma * Math.sin(hueRadians);
+    const lPrime = lightness + 0.3963377774 * a + 0.2158037573 * b;
+    const mPrime = lightness - 0.1055613458 * a - 0.0638541728 * b;
+    const sPrime = lightness - 0.0894841775 * a - 1.291485548 * b;
+    const l = lPrime ** 3;
+    const m = mPrime ** 3;
+    const s = sPrime ** 3;
+    const linearRgb = [
+      4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+      -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+      -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+    ];
+    const toSrgb = (channel: number) => {
+      const clamped = Math.min(1, Math.max(0, channel));
+      const encoded = clamped <= 0.0031308
+        ? 12.92 * clamped
+        : 1.055 * clamped ** (1 / 2.4) - 0.055;
+      return Math.round(encoded * 255);
+    };
+
+    return linearRgb.map(toSrgb) as [number, number, number];
+  }
+
+  const match = value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!match) {
+    throw new Error(`Unable to parse computed rgb color: ${value}`);
+  }
+
+  return [Number(match[1]), Number(match[2]), Number(match[3])] as const;
+}
+
+function channelToLinear(value: number) {
+  const channel = value / 255;
+  return channel <= 0.03928
+    ? channel / 12.92
+    : ((channel + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance(rgb: readonly [number, number, number]) {
+  return (
+    0.2126 * channelToLinear(rgb[0]) +
+    0.7152 * channelToLinear(rgb[1]) +
+    0.0722 * channelToLinear(rgb[2])
+  );
+}
+
+function contrastRatio(color: string, backgroundColor: string) {
+  const foreground = relativeLuminance(parseRgb(color));
+  const background = relativeLuminance(parseRgb(backgroundColor));
+  const lighter = Math.max(foreground, background);
+  const darker = Math.min(foreground, background);
+
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function computedTextContrast(locator: ReturnType<Page["locator"]>) {
+  const styles = await locator.first().evaluate((element) => {
+    function normalizeColor(value: string) {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) {
+        return value;
+      }
+      context.fillStyle = value;
+
+      return context.fillStyle;
+    }
+
+    let node: Element | null = element;
+    let backgroundColor = "rgba(0, 0, 0, 0)";
+
+    while (node) {
+      const resolved = getComputedStyle(node).backgroundColor;
+
+      if (resolved && resolved !== "rgba(0, 0, 0, 0)" && resolved !== "transparent") {
+        backgroundColor = resolved;
+        break;
+      }
+
+      node = node.parentElement;
+    }
+
+    const computed = getComputedStyle(element);
+    return {
+      color: normalizeColor(computed.color),
+      backgroundColor: normalizeColor(backgroundColor),
+      borderColor: computed.borderColor,
+      outlineStyle: computed.outlineStyle,
+      outlineWidth: computed.outlineWidth,
+    };
+  });
+
+  return {
+    ...styles,
+    ratio: contrastRatio(styles.color, styles.backgroundColor),
+  };
+}
+
+async function getE2eRunnerPreferences() {
+  const supabase = createSupabaseTestClient();
+  const { data: users, error: userError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  expect(userError).toBeNull();
+  const runner = users.users.find((user) => user.email === E2E_RUNNER_EMAIL);
+  expect(runner).toBeTruthy();
+
+  const preferences = await supabase
+    .from("user_preferences")
+    .select("user_id, theme, timezone, notify_comment_mentions, notify_input_request_status_updates, display_name")
+    .eq("user_id", runner!.id)
+    .maybeSingle<PreferenceRow>();
+  expect(preferences.error).toBeNull();
+
+  return { runnerUserId: runner!.id, preferences: preferences.data ?? null };
+}
+
+async function setE2eRunnerTheme(userId: string, theme: PreferenceRow["theme"]) {
+  const supabase = createSupabaseTestClient();
+  const result = await supabase.from("user_preferences").upsert({ user_id: userId, theme });
+  expect(result.error).toBeNull();
+}
+
+async function restoreE2eRunnerPreferences(
+  userId: string,
+  preferences: PreferenceRow | null,
+) {
+  const supabase = createSupabaseTestClient();
+  if (preferences) {
+    const result = await supabase.from("user_preferences").upsert(preferences);
+    expect(result.error).toBeNull();
+    return;
+  }
+
+  const result = await supabase.from("user_preferences").delete().eq("user_id", userId);
+  expect(result.error).toBeNull();
 }
 
 function lane(page: Page, label: string) {
@@ -1117,6 +1278,90 @@ test("required Choice board omits Unset lane and destination", async ({ page }) 
   await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
   await expect(lane(page, "Unset")).toHaveCount(0);
   await expect(cardInLane(page, "Todo", `${run.label} Alpha`).getByLabel("Move to")).not.toContainText("Unset");
+});
+
+test("board Move controls stay readable in light, dark, and system themes", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const { runnerUserId, preferences } = await getE2eRunnerPreferences();
+  const { work, records, boardViewId } = await createBoardScenario(run);
+
+  try {
+    for (const mode of [
+      { theme: "light" as const, colorScheme: "light" as const },
+      { theme: "dark" as const, colorScheme: "light" as const },
+      { theme: "system" as const, colorScheme: "light" as const },
+      { theme: "system" as const, colorScheme: "dark" as const },
+    ]) {
+      await setE2eRunnerTheme(runnerUserId, mode.theme);
+      await page.emulateMedia({ colorScheme: mode.colorScheme });
+      await page.goto(`/entities/${work.id}?view=${boardViewId}`);
+      await expect(page.getByRole("region", { name: /board grouped by Stage/i })).toBeVisible();
+
+      const alpha = cardInLane(page, "Todo", `${run.label} Alpha`);
+      const select = alpha.getByLabel("Move to");
+      const button = alpha.getByRole("button", { name: "Move" });
+      await expect(button).toBeDisabled();
+      await expect((await computedTextContrast(button)).ratio).toBeGreaterThanOrEqual(4.5);
+      await expect((await computedTextContrast(select)).ratio).toBeGreaterThanOrEqual(4.5);
+
+      await select.focus();
+      let focusStyles = await computedTextContrast(select);
+      expect(focusStyles.outlineStyle).not.toBe("none");
+      expect(parseFloat(focusStyles.outlineWidth)).toBeGreaterThan(0);
+
+      await select.selectOption({ label: "Done" });
+      await expect(button).toBeEnabled();
+      await expect((await computedTextContrast(button)).ratio).toBeGreaterThanOrEqual(4.5);
+      await button.focus();
+      focusStyles = await computedTextContrast(button);
+      expect(focusStyles.outlineStyle).not.toBe("none");
+      expect(parseFloat(focusStyles.outlineWidth)).toBeGreaterThan(0);
+
+      await expect((await computedTextContrast(lane(page, "Done").getByText("No records."))).ratio).toBeGreaterThanOrEqual(4.5);
+      await expect((await computedTextContrast(lane(page, "Todo").locator("[title='Todo']"))).ratio).toBeGreaterThanOrEqual(4.5);
+      await expect((await computedTextContrast(lane(page, "Doing").locator("[title='Doing']"))).ratio).toBeGreaterThanOrEqual(4.5);
+      await expect((await computedTextContrast(lane(page, "Parked").locator("[title='Parked (Archived)']"))).ratio).toBeGreaterThanOrEqual(4.5);
+    }
+
+    await setE2eRunnerTheme(runnerUserId, "dark");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto(`/entities/${work.id}?view=${boardViewId}`);
+    const archived = await supabase
+      .from("entity_records")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("workspace_id", DEMO_WORKSPACE_ID)
+      .eq("entity_type_id", work.id)
+      .eq("id", records.alphaId);
+    expect(archived.error).toBeNull();
+
+    let delayedPost = false;
+    await page.route("**/entities/**", async (route) => {
+      if (route.request().method() === "POST" && !delayedPost) {
+        delayedPost = true;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      await route.continue();
+    });
+
+    const alpha = cardInLane(page, "Todo", `${run.label} Alpha`);
+    await alpha.getByLabel("Move to").selectOption({ label: "Done" });
+    await alpha.getByRole("button", { name: "Move" }).click();
+    const pendingButton = alpha.getByRole("button", { name: "Moving..." });
+    await expect(pendingButton).toBeVisible();
+    await expect((await computedTextContrast(pendingButton)).ratio).toBeGreaterThanOrEqual(4.5);
+    await expect((await computedTextContrast(alpha.getByLabel("Move to"))).ratio).toBeGreaterThanOrEqual(4.5);
+    const alert = alpha.getByRole("alert");
+    await expect(alert).toContainText("Archived records are read-only.");
+    await expect((await computedTextContrast(alert)).ratio).toBeGreaterThanOrEqual(4.5);
+    await expect(cardInLane(page, "Todo", `${run.label} Alpha`)).toBeVisible();
+    await page.unroute("**/entities/**");
+  } finally {
+    await restoreE2eRunnerPreferences(runnerUserId, preferences);
+    await page.emulateMedia({ colorScheme: "light" });
+  }
 });
 
 test("field hard delete is blocked by saved view dependency and deleting a view preserves records", async () => {
