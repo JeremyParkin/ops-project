@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarMoreDisclosure } from "@/app/components/calendar-more-disclosure";
 import {
   buildCalendarViewModel,
+  currentCalendarMonthUtc,
   type CalendarMonth,
   type CalendarRecord,
 } from "@/lib/domain/calendar-view";
@@ -40,6 +41,13 @@ function formatDateLabel(value: string) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+function todayDateKeyUtc() {
+  const today = currentCalendarMonthUtc();
+  const day = new Date().getUTCDate();
+
+  return `${today.key}-${String(day).padStart(2, "0")}`;
 }
 
 function RecordLink({ record }: { record: CalendarRecord }) {
@@ -108,34 +116,106 @@ export function EntityCalendarView({
     })),
   });
   const monthHeading = formatMonthHeading(month);
+  const todayKey = todayDateKeyUtc();
 
   return (
     <section className="mx-auto grid w-full max-w-6xl gap-4" data-testid="entity-calendar-view">
-      <div className="flex flex-wrap items-center justify-between gap-3 border border-grit bg-chalk px-4 py-3">
-        <div>
-          <p className="text-xs font-semibold uppercase text-stone">Calendar by {calendarField.name}</p>
-          <h2 className="text-xl font-semibold text-graphite">{monthHeading}</h2>
+      <div className="border border-grit bg-paper">
+        <div className="border-b border-grit bg-chalk px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase text-stone">Calendar by {calendarField.name}</p>
+            <nav aria-label="Calendar month navigation" className="mt-1 flex flex-wrap items-center gap-2">
+              <Link
+                href={previousHref}
+                aria-label="Previous month"
+                className="inline-flex h-8 w-8 items-center justify-center border border-border bg-surface text-lg font-semibold text-foreground hover:bg-background focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground"
+              >
+                <span aria-hidden="true">‹</span>
+              </Link>
+              <h2 className="min-w-0 text-xl font-semibold text-graphite">{monthHeading}</h2>
+              <Link
+                href={nextHref}
+                aria-label="Next month"
+                className="inline-flex h-8 w-8 items-center justify-center border border-border bg-surface text-lg font-semibold text-foreground hover:bg-background focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground"
+              >
+                <span aria-hidden="true">›</span>
+              </Link>
+              <Link
+                href={todayHref}
+                className="inline-flex h-9 items-center justify-center border border-border bg-surface px-3 text-sm font-medium text-foreground hover:bg-background focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground"
+              >
+                Today
+              </Link>
+            </nav>
+          </div>
         </div>
-        <nav aria-label="Calendar month navigation" className="flex flex-wrap items-center gap-2">
-          <Link
-            href={previousHref}
-            className="inline-flex h-9 items-center justify-center border border-border bg-surface px-3 text-sm font-medium text-foreground hover:bg-background focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground"
-          >
-            Previous
-          </Link>
-          <Link
-            href={todayHref}
-            className="inline-flex h-9 items-center justify-center border border-border bg-surface px-3 text-sm font-medium text-foreground hover:bg-background focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground"
-          >
-            Today
-          </Link>
-          <Link
-            href={nextHref}
-            className="inline-flex h-9 items-center justify-center border border-border bg-surface px-3 text-sm font-medium text-foreground hover:bg-background focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground"
-          >
-            Next
-          </Link>
-        </nav>
+
+        <div className="overflow-x-auto" data-testid="calendar-scroll-container">
+          <table className="w-full min-w-[760px] table-fixed border-collapse" aria-label={`${entityType.name} calendar for ${monthHeading}`}>
+            <thead className="bg-chalk">
+              <tr>
+                {weekdayLabels.map((label) => (
+                  <th key={label} scope="col" className="border-b border-grit px-3 py-2 text-left text-xs font-semibold uppercase text-stone">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {model.weeks.map((week, weekIndex) => (
+                <tr key={`week-${weekIndex}`}>
+                  {week.map((cell) => {
+                    const visibleRecords = cell.records.slice(0, CALENDAR_DAY_VISIBLE_RECORD_LIMIT);
+                    const hiddenRecords = cell.records.slice(CALENDAR_DAY_VISIBLE_RECORD_LIMIT);
+                    const dateLabel = formatDateLabel(cell.date);
+                    const isToday = cell.inMonth && cell.date === todayKey;
+
+                    return (
+                      <td
+                        key={cell.date}
+                        aria-label={`${dateLabel}${cell.inMonth ? "" : " outside displayed month"}`}
+                        className={`h-36 align-top border-b border-r border-grit p-2 ${
+                          cell.inMonth ? "bg-paper" : "bg-chalk text-muted"
+                        }`}
+                        data-calendar-date={cell.date}
+                        data-calendar-in-month={cell.inMonth ? "true" : "false"}
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className={`inline-flex h-6 min-w-6 items-center justify-center px-1 text-sm font-semibold ${
+                            isToday
+                              ? "bg-brass text-graphite"
+                              : cell.inMonth
+                                ? "text-graphite"
+                                : "text-stone"
+                          }`}>
+                            {cell.day}
+                          </span>
+                          {cell.records.length > 0 ? (
+                            <span className="text-xs text-stone">
+                              {cell.records.length}
+                            </span>
+                          ) : null}
+                        </div>
+                        {cell.inMonth && visibleRecords.length > 0 ? (
+                          <ul role="list" className="grid gap-1">
+                            {visibleRecords.map((record) => (
+                              <li key={record.id}>
+                                <RecordLink record={record} />
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {cell.inMonth && hiddenRecords.length > 0 ? (
+                          <CalendarMoreDisclosure dateLabel={dateLabel} records={hiddenRecords} />
+                        ) : null}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {model.outsideMonthRecordCount > 0 ? (
@@ -152,66 +232,6 @@ export function EntityCalendarView({
           </p>
         </section>
       ) : null}
-
-      <div className="overflow-x-auto border border-grit bg-paper">
-        <table className="min-w-[760px] table-fixed border-collapse" aria-label={`${entityType.name} calendar for ${monthHeading}`}>
-          <thead className="bg-chalk">
-            <tr>
-              {weekdayLabels.map((label) => (
-                <th key={label} scope="col" className="border-b border-grit px-3 py-2 text-left text-xs font-semibold uppercase text-stone">
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {model.weeks.map((week, weekIndex) => (
-              <tr key={`week-${weekIndex}`}>
-                {week.map((cell) => {
-                  const visibleRecords = cell.records.slice(0, CALENDAR_DAY_VISIBLE_RECORD_LIMIT);
-                  const hiddenRecords = cell.records.slice(CALENDAR_DAY_VISIBLE_RECORD_LIMIT);
-                  const dateLabel = formatDateLabel(cell.date);
-
-                  return (
-                    <td
-                      key={cell.date}
-                      aria-label={`${dateLabel}${cell.inMonth ? "" : " outside displayed month"}`}
-                      className={`h-36 align-top border-b border-r border-grit p-2 ${
-                        cell.inMonth ? "bg-paper" : "bg-chalk text-muted"
-                      }`}
-                      data-calendar-date={cell.date}
-                      data-calendar-in-month={cell.inMonth ? "true" : "false"}
-                    >
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className={`text-sm font-semibold ${cell.inMonth ? "text-graphite" : "text-stone"}`}>
-                          {cell.day}
-                        </span>
-                        {cell.records.length > 0 ? (
-                          <span className="text-xs text-stone">
-                            {cell.records.length}
-                          </span>
-                        ) : null}
-                      </div>
-                      {cell.inMonth && visibleRecords.length > 0 ? (
-                        <ul role="list" className="grid gap-1">
-                          {visibleRecords.map((record) => (
-                            <li key={record.id}>
-                              <RecordLink record={record} />
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {cell.inMonth && hiddenRecords.length > 0 ? (
-                        <CalendarMoreDisclosure dateLabel={dateLabel} records={hiddenRecords} />
-                      ) : null}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
       <RecordList
         title="Undated"

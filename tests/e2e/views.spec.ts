@@ -1354,7 +1354,22 @@ test("calendar renders evaluated records by month with undated, invalid, outside
   await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
   await expect(page.getByTestId("entity-calendar-view")).toBeVisible();
   await expect(page.getByRole("heading", { name: "August 2026" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Previous month" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Next month" })).toBeVisible();
   await expect(page.getByText("2 dated records in this view fall outside August 2026.")).toBeVisible();
+  await expect(page.getByRole("table", { name: /calendar for August 2026/i })).toBeVisible();
+  const desktopWidths = await page.getByTestId("calendar-scroll-container").evaluate((container) => {
+    const table = container.querySelector("table");
+    if (!table) {
+      throw new Error("Calendar table missing.");
+    }
+
+    return {
+      containerWidth: container.clientWidth,
+      tableWidth: table.getBoundingClientRect().width,
+    };
+  });
+  expect(desktopWidths.tableWidth).toBeGreaterThanOrEqual(desktopWidths.containerWidth - 1);
 
   const sameDay = calendarCell(page, "2026-08-15");
   const sameDayLinks = sameDay.getByRole("link");
@@ -1401,7 +1416,7 @@ test("calendar month navigation preserves view and pending query state without p
 
   await page.goto(repeatedUrl);
   await expect(page.getByRole("heading", { name: "January 2026" })).toBeVisible();
-  await page.getByRole("link", { name: "Previous" }).click();
+  await page.getByRole("link", { name: "Previous month" }).click();
   await expect(page).toHaveURL(/month=2025-12/);
   const url = new URL(page.url());
   expect(url.searchParams.get("view")).toBe(calendarViewId);
@@ -1413,7 +1428,7 @@ test("calendar month navigation preserves view and pending query state without p
   ]);
   expect(url.searchParams.getAll("debug")).toEqual(["one", "two"]);
 
-  await page.getByRole("link", { name: "Next" }).click();
+  await page.getByRole("link", { name: "Next month" }).click();
   await expect(page).toHaveURL(/month=2026-01/);
   await page.getByRole("link", { name: "Today" }).click();
   await expect(page).toHaveURL(new RegExp(`month=${currentUtcMonthKey()}`));
@@ -1514,13 +1529,22 @@ test("calendar empty month, stale config repair, read-only rendering, and theme 
       await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
       await expect(page.getByTestId("entity-calendar-view")).toBeVisible();
       await expect((await computedTextContrast(page.getByRole("heading", { name: "August 2026" }))).ratio).toBeGreaterThanOrEqual(4.5);
-      await expect((await computedTextContrast(page.getByRole("link", { name: "Previous" }))).ratio).toBeGreaterThanOrEqual(4.5);
+      await expect((await computedTextContrast(page.getByRole("link", { name: "Previous month" }))).ratio).toBeGreaterThanOrEqual(4.5);
       await expect((await computedTextContrast(calendarCell(page, "2026-08-15").getByRole("link", { name: `${run.label} Alpha Same Day` }))).ratio).toBeGreaterThanOrEqual(4.5);
       await expect((await computedTextContrast(page.getByTestId("calendar-undated-records").getByRole("heading", { name: "Undated" }))).ratio).toBeGreaterThanOrEqual(4.5);
     }
+
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
+    const narrowScroll = await page.getByTestId("calendar-scroll-container").evaluate((container) => ({
+      clientWidth: container.clientWidth,
+      scrollWidth: container.scrollWidth,
+    }));
+    expect(narrowScroll.scrollWidth).toBeGreaterThan(narrowScroll.clientWidth);
   } finally {
     await restoreE2eRunnerPreferences(runnerUserId, preferences);
     await page.emulateMedia({ colorScheme: "light" });
+    await page.setViewportSize({ width: 1280, height: 720 });
   }
 });
 
