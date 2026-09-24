@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 import {
   cleanupE2eRun,
   cleanupStaleE2eData,
@@ -399,6 +399,34 @@ function currentUtcMonthKey() {
   const now = new Date();
 
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function currentUtcMonthHeading() {
+  const now = new Date();
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
+}
+
+function entityPageRequestCounter(page: Page, entityTypeId: string, targetMonths: string[]) {
+  const matchingUrls: string[] = [];
+  const path = `/entities/${entityTypeId}`;
+  const listener = (request: Request) => {
+    const url = new URL(request.url());
+    if (url.pathname === path && targetMonths.includes(url.searchParams.get("month") ?? "")) {
+      matchingUrls.push(request.url());
+    }
+  };
+
+  page.on("request", listener);
+
+  return {
+    matchingUrls,
+    stop: () => page.off("request", listener),
+  };
 }
 
 async function holdNextBoardMoveAction(page: Page) {
@@ -1416,8 +1444,14 @@ test("calendar month navigation preserves view and pending query state without p
 
   await page.goto(repeatedUrl);
   await expect(page.getByRole("heading", { name: "January 2026" })).toBeVisible();
+  const navigationRequests = entityPageRequestCounter(page, work.id, [
+    "2025-12",
+    "2026-01",
+    currentUtcMonthKey(),
+  ]);
   await page.getByRole("link", { name: "Previous month" }).click();
   await expect(page).toHaveURL(/month=2025-12/);
+  await expect(page.getByRole("heading", { name: "December 2025" })).toBeVisible();
   const url = new URL(page.url());
   expect(url.searchParams.get("view")).toBe(calendarViewId);
   expect(url.searchParams.get("filterValue:0")).toBe("Same");
@@ -1430,29 +1464,102 @@ test("calendar month navigation preserves view and pending query state without p
 
   await page.getByRole("link", { name: "Next month" }).click();
   await expect(page).toHaveURL(/month=2026-01/);
+  await expect(page.getByRole("heading", { name: "January 2026" })).toBeVisible();
   await page.getByRole("link", { name: "Today" }).click();
   await expect(page).toHaveURL(new RegExp(`month=${currentUtcMonthKey()}`));
+  await expect(page.getByRole("heading", { name: currentUtcMonthHeading() })).toBeVisible();
+  expect(navigationRequests.matchingUrls).toEqual([]);
+  navigationRequests.stop();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/month=2026-01/);
+  await expect(page.getByRole("heading", { name: "January 2026" })).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(new RegExp(`month=${currentUtcMonthKey()}`));
+  await expect(page.getByRole("heading", { name: currentUtcMonthHeading() })).toBeVisible();
+
+  await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
+  const nextForHistory = page.getByRole("link", { name: "Next month" });
+  await nextForHistory.scrollIntoViewIfNeeded();
+  await expect(nextForHistory).toBeVisible();
+  await nextForHistory.click();
+  await expect(page).toHaveURL(/month=2026-09/);
+  await expect(page.getByRole("heading", { name: "September 2026" })).toBeVisible();
+  await expect(page.getByText("7 dated records in this view fall outside September 2026.")).toBeVisible();
+  await expect(calendarCell(page, "2026-09-01").getByRole("link", { name: `${run.label} Outside Month` })).toBeVisible();
+  await page.getByRole("link", { name: "Next month" }).click();
+  await expect(page).toHaveURL(/month=2026-10/);
+  await expect(page.getByRole("heading", { name: "October 2026" })).toBeVisible();
+  await expect(page.getByText("8 dated records in this view fall outside October 2026.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No records fall in this month." })).toBeVisible();
+
+  const historyScrollY = await page.evaluate(() => window.scrollY);
+  await page.goBack();
+  await expect(page).toHaveURL(/month=2026-09/);
+  await expect(page.getByRole("heading", { name: "September 2026" })).toBeVisible();
+  await expect(page.getByText("7 dated records in this view fall outside September 2026.")).toBeVisible();
+  await expect(calendarCell(page, "2026-09-01").getByRole("link", { name: `${run.label} Outside Month` })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "September 2026" })).not.toBeFocused();
+  let afterHistoryScrollY = await page.evaluate(() => window.scrollY);
+  expect(Math.abs(afterHistoryScrollY - historyScrollY)).toBeLessThanOrEqual(160);
+
+  await page.goForward();
+  await expect(page).toHaveURL(/month=2026-10/);
+  await expect(page.getByRole("heading", { name: "October 2026" })).toBeVisible();
+  await expect(page.getByText("8 dated records in this view fall outside October 2026.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No records fall in this month." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "October 2026" })).not.toBeFocused();
+  afterHistoryScrollY = await page.evaluate(() => window.scrollY);
+  expect(Math.abs(afterHistoryScrollY - historyScrollY)).toBeLessThanOrEqual(160);
 
   await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=not-a-month`);
   await expect(page.getByTestId("entity-calendar-view")).toBeVisible();
   await expect(page).toHaveURL(/month=not-a-month/);
+  await expect(page.getByRole("heading", { name: currentUtcMonthHeading() })).toBeVisible();
+  await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08&month=2026-09`);
+  await expect(page.getByTestId("entity-calendar-view")).toBeVisible();
+  await expect(page.getByRole("heading", { name: currentUtcMonthHeading() })).toBeVisible();
   await page.goto(`/entities/${work.id}?view=${calendarViewId}`);
   await expect(page.getByRole("heading", { name: new RegExp(new Date().getUTCFullYear().toString()) })).toBeVisible();
 
   await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
+  await page.getByRole("link", { name: "Next month" }).click();
+  await expect(page).toHaveURL(/month=2026-09/);
+  await expect(page.getByRole("heading", { name: "September 2026" })).toBeVisible();
+  const reloadRequests = entityPageRequestCounter(page, work.id, ["2026-09"]);
+  await page.reload();
+  await expect(page).toHaveURL(/month=2026-09/);
+  await expect(page.getByRole("heading", { name: "September 2026" })).toBeVisible();
+  await expect(calendarCell(page, "2026-09-01").getByRole("link", { name: `${run.label} Outside Month` })).toBeVisible();
+  expect(reloadRequests.matchingUrls.length).toBeGreaterThan(0);
+  reloadRequests.stop();
+  await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-09`);
+  await expect(page.getByRole("heading", { name: "September 2026" })).toBeVisible();
+  await expect(calendarCell(page, "2026-09-01").getByRole("link", { name: `${run.label} Outside Month` })).toBeVisible();
   await expect(page.getByTestId("entity-view-quickbar").getByRole("button", { name: "Columns" })).toHaveCount(0);
-  await page.getByRole("button", { name: "+ Add sort" }).click();
-  await selectReactOption(page.getByLabel("Quick sort field"), {
-    label: "Title (text)",
-  });
-  await selectReactOption(page.getByLabel("Quick sort direction"), {
-    value: "desc",
-  });
+  await page.getByRole("button", { name: "+ Add filter" }).click();
+  await page.getByLabel("Quick filter field").selectOption(work.fields.title.id);
+  await page.getByLabel("Quick filter operator").selectOption("contains");
+  await page.getByLabel("Quick filter value").fill("Alpha");
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page).toHaveURL(/month=2026-08/);
+  await expect(page).toHaveURL(/month=2026-09/);
+  await expect(page.getByRole("heading", { name: "September 2026" })).toBeVisible();
+  await expect(page.getByText("1 dated record in this view fall outside September 2026.")).toBeVisible();
+  await expect(page.getByRole("link", { name: `${run.label} Beta Same Day` })).toHaveCount(0);
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(page).toHaveURL(/month=2026-09/);
+  await expect(page.getByRole("heading", { name: "September 2026" })).toBeVisible();
+  await page.getByRole("button", { name: "+ Add sort" }).click();
+  await page.getByLabel("Quick sort field").selectOption(work.fields.title.id);
+  await page.getByLabel("Quick sort direction").selectOption("desc");
+  await expect(page.getByLabel("Quick sort direction")).toHaveValue("desc");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page).toHaveURL(/month=2026-09/);
+  await expect(page).toHaveURL(/sortDirection%3A0=desc|sortDirection:0=desc/);
   await page.getByRole("button", { name: "Update View" }).click();
   await page.getByRole("button", { name: "Save View" }).click();
   await expect(page.getByText("View updated.")).toBeVisible();
+  await expect(page).toHaveURL(/month=2026-09/);
 
   const { data, error } = await supabase
     .from("entity_views")

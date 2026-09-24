@@ -81,8 +81,6 @@ import { validateViewFormData } from "@/lib/domain/view-validation";
 import { resolveTableEmptyState } from "@/lib/domain/table-empty-state";
 import {
   currentCalendarMonthUtc,
-  nextCalendarMonth,
-  previousCalendarMonth,
   resolveCalendarMonth,
 } from "@/lib/domain/calendar-view";
 import type { ViewFilter, ViewSort } from "@/lib/domain/view-types";
@@ -517,15 +515,6 @@ export default async function EntityPage({
   const currentSearchParams = rawSearchParamsToUrlSearchParams(rawSearchParams);
   const calendarMonth = resolveCalendarMonth(monthParam);
   const currentCalendarMonth = currentCalendarMonthUtc();
-  const calendarHrefFor = (monthKey: string) => {
-    const nextParams = new URLSearchParams(currentSearchParams);
-    nextParams.set("month", monthKey);
-
-    return `/entities/${entityTypeId}?${nextParams.toString()}`;
-  };
-  const calendarPreviousHref = calendarHrefFor(previousCalendarMonth(calendarMonth).key);
-  const calendarTodayHref = calendarHrefFor(currentCalendarMonth.key);
-  const calendarNextHref = calendarHrefFor(nextCalendarMonth(calendarMonth).key);
   const sortHrefByFieldId: Record<string, string> = {};
   const sortDirectionByFieldId: Record<string, "asc" | "desc"> = {};
   evaluatedView.visibleFields
@@ -865,9 +854,7 @@ export default async function EntityPage({
             records={evaluatedView.records}
             calendarField={calendarField}
             month={calendarMonth}
-            previousHref={calendarPreviousHref}
-            todayHref={calendarTodayHref}
-            nextHref={calendarNextHref}
+            currentMonth={currentCalendarMonth}
           />
         ) : (
           <EntityRecordsTable
