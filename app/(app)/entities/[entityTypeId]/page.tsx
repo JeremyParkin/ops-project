@@ -20,6 +20,7 @@ import {
 } from "@/app/work-actions";
 import { EntityRecordsTable } from "@/app/components/entity-records-table";
 import { EntityBoardView } from "@/app/components/entity-board-view";
+import { EntityCalendarView } from "@/app/components/entity-calendar-view";
 import { EntitySettingsForm } from "@/app/components/entity-settings-form";
 import { EntityTypeQualityReviewForm } from "@/app/components/entity-type-quality-review-form";
 import { EntityTypeQualityReviewPresentationForm } from "@/app/components/entity-type-quality-review-presentation-form";
@@ -78,6 +79,12 @@ import {
 } from "@/lib/domain/view-query-state";
 import { validateViewFormData } from "@/lib/domain/view-validation";
 import { resolveTableEmptyState } from "@/lib/domain/table-empty-state";
+import {
+  currentCalendarMonthUtc,
+  nextCalendarMonth,
+  previousCalendarMonth,
+  resolveCalendarMonth,
+} from "@/lib/domain/calendar-view";
 import type { ViewFilter, ViewSort } from "@/lib/domain/view-types";
 import {
   countViewReferencesByFieldId,
@@ -333,6 +340,7 @@ export default async function EntityPage({
       originRecordId?: string;
       manage?: string;
       saveView?: string;
+      month?: string;
     } & RawSearchParams
   >;
 }) {
@@ -348,6 +356,7 @@ export default async function EntityPage({
     originRecordId,
     manage: manageParam,
     saveView: saveViewParam,
+    month: monthParam,
   } = rawSearchParams;
   const showArchivedRecords = showArchivedParam === "true";
   const showArchivedFields = showArchivedFieldsParam === "true";
@@ -482,6 +491,10 @@ export default async function EntityPage({
     presentation?.mode === "board"
       ? fields.find((candidate) => candidate.id === presentation.config.choiceFieldDefinitionId)
       : undefined;
+  const calendarField =
+    presentation?.mode === "calendar"
+      ? fields.find((candidate) => candidate.id === presentation.config.dateFieldDefinitionId)
+      : undefined;
   const presentationWarnings: string[] = [];
   let invalidPresentation = false;
 
@@ -494,9 +507,7 @@ export default async function EntityPage({
       invalidPresentation = true;
     }
   } else if (presentation?.mode === "calendar") {
-    const field = fields.find((candidate) => candidate.id === presentation.config.dateFieldDefinitionId);
-
-    if (!field || field.type !== "date" || field.archivedAt) {
+    if (!calendarField || calendarField.type !== "date" || calendarField.archivedAt) {
       presentationWarnings.push("Calendar presentation references a Date field that is archived, missing, or incompatible.");
       invalidPresentation = true;
     }
@@ -504,6 +515,17 @@ export default async function EntityPage({
   const viewWarnings = [...evaluatedView.warnings, ...presentationWarnings];
 
   const currentSearchParams = rawSearchParamsToUrlSearchParams(rawSearchParams);
+  const calendarMonth = resolveCalendarMonth(monthParam);
+  const currentCalendarMonth = currentCalendarMonthUtc();
+  const calendarHrefFor = (monthKey: string) => {
+    const nextParams = new URLSearchParams(currentSearchParams);
+    nextParams.set("month", monthKey);
+
+    return `/entities/${entityTypeId}?${nextParams.toString()}`;
+  };
+  const calendarPreviousHref = calendarHrefFor(previousCalendarMonth(calendarMonth).key);
+  const calendarTodayHref = calendarHrefFor(currentCalendarMonth.key);
+  const calendarNextHref = calendarHrefFor(nextCalendarMonth(calendarMonth).key);
   const sortHrefByFieldId: Record<string, string> = {};
   const sortDirectionByFieldId: Record<string, "asc" | "desc"> = {};
   evaluatedView.visibleFields
@@ -836,15 +858,17 @@ export default async function EntityPage({
             recordActionContext={canOperateRecords ? context : undefined}
             emptyState={emptyState}
           />
-        ) : !isArchivedEntity && !isManaging && configuredPresentationMode === "calendar" ? (
-          <section className="mx-auto w-full max-w-6xl border border-dashed border-grit bg-chalk px-5 py-10 text-center">
-            <h2 className="text-lg font-semibold text-graphite">
-              Calendar view configured
-            </h2>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone">
-              This saved view is configured for calendar, but that renderer is not available in this implementation slice yet.
-            </p>
-          </section>
+        ) : !isArchivedEntity && !isManaging && configuredPresentationMode === "calendar" && calendarField ? (
+          <EntityCalendarView
+            entityType={entityType}
+            fields={fields}
+            records={evaluatedView.records}
+            calendarField={calendarField}
+            month={calendarMonth}
+            previousHref={calendarPreviousHref}
+            todayHref={calendarTodayHref}
+            nextHref={calendarNextHref}
+          />
         ) : (
           <EntityRecordsTable
             entityType={entityType}

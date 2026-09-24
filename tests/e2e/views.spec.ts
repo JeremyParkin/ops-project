@@ -391,6 +391,16 @@ function pendingCardInLane(page: Page, laneLabel: string, cardLabel: string) {
   });
 }
 
+function calendarCell(page: Page, date: string) {
+  return page.locator(`[data-calendar-date="${date}"]`);
+}
+
+function currentUtcMonthKey() {
+  const now = new Date();
+
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 async function holdNextBoardMoveAction(page: Page) {
   let release!: () => void;
   let matched = false;
@@ -564,6 +574,108 @@ async function createPresentationViewsScenario(run: TestRun) {
   });
 
   return { work, stage };
+}
+
+async function createCalendarScenario(run: TestRun) {
+  const supabase = createSupabaseTestClient();
+  const work = await createEntity(supabase, run, "Calendar Work", [
+    { slug: "title", name: "Title", type: "text", required: true },
+    { slug: "due", name: "Due", type: "date" },
+  ]);
+  const records = {
+    betaId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Beta Same Day`,
+        due: "2026-08-15",
+      },
+    }),
+    alphaId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Alpha Same Day`,
+        due: "2026-08-15",
+      },
+    }),
+    firstCrowdedId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Crowded A`,
+        due: "2026-08-20",
+      },
+    }),
+    secondCrowdedId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Crowded B`,
+        due: "2026-08-20",
+      },
+    }),
+    thirdCrowdedId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Crowded C`,
+        due: "2026-08-20",
+      },
+    }),
+    fourthCrowdedId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Crowded D`,
+        due: "2026-08-20",
+      },
+    }),
+    undatedId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Undated`,
+        due: null,
+      },
+    }),
+    outsideId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Outside Month`,
+        due: "2026-09-01",
+      },
+    }),
+    emptyMonthId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Empty Month Outside`,
+        due: "2026-07-01",
+      },
+    }),
+    invalidId: await createEntityRecord({
+      entity: work,
+      valuesBySlug: {
+        title: `${run.label} Invalid Date`,
+        due: "2026-08-25",
+      },
+    }),
+  };
+  const invalidUpdate = await supabase
+    .from("entity_records")
+    .update({
+      values: {
+        [work.fields.title.key]: `${run.label} Invalid Date`,
+        [work.fields.due.key]: "2026-02-30",
+      },
+    })
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("entity_type_id", work.id)
+    .eq("id", records.invalidId);
+  expect(invalidUpdate.error).toBeNull();
+  const calendarViewId = await createView({
+    entity: work,
+    name: `${run.label} Calendar`,
+    presentationMode: "calendar",
+    presentationConfig: { dateFieldDefinitionId: work.fields.due.id },
+    sorts: [{ fieldDefinitionId: work.fields.title.id, direction: "asc" }],
+    columnFieldDefinitionIds: [work.fields.title.id, work.fields.due.id],
+  });
+
+  return { work, records, calendarViewId };
 }
 
 async function createBoardScenario(run: TestRun, required = false) {
@@ -1157,9 +1269,10 @@ test("presentation modes can be saved, reloaded, and shown as placeholders", asy
   await expect(page.getByText("View created.")).toBeVisible();
 
   await page.getByRole("link", { name: `${run.label} Calendar` }).click();
-  await expect(page.getByRole("heading", { name: "Calendar view configured" })).toBeVisible();
+  await expect(page.getByTestId("entity-calendar-view")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Calendar view configured" })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Calendar view configured" })).toBeVisible();
+  await expect(page.getByTestId("entity-calendar-view")).toBeVisible();
 });
 
 test("stale presentation config shows repair before placeholder", async ({
@@ -1230,6 +1343,185 @@ test("pending quick edits preserve configured presentation", async ({ page }) =>
   expect(data?.presentation_mode).toBe("board");
   expect(data?.presentation_config).toEqual({ choiceFieldDefinitionId: stage.id });
   expect(data?.sorts).toEqual([{ fieldDefinitionId: work.fields.title.id, direction: "asc" }]);
+});
+
+test("calendar renders evaluated records by month with undated, invalid, outside, and crowded states", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { work, calendarViewId } = await createCalendarScenario(run);
+
+  await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
+  await expect(page.getByTestId("entity-calendar-view")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "August 2026" })).toBeVisible();
+  await expect(page.getByText("2 dated records in this view fall outside August 2026.")).toBeVisible();
+
+  const sameDay = calendarCell(page, "2026-08-15");
+  const sameDayLinks = sameDay.getByRole("link");
+  await expect(sameDayLinks.nth(0)).toHaveText(`${run.label} Alpha Same Day`);
+  await expect(sameDayLinks.nth(1)).toHaveText(`${run.label} Beta Same Day`);
+
+  const crowded = calendarCell(page, "2026-08-20");
+  await expect(crowded.getByRole("link", { name: `${run.label} Crowded A` })).toBeVisible();
+  await expect(crowded.getByRole("link", { name: `${run.label} Crowded B` })).toBeVisible();
+  await expect(crowded.getByRole("link", { name: `${run.label} Crowded C` })).toBeVisible();
+  await expect(crowded.getByRole("link", { name: `${run.label} Crowded D` })).toHaveCount(0);
+  const more = crowded.getByRole("button", { name: /1 more record on August 20, 2026/i });
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await more.click();
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  await expect(crowded.getByRole("link", { name: `${run.label} Crowded D` })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(more).toBeFocused();
+
+  await expect(page.getByTestId("calendar-undated-records").getByRole("link", { name: `${run.label} Undated` })).toBeVisible();
+  await expect(page.getByTestId("calendar-invalid-date-records").getByRole("link", { name: `${run.label} Invalid Date` })).toBeVisible();
+
+  await calendarCell(page, "2026-08-15").getByRole("link", { name: `${run.label} Alpha Same Day` }).click();
+  await page.waitForURL(new RegExp(`/entities/${work.id}/records/`));
+});
+
+test("calendar month navigation preserves view and pending query state without persisting month", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const { work, calendarViewId } = await createCalendarScenario(run);
+  const repeatedUrl =
+    `/entities/${work.id}?view=${calendarViewId}&month=2026-01` +
+    `&filterField:0=${work.fields.title.id}` +
+    `&filterOperator:0=contains` +
+    `&filterValue:0=Same` +
+    `&sortField:0=${work.fields.title.id}` +
+    `&sortDirection:0=desc` +
+    `&columnFieldDefinitionId=${work.fields.title.id}` +
+    `&columnFieldDefinitionId=${work.fields.due.id}` +
+    `&debug=one&debug=two`;
+
+  await page.goto(repeatedUrl);
+  await expect(page.getByRole("heading", { name: "January 2026" })).toBeVisible();
+  await page.getByRole("link", { name: "Previous" }).click();
+  await expect(page).toHaveURL(/month=2025-12/);
+  const url = new URL(page.url());
+  expect(url.searchParams.get("view")).toBe(calendarViewId);
+  expect(url.searchParams.get("filterValue:0")).toBe("Same");
+  expect(url.searchParams.get("sortDirection:0")).toBe("desc");
+  expect(url.searchParams.getAll("columnFieldDefinitionId")).toEqual([
+    work.fields.title.id,
+    work.fields.due.id,
+  ]);
+  expect(url.searchParams.getAll("debug")).toEqual(["one", "two"]);
+
+  await page.getByRole("link", { name: "Next" }).click();
+  await expect(page).toHaveURL(/month=2026-01/);
+  await page.getByRole("link", { name: "Today" }).click();
+  await expect(page).toHaveURL(new RegExp(`month=${currentUtcMonthKey()}`));
+
+  await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=not-a-month`);
+  await expect(page.getByTestId("entity-calendar-view")).toBeVisible();
+  await expect(page).toHaveURL(/month=not-a-month/);
+  await page.goto(`/entities/${work.id}?view=${calendarViewId}`);
+  await expect(page.getByRole("heading", { name: new RegExp(new Date().getUTCFullYear().toString()) })).toBeVisible();
+
+  await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
+  await expect(page.getByTestId("entity-view-quickbar").getByRole("button", { name: "Columns" })).toHaveCount(0);
+  await page.getByRole("button", { name: "+ Add sort" }).click();
+  await selectReactOption(page.getByLabel("Quick sort field"), {
+    label: "Title (text)",
+  });
+  await selectReactOption(page.getByLabel("Quick sort direction"), {
+    value: "desc",
+  });
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page).toHaveURL(/month=2026-08/);
+  await page.getByRole("button", { name: "Update View" }).click();
+  await page.getByRole("button", { name: "Save View" }).click();
+  await expect(page.getByText("View updated.")).toBeVisible();
+
+  const { data, error } = await supabase
+    .from("entity_views")
+    .select("presentation_mode,presentation_config,sorts")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("id", calendarViewId)
+    .single();
+  expect(error).toBeNull();
+  expect(data?.presentation_mode).toBe("calendar");
+  expect(data?.presentation_config).toEqual({ dateFieldDefinitionId: work.fields.due.id });
+  expect(data?.sorts).toEqual([{ fieldDefinitionId: work.fields.title.id, direction: "desc" }]);
+});
+
+test("calendar empty month, stale config repair, read-only rendering, and theme readability", async ({
+  browser,
+  page,
+}) => {
+  const run = createScenarioRun();
+  const supabase = createSupabaseTestClient();
+  const { runnerUserId, preferences } = await getE2eRunnerPreferences();
+  const { work, calendarViewId } = await createCalendarScenario(run);
+
+  await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-10`);
+  await expect(page.getByRole("heading", { name: "No records fall in this month." })).toBeVisible();
+  await expect(page.getByText("8 dated records in this view fall outside October 2026.")).toBeVisible();
+  await expect(page.getByTestId("calendar-undated-records").getByRole("link", { name: `${run.label} Undated` })).toBeVisible();
+
+  const staleViewId = await createView({
+    entity: work,
+    name: `${run.label} Stale Calendar`,
+    presentationMode: "calendar",
+    presentationConfig: { dateFieldDefinitionId: work.fields.due.id },
+  });
+  const archiveResult = await supabase
+    .from("field_definitions")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("entity_type_id", work.id)
+    .eq("id", work.fields.due.id);
+  expect(archiveResult.error).toBeNull();
+  await page.goto(`/entities/${work.id}?view=${staleViewId}&month=2026-08`);
+  await expect(page.getByRole("heading", { name: "View needs repair." })).toBeVisible();
+  await expect(page.getByTestId("entity-calendar-view")).toHaveCount(0);
+
+  const restoreResult = await supabase
+    .from("field_definitions")
+    .update({ archived_at: null })
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("entity_type_id", work.id)
+    .eq("id", work.fields.due.id);
+  expect(restoreResult.error).toBeNull();
+
+  const readOnly = await createReadOnlyUser();
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const readOnlyPage = await context.newPage();
+  try {
+    await signIn(readOnlyPage, readOnly.email, readOnly.password);
+    await readOnlyPage.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
+    await expect(readOnlyPage.getByTestId("entity-calendar-view")).toBeVisible();
+    await expect(readOnlyPage.getByRole("link", { name: `${run.label} Alpha Same Day` })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+
+  try {
+    for (const mode of [
+      { theme: "light" as const, colorScheme: "light" as const },
+      { theme: "dark" as const, colorScheme: "light" as const },
+      { theme: "system" as const, colorScheme: "light" as const },
+      { theme: "system" as const, colorScheme: "dark" as const },
+    ]) {
+      await setE2eRunnerTheme(runnerUserId, mode.theme);
+      await page.emulateMedia({ colorScheme: mode.colorScheme });
+      await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
+      await expect(page.getByTestId("entity-calendar-view")).toBeVisible();
+      await expect((await computedTextContrast(page.getByRole("heading", { name: "August 2026" }))).ratio).toBeGreaterThanOrEqual(4.5);
+      await expect((await computedTextContrast(page.getByRole("link", { name: "Previous" }))).ratio).toBeGreaterThanOrEqual(4.5);
+      await expect((await computedTextContrast(calendarCell(page, "2026-08-15").getByRole("link", { name: `${run.label} Alpha Same Day` }))).ratio).toBeGreaterThanOrEqual(4.5);
+      await expect((await computedTextContrast(page.getByTestId("calendar-undated-records").getByRole("heading", { name: "Undated" }))).ratio).toBeGreaterThanOrEqual(4.5);
+    }
+  } finally {
+    await restoreE2eRunnerPreferences(runnerUserId, preferences);
+    await page.emulateMedia({ colorScheme: "light" });
+  }
 });
 
 test("board renders active, unset, archived lanes and respects view filters and sorts", async ({
