@@ -1466,6 +1466,31 @@ test("calendar month navigation preserves view and pending query state without p
   expect(data?.sorts).toEqual([{ fieldDefinitionId: work.fields.title.id, direction: "desc" }]);
 });
 
+test("calendar month navigation preserves viewport position", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { work, calendarViewId } = await createCalendarScenario(run);
+
+  await page.setViewportSize({ width: 1280, height: 480 });
+  await page.goto(`/entities/${work.id}?view=${calendarViewId}&month=2026-08`);
+  const nextMonth = page.getByRole("link", { name: "Next month" });
+  await nextMonth.scrollIntoViewIfNeeded();
+  await expect(nextMonth).toBeVisible();
+
+  const beforeScrollY = await page.evaluate(() => window.scrollY);
+  expect(beforeScrollY).toBeGreaterThan(50);
+
+  await nextMonth.click();
+  await expect(page).toHaveURL(/month=2026-09/);
+  await expect(page.getByRole("heading", { name: "September 2026" })).toBeVisible();
+
+  const afterScrollY = await page.evaluate(() => window.scrollY);
+  expect(afterScrollY).toBeGreaterThan(50);
+  expect(Math.abs(afterScrollY - beforeScrollY)).toBeLessThanOrEqual(160);
+  await expect(page.getByRole("heading", { name: "September 2026" })).not.toBeFocused();
+});
+
 test("calendar empty month, stale config repair, read-only rendering, and theme readability", async ({
   browser,
   page,

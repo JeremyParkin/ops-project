@@ -127,14 +127,16 @@ export function EntityCalendarView({
             <nav aria-label="Calendar month navigation" className="mt-1 flex flex-wrap items-center gap-2">
               <Link
                 href={previousHref}
+                scroll={false}
                 aria-label="Previous month"
                 className="inline-flex h-8 w-8 items-center justify-center border border-border bg-surface text-lg font-semibold text-foreground hover:bg-background focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground"
               >
                 <span aria-hidden="true">‹</span>
               </Link>
-              <h2 className="min-w-0 text-xl font-semibold text-graphite">{monthHeading}</h2>
+              <h2 className="min-w-0 text-xl font-semibold text-graphite" aria-live="polite" aria-atomic="true">{monthHeading}</h2>
               <Link
                 href={nextHref}
+                scroll={false}
                 aria-label="Next month"
                 className="inline-flex h-8 w-8 items-center justify-center border border-border bg-surface text-lg font-semibold text-foreground hover:bg-background focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground"
               >
@@ -142,6 +144,7 @@ export function EntityCalendarView({
               </Link>
               <Link
                 href={todayHref}
+                scroll={false}
                 className="inline-flex h-9 items-center justify-center border border-border bg-surface px-3 text-sm font-medium text-foreground hover:bg-background focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foreground"
               >
                 Today
