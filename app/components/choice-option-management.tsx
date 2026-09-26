@@ -228,12 +228,14 @@ function OptionRow({
   blockedByDirtySwitch,
   onToggleOpen,
   onDirtyChange,
+  onArchiveSuccess,
 }: {
   row: ChoiceOptionRowActions;
   open: boolean;
   blockedByDirtySwitch: boolean;
   onToggleOpen: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  onArchiveSuccess: () => void;
 }) {
   const { option, updateAction, archiveAction, restoreAction, deleteAction, moveUpAction, moveDownAction } = row;
   async function updateAndTrackDirty(
@@ -246,13 +248,23 @@ function OptionRow({
     }
     return nextState;
   }
+  async function archiveAndClose(
+    formState: FieldLifecycleActionState,
+    formData: FormData,
+  ) {
+    const nextState = archiveAction ? await archiveAction(formState, formData) : formState;
+    if (nextState.success) {
+      onArchiveSuccess();
+    }
+    return nextState;
+  }
 
   const [state, formAction, pending] = useActionState(
     updateAndTrackDirty,
     createInitialChoiceOptionFormState({ label: option.label, color: option.color ?? "" }),
   );
   const [archiveState, archiveFormAction, archivePending] = useActionState(
-    archiveAction ?? (async (s: FieldLifecycleActionState) => s),
+    archiveAndClose,
     { success: false, message: "" },
   );
   const [restoreState, restoreFormAction, restorePending] = useActionState(
@@ -340,31 +352,19 @@ function OptionRow({
     : "border-dashed border-grit";
 
   return (
-    <div className="border border-grit">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <span className={`h-3.5 w-3.5 shrink-0 rounded-sm border ${swatchClass}`} aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate text-sm text-graphite">{option.label}</span>
-        <button
-          type="button"
-          onClick={onToggleOpen}
-          aria-expanded={open}
-          aria-controls={bodyId}
-          className="h-7 shrink-0 border border-grit px-2 text-xs font-medium text-stone hover:bg-chalk"
-        >
-          {open ? "Close" : "Edit"}
-        </button>
-        {archiveAction ? (
-          <form action={archiveFormAction}>
-            <button
-              type="submit"
-              disabled={archivePending}
-              className="h-7 shrink-0 border border-grit px-2 text-xs font-medium text-stone hover:bg-chalk disabled:text-grit"
-            >
-              {archivePending ? "Archiving..." : "Archive"}
-            </button>
-          </form>
-        ) : null}
-      </div>
+    <div className={open ? "basis-full border border-grit" : "contents"}>
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        className={`inline-flex h-7 max-w-full items-center gap-1.5 border border-grit px-2 text-xs text-graphite outline-none hover:bg-chalk focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brass ${
+          open ? "m-2 mb-0" : ""
+        }`}
+      >
+        <span className={`h-3 w-3 shrink-0 rounded-sm border ${swatchClass}`} aria-hidden="true" />
+        <span className="truncate">{option.label}</span>
+      </button>
       {archiveState.message ? (
         <p className={`px-3 pb-2 text-xs ${archiveState.success ? "text-status-sage" : "text-status-oxide"}`}>
           {archiveState.message}
@@ -459,6 +459,17 @@ function OptionRow({
                 {moveMessage}
               </span>
             ) : null}
+            {archiveAction ? (
+              <form action={archiveFormAction}>
+                <button
+                  type="submit"
+                  disabled={archivePending}
+                  className="h-8 border border-grit px-2 text-xs text-stone hover:bg-chalk disabled:text-grit"
+                >
+                  {archivePending ? "Archiving..." : "Archive"}
+                </button>
+              </form>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -510,7 +521,7 @@ export function ChoiceOptionManagement({
       {activeRows.length === 0 ? (
         <p className="text-sm text-stone">No options yet.</p>
       ) : (
-        <div className="grid gap-2">
+        <div className="flex flex-wrap items-start gap-1.5">
           {activeRows.map((row) => (
             <OptionRow
               key={row.option.id}
@@ -523,6 +534,11 @@ export function ChoiceOptionManagement({
                 if (!dirty && blockedOptionId === row.option.id) {
                   setBlockedOptionId(null);
                 }
+              }}
+              onArchiveSuccess={() => {
+                setOpenOptionId((current) => (current === row.option.id ? null : current));
+                setDirtyOptionId((current) => (current === row.option.id ? null : current));
+                setBlockedOptionId((current) => (current === row.option.id ? null : current));
               }}
             />
           ))}
@@ -547,13 +563,18 @@ export function ChoiceOptionManagement({
                 open={openOptionId === row.option.id}
                 blockedByDirtySwitch={blockedOptionId === row.option.id}
                 onToggleOpen={() => toggleOption(row.option.id)}
-                onDirtyChange={(dirty) => {
-                  setDirtyOptionId(dirty ? row.option.id : null);
-                  if (!dirty && blockedOptionId === row.option.id) {
-                    setBlockedOptionId(null);
-                  }
-                }}
-              />
+              onDirtyChange={(dirty) => {
+                setDirtyOptionId(dirty ? row.option.id : null);
+                if (!dirty && blockedOptionId === row.option.id) {
+                  setBlockedOptionId(null);
+                }
+              }}
+              onArchiveSuccess={() => {
+                setOpenOptionId((current) => (current === row.option.id ? null : current));
+                setDirtyOptionId((current) => (current === row.option.id ? null : current));
+                setBlockedOptionId((current) => (current === row.option.id ? null : current));
+              }}
+            />
             ))}
           </div>
         </details>

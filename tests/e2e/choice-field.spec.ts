@@ -182,23 +182,28 @@ test("builder creates a Choice field and configures options through the real UI"
     await expect(fieldRow.getByLabel("New option")).toBeFocused();
   }
 
-  // Saved options render as a collapsed row (swatch + label text) by
-  // default; their editable label input only exists once expanded via Edit.
-  await expect(fieldRow.getByText("Minor", { exact: true })).toBeVisible();
-  await expect(fieldRow.getByText("Critical", { exact: true })).toBeVisible();
+  // Saved options render as compact option items by default; the item
+  // itself opens editing, so there is no separate Edit button in the
+  // inactive presentation.
+  await expect(fieldRow.getByRole("button", { name: "Minor" })).toBeVisible();
+  await expect(fieldRow.getByRole("button", { name: "Critical" })).toBeVisible();
+  await expect(fieldRow.getByRole("button", { name: "Edit" })).toHaveCount(0);
 
   // Reorder: Critical should be able to move up above Minor. Reordering
-  // lives inside the option's expanded body (opened via the row's own Edit
-  // quick action, not a native <summary> -- nested interactive controls
-  // can't live there reliably), while Archive is itself a quick action
-  // directly on the collapsed row.
-  const criticalRow = fieldRow.getByText("Critical", { exact: true }).locator("..").locator("..");
-  await criticalRow.getByRole("button", { name: "Edit" }).click();
+  // lives inside the option's expanded body; Archive is also explicit
+  // inside that body, not conflated with opening the option item.
+  const criticalOption = fieldRow.getByRole("button", { name: "Critical" });
+  await criticalOption.click();
+  const criticalControls = await criticalOption.getAttribute("aria-controls");
+  const criticalRow = fieldRow.locator(`[id="${criticalControls}"]`).locator("..");
   await criticalRow.getByRole("button", { name: "Up" }).click();
   await expectAfterMutation(page.getByText("Option order updated."));
 
   // Archive Minor, confirm it moves to the archived (restore-only) row.
-  const minorRow = fieldRow.getByText("Minor", { exact: true }).locator("..").locator("..");
+  const minorOption = fieldRow.getByRole("button", { name: "Minor" });
+  await minorOption.click();
+  const minorControls = await minorOption.getAttribute("aria-controls");
+  const minorRow = fieldRow.locator(`[id="${minorControls}"]`).locator("..");
   await minorRow.getByRole("button", { name: "Archive" }).click();
   // A successful archive immediately swaps the row to its archived-only
   // branch (a Restore button, no editable label input) -- that branch swap
@@ -221,14 +226,18 @@ test("existing Choice option color changes autosave without pressing Save", asyn
     .locator("form")
     .filter({ has: page.locator(`input[name="fieldName"][value="Priority"]`) })
     .locator("..");
-  const highRow = fieldRow.getByText("High", { exact: true }).locator("..").locator("..");
-  const mediumRow = fieldRow.getByText("Medium", { exact: true }).locator("..").locator("..");
+  const highOption = fieldRow.getByRole("button", { name: "High" });
+  const mediumOption = fieldRow.getByRole("button", { name: "Medium" });
 
-  await highRow.getByRole("button", { name: "Edit" }).click();
+  await highOption.press("Enter");
+  const highControls = await highOption.getAttribute("aria-controls");
+  const mediumControls = await mediumOption.getAttribute("aria-controls");
+  const highRow = fieldRow.locator(`[id="${highControls}"]`).locator("..");
+  const mediumRow = fieldRow.locator(`[id="${mediumControls}"]`).locator("..");
   await highRow.locator('label[title="Blue"]').click();
   await expectAfterMutation(highRow.getByText("Option updated."));
   await expect(highRow.getByRole("button", { name: "Save" })).toBeVisible();
-  await expect(highRow.locator("span").first()).toHaveClass(/bg-blue-400/);
+  await expect(highOption.locator("span").first()).toHaveClass(/bg-blue-400/);
   await expect
     .poll(async () => highRow.locator('label[title="Red"]').getAttribute("class"))
     .not.toContain("has-[:checked]:ring");
@@ -237,12 +246,12 @@ test("existing Choice option color changes autosave without pressing Save", asyn
     .not.toContain("has-[:checked]:ring");
 
   await highRow.getByLabel("Label").fill("High draft");
-  await mediumRow.getByRole("button", { name: "Edit" }).click();
+  await mediumOption.press(" ");
   await expect(highRow.getByText("Save or close this option before editing another.")).toBeVisible();
-  await expect(mediumRow.getByRole("button", { name: "Edit" })).toBeVisible();
-  await highRow.getByRole("button", { name: "Close" }).click();
-  await mediumRow.getByRole("button", { name: "Edit" }).click();
-  await expect(mediumRow.getByRole("button", { name: "Close" })).toBeVisible();
+  await expect(mediumOption).toHaveAttribute("aria-expanded", "false");
+  await highOption.click();
+  await mediumOption.click();
+  await expect(mediumOption).toHaveAttribute("aria-expanded", "true");
 
   const admin = createSupabaseTestClient();
   const { data, error } = await admin
@@ -277,7 +286,10 @@ test("archived Choice options are hidden behind Show archived options, and suppo
   // No archived options yet -- the disclosure doesn't render at all.
   await expect(showArchivedToggle).toHaveCount(0);
 
-  const mistakenRow = fieldRow.getByText("Mistaken", { exact: true }).locator("..").locator("..");
+  const mistakenOption = fieldRow.getByRole("button", { name: "Mistaken" });
+  await mistakenOption.click();
+  const mistakenControls = await mistakenOption.getAttribute("aria-controls");
+  const mistakenRow = fieldRow.locator(`[id="${mistakenControls}"]`).locator("..");
   await mistakenRow.getByRole("button", { name: "Archive" }).click();
   await expectAfterMutation(showArchivedToggle);
 
@@ -290,7 +302,7 @@ test("archived Choice options are hidden behind Show archived options, and suppo
 
   // Restore returns it to the active (collapsed-by-default) list.
   await fieldRow.getByRole("button", { name: "Restore" }).click();
-  await expectAfterMutation(fieldRow.getByRole("button", { name: "Edit" }));
+  await expectAfterMutation(fieldRow.getByRole("button", { name: "Mistaken" }));
   await expect(showArchivedToggle).toHaveCount(0);
 
   // Archive again, then permanently delete -- this option has never been
@@ -301,9 +313,13 @@ test("archived Choice options are hidden behind Show archived options, and suppo
   // the same OptionRow instance the deletion removes from archivedRows, so
   // that row (and its just-rendered message) unmounts in the very update
   // that would show it -- the same reason the Restore step above asserts
-  // on the resulting list state ("Edit" button reappearing), not on
+  // on the resulting list state (the compact option item reappearing), not on
   // restoreState's message, rather than a gap specific to delete.
-  await mistakenRow.getByRole("button", { name: "Archive" }).click();
+  const restoredMistakenOption = fieldRow.getByRole("button", { name: "Mistaken" });
+  await restoredMistakenOption.click();
+  const restoredMistakenControls = await restoredMistakenOption.getAttribute("aria-controls");
+  const restoredMistakenRow = fieldRow.locator(`[id="${restoredMistakenControls}"]`).locator("..");
+  await restoredMistakenRow.getByRole("button", { name: "Archive" }).click();
   await expectAfterMutation(showArchivedToggle);
   await showArchivedToggle.click();
   page.once("dialog", (dialog) => dialog.accept());
