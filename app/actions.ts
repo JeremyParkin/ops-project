@@ -187,6 +187,7 @@ export type WorkflowActionState = {
 export type FieldLifecycleActionState = {
   success: boolean;
   message: string;
+  archiveConfirmation?: "clear_work_settings";
 };
 
 export type DeleteViewActionState = {
@@ -1714,7 +1715,6 @@ export async function archiveField(
   formData: FormData,
 ): Promise<FieldLifecycleActionState> {
   void previousState;
-  void formData;
 
   try {
     const { entityType } = await getEntityContext(context);
@@ -1733,8 +1733,31 @@ export async function archiveField(
       };
     }
 
-    await archiveFieldDefinition(context);
-  } catch {
+    const result = await archiveFieldDefinition({
+      ...context,
+      confirmWorkSettingsClear:
+        formData.get("archiveIntent") === "clearWorkSettingsAndArchive",
+    });
+
+    if (!result.archived) {
+      return {
+        success: false,
+        message: result.message || "This field cannot be archived yet.",
+        archiveConfirmation:
+          result.blockedReason === "work_settings_confirmation_required"
+            ? "clear_work_settings"
+            : undefined,
+      };
+    }
+  } catch (error) {
+    const knownMessage = formatKnownFieldArchiveError(error);
+    if (knownMessage) {
+      return {
+        success: false,
+        message: knownMessage,
+      };
+    }
+
     return {
       success: false,
       message: "Unable to archive the field. Please try again.",
@@ -1747,6 +1770,28 @@ export async function archiveField(
     success: true,
     message: "Field archived.",
   };
+}
+
+function formatKnownFieldArchiveError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+
+  const message = error.message;
+
+  if (message.includes("designated for sensitive-record access")) {
+    return "This field is used by sensitive-record or Quality Review configuration. Change that configuration before archiving it.";
+  }
+
+  if (message.includes("designated as a Quality Review lifecycle status")) {
+    return "This option is used by Quality Review lifecycle configuration. Disable or update Quality Review before archiving it.";
+  }
+
+  if (message === "Field definition not found." || message === "Object not found.") {
+    return message;
+  }
+
+  return null;
 }
 
 export async function restoreField(

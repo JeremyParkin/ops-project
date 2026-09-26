@@ -156,6 +156,30 @@ async function setWorkEnabled(client: SupabaseClient, workspaceId: string, entit
   });
 }
 
+async function archiveFieldWithDependencies(
+  client: SupabaseClient,
+  workspaceId: string,
+  entityTypeId: string,
+  fieldDefinitionId: string,
+  confirmWorkSettingsClear = false,
+) {
+  return client
+    .rpc("archive_field_definition_with_dependencies_authorized", {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_field_definition_id: fieldDefinitionId,
+      p_confirm_work_settings_clear: confirmWorkSettingsClear,
+    })
+    .single<{
+      archived: boolean;
+      blocked_reason: string | null;
+      message: string | null;
+      cleared_work_assignment: boolean;
+      cleared_work_due: boolean;
+      cleared_work_status: boolean;
+    }>();
+}
+
 async function createRecordWithAssignment(
   client: SupabaseClient,
   workspaceId: string,
@@ -320,24 +344,33 @@ describe("Work Settings lifecycle/dependency safety", () => {
     const client = await authenticatedClient(builder);
     const taskType = await createEntityType(workspaceId, "Task");
     const memberField = await createField(client, workspaceId, taskType, { key: "assignee", name: "Assignee", type: "workspace_member" });
+    const dueField = await createField(client, workspaceId, taskType, { key: "due", name: "Due", type: "date" });
     const statusField = await createField(client, workspaceId, taskType, { key: "status", name: "Status", type: "choice" });
     const doneOption = await addChoiceOption(client, workspaceId, statusField, "Done");
     await setWorkMapping(client, workspaceId, taskType, {
       assignmentFieldId: memberField,
+      dueFieldId: dueField,
       statusFieldId: statusField,
       completionOptionIds: [doneOption],
     });
-    return { workspaceId, client, taskType, memberField, statusField, doneOption };
+    return { workspaceId, client, taskType, memberField, dueField, statusField, doneOption };
   }
 
-  it("blocks archival, hard delete, and pristine type change of a mapped field while enabled", async () => {
+  it("blocks archival of the enabled assignment field, while hard delete and pristine type change remain blocked by mapping dependency", async () => {
     const { workspaceId, client, taskType, memberField } = await setup();
     await setWorkEnabled(client, workspaceId, taskType, true);
 
-    const { error: archiveError } = await client.rpc("archive_field_definition_authorized", {
-      p_workspace_id: workspaceId, p_entity_type_id: taskType, p_field_definition_id: memberField,
-    });
-    expect(archiveError).toBeTruthy();
+    const { data: archiveResult, error: archiveError } = await archiveFieldWithDependencies(
+      client,
+      workspaceId,
+      taskType,
+      memberField,
+      true,
+    );
+    expect(archiveError).toBeNull();
+    expect(archiveResult!.archived).toBe(false);
+    expect(archiveResult!.blocked_reason).toBe("work_assignment_enabled");
+    expect(archiveResult!.message).toMatch(/select another assignment field or turn off Work/i);
 
     const { data: deleteResult } = await client
       .rpc("delete_field_definition_if_safe_authorized", {
@@ -355,6 +388,47 @@ describe("Work Settings lifecycle/dependency safety", () => {
     expect(typeChangeResult!.changed).toBe(false);
   });
 
+  it("requires confirmation, then atomically clears enabled optional status mapping and completion options before archiving", async () => {
+    const { workspaceId, client, taskType, statusField } = await setup();
+    await setWorkEnabled(client, workspaceId, taskType, true);
+
+    const firstAttempt = await archiveFieldWithDependencies(client, workspaceId, taskType, statusField);
+    expect(firstAttempt.error).toBeNull();
+    expect(firstAttempt.data!.archived).toBe(false);
+    expect(firstAttempt.data!.blocked_reason).toBe("work_settings_confirmation_required");
+
+    const confirmed = await archiveFieldWithDependencies(client, workspaceId, taskType, statusField, true);
+    expect(confirmed.error).toBeNull();
+    expect(confirmed.data!.archived).toBe(true);
+    expect(confirmed.data!.cleared_work_status).toBe(true);
+
+    const { data: settings } = await client
+      .rpc("get_entity_type_work_settings_authorized", { p_workspace_id: workspaceId, p_entity_type_id: taskType })
+      .single<{ work_status_field_id: string | null; completion_option_ids: string[] | null }>();
+    expect(settings!.work_status_field_id).toBeNull();
+    expect(settings!.completion_option_ids ?? []).toEqual([]);
+  });
+
+  it("requires confirmation, then atomically clears enabled optional due mapping before archiving", async () => {
+    const { workspaceId, client, taskType, dueField } = await setup();
+    await setWorkEnabled(client, workspaceId, taskType, true);
+
+    const firstAttempt = await archiveFieldWithDependencies(client, workspaceId, taskType, dueField);
+    expect(firstAttempt.error).toBeNull();
+    expect(firstAttempt.data!.archived).toBe(false);
+    expect(firstAttempt.data!.blocked_reason).toBe("work_settings_confirmation_required");
+
+    const confirmed = await archiveFieldWithDependencies(client, workspaceId, taskType, dueField, true);
+    expect(confirmed.error).toBeNull();
+    expect(confirmed.data!.archived).toBe(true);
+    expect(confirmed.data!.cleared_work_due).toBe(true);
+
+    const { data: settings } = await client
+      .rpc("get_entity_type_work_settings_authorized", { p_workspace_id: workspaceId, p_entity_type_id: taskType })
+      .single<{ work_due_field_id: string | null }>();
+    expect(settings!.work_due_field_id).toBeNull();
+  });
+
   it("blocks hard deletion of a configured completion option", async () => {
     const { workspaceId, client, statusField, doneOption } = await setup();
     await client.rpc("archive_field_choice_option", { p_workspace_id: workspaceId, p_field_definition_id: statusField, p_option_id: doneOption });
@@ -367,13 +441,24 @@ describe("Work Settings lifecycle/dependency safety", () => {
     expect(data!.work_completion_reference_count).toBeGreaterThan(0);
   });
 
-  it("keeps every protection active while Work Settings is disabled (dormant mapping still blocks)", async () => {
+  it("clears dormant disabled Work Settings assignment mapping with explicit confirmation before archiving", async () => {
     const { workspaceId, client, taskType, memberField, statusField, doneOption } = await setup();
-    // work_enabled defaults to false from setup() -- never enabled here.
-    const { error: archiveError } = await client.rpc("archive_field_definition_authorized", {
-      p_workspace_id: workspaceId, p_entity_type_id: taskType, p_field_definition_id: memberField,
-    });
-    expect(archiveError).toBeTruthy();
+
+    const firstAttempt = await archiveFieldWithDependencies(client, workspaceId, taskType, memberField);
+    expect(firstAttempt.error).toBeNull();
+    expect(firstAttempt.data!.archived).toBe(false);
+    expect(firstAttempt.data!.blocked_reason).toBe("work_settings_confirmation_required");
+
+    const confirmed = await archiveFieldWithDependencies(client, workspaceId, taskType, memberField, true);
+    expect(confirmed.error).toBeNull();
+    expect(confirmed.data!.archived).toBe(true);
+    expect(confirmed.data!.cleared_work_assignment).toBe(true);
+
+    const { data: settings } = await client
+      .rpc("get_entity_type_work_settings_authorized", { p_workspace_id: workspaceId, p_entity_type_id: taskType })
+      .single<{ work_enabled: boolean; work_assignment_field_id: string | null }>();
+    expect(settings!.work_enabled).toBe(false);
+    expect(settings!.work_assignment_field_id).toBeNull();
 
     await client.rpc("archive_field_choice_option", { p_workspace_id: workspaceId, p_field_definition_id: statusField, p_option_id: doneOption });
     const { data } = await client
@@ -382,6 +467,25 @@ describe("Work Settings lifecycle/dependency safety", () => {
       })
       .single<{ deleted: boolean }>();
     expect(data!.deleted).toBe(false);
+  });
+
+  it("handles a stale confirmed archive truthfully when the field became an enabled assignment dependency", async () => {
+    const workspaceId = await createWorkspace("Work Archive Race");
+    const builder = await memberWithCapabilities(workspaceId, "builder-race", BUILDER_WORKER_CAPS);
+    const client = await authenticatedClient(builder);
+    const taskType = await createEntityType(workspaceId, "Task");
+    const memberField = await createField(client, workspaceId, taskType, { key: "assignee", name: "Assignee", type: "workspace_member" });
+
+    await setWorkMapping(client, workspaceId, taskType, {
+      assignmentFieldId: memberField,
+    });
+    await setWorkEnabled(client, workspaceId, taskType, true);
+
+    const staleConfirmed = await archiveFieldWithDependencies(client, workspaceId, taskType, memberField, true);
+    expect(staleConfirmed.error).toBeNull();
+    expect(staleConfirmed.data!.archived).toBe(false);
+    expect(staleConfirmed.data!.blocked_reason).toBe("work_assignment_enabled");
+    expect(staleConfirmed.data!.message).toMatch(/select another assignment field or turn off Work/i);
   });
 });
 

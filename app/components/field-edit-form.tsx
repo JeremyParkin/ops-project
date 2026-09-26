@@ -288,7 +288,11 @@ export function FieldEditForm({
           disabled={archivePending}
           className="inline-flex h-10 items-center justify-center border border-slate-300 px-3 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400"
         >
-          {archivePending ? "Archiving..." : "Archive"}
+          {archivePending
+            ? "Archiving..."
+            : archiveState.archiveConfirmation === "clear_work_settings"
+              ? "Remove from Work Settings and archive"
+              : "Archive"}
         </button>
 
         <div className="basis-full">
@@ -345,7 +349,15 @@ export function FieldEditForm({
             event.preventDefault();
           }
         }}
-      />
+      >
+        {archiveState.archiveConfirmation === "clear_work_settings" ? (
+          <input
+            type="hidden"
+            name="archiveIntent"
+            value="clearWorkSettingsAndArchive"
+          />
+        ) : null}
+      </form>
       {archiveState.message ? (
         <p
           className={`text-sm ${

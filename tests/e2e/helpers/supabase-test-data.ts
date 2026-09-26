@@ -507,6 +507,37 @@ async function cleanupEntitiesById(supabase: SupabaseClient, entityTypeIds: stri
       throwOnError(
         () =>
           supabase
+            .from("entity_types")
+            .update({
+              work_enabled: false,
+              work_assignment_field_id: null,
+              work_due_field_id: null,
+              work_status_field_id: null,
+            })
+            .eq("workspace_id", DEMO_WORKSPACE_ID)
+            .in("id", entityTypeIds),
+        "clear E2E Work Settings field references",
+      ),
+    failures,
+  );
+  await attemptCleanupStep(
+    () =>
+      throwOnError(
+        () =>
+          supabase
+            .from("entity_type_work_completion_options")
+            .delete()
+            .eq("workspace_id", DEMO_WORKSPACE_ID)
+            .in("entity_type_id", entityTypeIds),
+        "clean up E2E Work Settings completion options",
+      ),
+    failures,
+  );
+  await attemptCleanupStep(
+    () =>
+      throwOnError(
+        () =>
+          supabase
             .from("entity_views")
             .delete()
             .eq("workspace_id", DEMO_WORKSPACE_ID)

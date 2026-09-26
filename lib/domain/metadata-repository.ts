@@ -404,18 +404,45 @@ export async function archiveFieldDefinition({
   workspaceId,
   entityTypeId,
   fieldDefinitionId,
-}: FieldDefinitionLifecycleInput) {
+  confirmWorkSettingsClear = false,
+}: FieldDefinitionLifecycleInput & { confirmWorkSettingsClear?: boolean }) {
   const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.rpc("archive_field_definition_authorized", {
-    p_workspace_id: workspaceId,
-    p_entity_type_id: entityTypeId,
-    p_field_definition_id: fieldDefinitionId,
-  });
+  const { data, error } = await supabase.rpc(
+    "archive_field_definition_with_dependencies_authorized",
+    {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_field_definition_id: fieldDefinitionId,
+      p_confirm_work_settings_clear: confirmWorkSettingsClear,
+    },
+  );
 
   if (error) {
-    throw new Error(`Unable to archive field definition: ${error.message}`);
+    throw new Error(error.message);
   }
 
+  const resultRows = data as Array<{
+    archived: boolean;
+    blocked_reason: string | null;
+    message: string | null;
+    cleared_work_assignment: boolean;
+    cleared_work_due: boolean;
+    cleared_work_status: boolean;
+  }> | null;
+  const result = resultRows?.[0];
+
+  if (!result) {
+    throw new Error("Unable to archive field definition: unexpected RPC response.");
+  }
+
+  return {
+    archived: result.archived,
+    blockedReason: result.blocked_reason,
+    message: result.message ?? "",
+    clearedWorkAssignment: result.cleared_work_assignment,
+    clearedWorkDue: result.cleared_work_due,
+    clearedWorkStatus: result.cleared_work_status,
+  };
 }
 
 // field_definitions has a unique (entity_type_id, position) constraint (and

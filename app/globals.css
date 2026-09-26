@@ -59,7 +59,7 @@
 .theme-root[data-theme="dark"] {
   --background: #171814;
   --foreground: #eee9df;
-  --surface: #24251f;
+  --surface: #24252A;
   --border: #8f8d83;
   --muted: #c0baad;
   --accent: #e0b573;
@@ -73,7 +73,7 @@
   .theme-root[data-theme="system"] {
     --background: #171814;
     --foreground: #eee9df;
-    --surface: #24251f;
+    --surface: #24252A;
     --border: #8f8d83;
     --muted: #c0baad;
     --accent: #e0b573;

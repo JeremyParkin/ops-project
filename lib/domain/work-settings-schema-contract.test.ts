@@ -29,6 +29,10 @@ const projectionSql = readFileSync(
   path.join(process.cwd(), "supabase/migrations/0150_list_assigned_record_work_authorized.sql"),
   "utf8",
 );
+const fieldArchiveRepairSql = readFileSync(
+  path.join(process.cwd(), "supabase/migrations/0153_field_archive_dependency_repair.sql"),
+  "utf8",
+);
 
 describe("Work Settings schema contract (0146)", () => {
   it("adds work_enabled/assignment/due/status columns with same-EntityType restrictive FKs", () => {
@@ -102,7 +106,7 @@ describe("Work Settings configuration RPC contract (0147)", () => {
 });
 
 describe("Work Settings lifecycle/dependency safety contract (0148)", () => {
-  it("blocks archival of a field referenced by the Work Settings mapping", () => {
+  it("initially blocked archival of a field referenced by the Work Settings mapping", () => {
     expect(lifecycleSql).toContain(
       "This field is used by Work Settings and cannot be archived while configured.",
     );
@@ -121,6 +125,28 @@ describe("Work Settings lifecycle/dependency safety contract (0148)", () => {
     expect(lifecycleSql).toContain("drop function if exists delete_field_choice_option_if_safe_authorized(uuid, uuid, uuid)");
     expect(lifecycleSql).toContain("work_completion_reference_count bigint");
     expect(lifecycleSql).toContain("from entity_type_work_completion_options c");
+  });
+});
+
+describe("Field archive dependency repair contract (0153)", () => {
+  it("adds a typed archive RPC and keeps the legacy archive RPC as a wrapper", () => {
+    expect(fieldArchiveRepairSql).toContain("function archive_field_definition_with_dependencies_authorized(");
+    expect(fieldArchiveRepairSql).toContain("blocked_reason text");
+    expect(fieldArchiveRepairSql).toContain("function archive_field_definition_authorized(");
+    expect(fieldArchiveRepairSql).toContain("from archive_field_definition_with_dependencies_authorized(");
+  });
+
+  it("blocks enabled assignment archival but permits confirmed optional or dormant Work Settings repair", () => {
+    expect(fieldArchiveRepairSql).toContain("blocked_reason := 'work_assignment_enabled'");
+    expect(fieldArchiveRepairSql).toContain("blocked_reason := 'work_settings_confirmation_required'");
+    expect(fieldArchiveRepairSql).toContain("p_confirm_work_settings_clear");
+    expect(fieldArchiveRepairSql).toContain("delete from entity_type_work_completion_options");
+    expect(fieldArchiveRepairSql).toContain("cleared_work_assignment := v_work_assignment_ref and not e.work_enabled");
+  });
+
+  it("makes display-field protection authoritative and leaves saved-view archive unblocked", () => {
+    expect(fieldArchiveRepairSql).toContain("e.display_field_definition_id = p_field_definition_id");
+    expect(fieldArchiveRepairSql).not.toContain("entity_views");
   });
 });
 
