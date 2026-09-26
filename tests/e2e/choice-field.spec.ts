@@ -358,7 +358,7 @@ test("record create/edit/inline-edit through the Choice picker, with colored pil
   await row.getByRole("button", { name: "Edit Priority" }).click();
   await row.locator('select[name="value"]').selectOption({ label: "Medium" });
   await row.getByRole("button", { name: "Save" }).click();
-  await expect(row.getByText("Medium", { exact: true })).toBeVisible();
+  await expect(row.getByTitle("Medium")).toBeVisible();
   await expect(row.getByText("High", { exact: true })).toHaveCount(0);
 
   // Full edit form picker: confirms the current value ("Medium", from the

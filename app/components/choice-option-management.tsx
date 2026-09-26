@@ -516,7 +516,7 @@ export function ChoiceOptionManagement({
   const archivedRows = orderedRows.filter((row) => row.option.archivedAt);
 
   return (
-    <div className="grid gap-2 border-t border-grit pt-3">
+    <div className="grid gap-2 pt-3">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-stone">Options</h3>
       {activeRows.length === 0 ? (
         <p className="text-sm text-stone">No options yet.</p>
