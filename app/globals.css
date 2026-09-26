@@ -158,6 +158,33 @@
   .theme-root[data-theme="system"] .field-type-chip { background-color: var(--background); }
 }
 
+/* Choice option management tabs (app/components/choice-option-management.tsx).
+   The active option tab and editor panel intentionally share one surface so
+   they read as connected in both light and dark themes; inactive tabs sit on
+   the surrounding card surface with muted text. */
+.choice-option-tab {
+  background-color: var(--surface);
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.choice-option-tab:hover {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.choice-option-tab[data-active="true"] {
+  background-color: var(--background);
+  border-color: var(--border);
+  border-bottom-color: var(--background);
+  color: var(--foreground);
+}
+
+.choice-option-editor-panel {
+  background-color: var(--background);
+  border-color: var(--border);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
