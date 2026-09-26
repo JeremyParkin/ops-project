@@ -140,6 +140,10 @@ export function FieldEditForm({
       ? ` to ${relatedEntityName}`
       : ""
   }`;
+  const hasEditFeedback =
+    Boolean(state.message) ||
+    Boolean(state.errors.fieldRequired) ||
+    Boolean(state.errors._form);
 
   if (field.archivedAt) {
     return (
@@ -297,20 +301,22 @@ export function FieldEditForm({
               : "Archive"}
         </button>
 
-        <div className="basis-full">
-          {state.message ? (
-            <p
-              className={`text-sm ${
-                state.success ? "text-emerald-700" : "text-red-700"
-              }`}
-              role="status"
-            >
-              {state.message}
-            </p>
-          ) : null}
-          <FieldError message={state.errors.fieldRequired} />
-          <FieldError message={state.errors._form} />
-        </div>
+        {hasEditFeedback ? (
+          <div className="basis-full">
+            {state.message ? (
+              <p
+                className={`text-sm ${
+                  state.success ? "text-emerald-700" : "text-red-700"
+                }`}
+                role="status"
+              >
+                {state.message}
+              </p>
+            ) : null}
+            <FieldError message={state.errors.fieldRequired} />
+            <FieldError message={state.errors._form} />
+          </div>
+        ) : null}
       </form>
       <form id={`field-move-up-${field.id}`} action={moveUpAction} />
       <form id={`field-move-down-${field.id}`} action={moveDownAction} />
