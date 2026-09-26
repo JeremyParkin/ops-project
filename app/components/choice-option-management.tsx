@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useId, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import type { ChoiceOptionFormState } from "@/lib/domain/choice-option-validation";
 import { createInitialChoiceOptionFormState } from "@/lib/domain/choice-option-validation";
 import {
@@ -60,10 +60,18 @@ function FieldError({ message }: { message?: string }) {
 function ColorSwatchPicker({
   legendId,
   defaultValue,
+  value,
+  onColorChange,
 }: {
   legendId: string;
   defaultValue: string;
+  value?: string;
+  onColorChange?: (color: string) => void;
 }) {
+  const isControlled = value !== undefined;
+  const isChecked = (color: string) =>
+    isControlled ? value === color : defaultValue === color;
+
   return (
     <div role="radiogroup" aria-labelledby={legendId} className="flex flex-wrap gap-1">
       <label
@@ -74,7 +82,9 @@ function ColorSwatchPicker({
           type="radio"
           name="optionColor"
           value=""
-          defaultChecked={defaultValue === ""}
+          checked={isControlled ? isChecked("") : undefined}
+          defaultChecked={isControlled ? undefined : isChecked("")}
+          onChange={() => onColorChange?.("")}
           aria-label="No color"
           className="sr-only"
         />
@@ -92,7 +102,9 @@ function ColorSwatchPicker({
             type="radio"
             name="optionColor"
             value={color}
-            defaultChecked={defaultValue === color}
+            checked={isControlled ? isChecked(color) : undefined}
+            defaultChecked={isControlled ? undefined : isChecked(color)}
+            onChange={() => onColorChange?.(color)}
             aria-label={CHOICE_OPTION_COLOR_LABELS[color]}
             className="sr-only"
           />
@@ -208,6 +220,7 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
   const domId = useId();
   const colorLegendId = `${domId}-color-legend`;
   const bodyId = `${domId}-body`;
+  const colorFormRef = useRef<HTMLFormElement>(null);
   // Saved options render collapsed by default (dogfood: Choice configuration
   // was excessively tall with every option always expanded). A plain
   // client-toggled div, not <details>/<summary>, because the collapsed row
@@ -216,6 +229,8 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
   // cross-browser (see page-primitives.tsx's CollapsibleSection, which
   // avoids this for the same reason).
   const [open, setOpen] = useState(false);
+  const currentLabel = state.values.label || option.label;
+  const [selectedColor, setSelectedColor] = useState(state.values.color ?? option.color ?? "");
 
   if (option.archivedAt) {
     return (
@@ -317,19 +332,12 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
               <input
                 id={`option-label-${option.id}`}
                 name="optionLabel"
-                defaultValue={state.values.label}
+                defaultValue={currentLabel}
                 className="mt-1 h-8 border border-grit px-2 text-sm text-graphite"
               />
               <FieldError message={state.errors.optionLabel} />
             </div>
-            <div>
-              <span id={colorLegendId} className="block text-xs font-medium text-stone">
-                Color
-              </span>
-              <div className="mt-1">
-                <ColorSwatchPicker legendId={colorLegendId} defaultValue={state.values.color} />
-              </div>
-            </div>
+            <input type="hidden" name="optionColor" value={selectedColor} />
             <button
               type="submit"
               disabled={pending}
@@ -337,6 +345,27 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
             >
               {pending ? "Saving..." : "Save"}
             </button>
+          </form>
+          <form ref={colorFormRef} action={formAction} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="optionLabel" value={currentLabel} />
+            <div>
+              <span id={colorLegendId} className="block text-xs font-medium text-stone">
+                Color
+              </span>
+              <div className="mt-1">
+                <ColorSwatchPicker
+                  legendId={colorLegendId}
+                  defaultValue={selectedColor}
+                  value={selectedColor}
+                  onColorChange={(color) => {
+                    setSelectedColor(color);
+                    window.setTimeout(() => {
+                      colorFormRef.current?.requestSubmit();
+                    }, 0);
+                  }}
+                />
+              </div>
+            </div>
           </form>
           {state.message ? (
             <p

@@ -201,6 +201,36 @@ test("builder creates a Choice field and configures options through the real UI"
   await expectAfterMutation(fieldRow.getByRole("button", { name: "Restore" }));
 });
 
+test("existing Choice option color changes autosave without pressing Save", async ({
+  page,
+}) => {
+  const run = createScenarioRun();
+  const { entity, highId } = await createPriorityFixture(run);
+
+  await gotoEntity(page, entity, true);
+
+  const fieldRow = page
+    .locator("form")
+    .filter({ has: page.locator(`input[name="fieldName"][value="Priority"]`) })
+    .locator("..");
+  const highRow = fieldRow.getByText("High", { exact: true }).locator("..").locator("..");
+
+  await highRow.getByRole("button", { name: "Edit" }).click();
+  await highRow.locator('label[title="Blue"]').click();
+  await expectAfterMutation(highRow.getByText("Option updated."));
+  await expect(highRow.getByRole("button", { name: "Save" })).toBeVisible();
+
+  const admin = createSupabaseTestClient();
+  const { data, error } = await admin
+    .from("field_choice_options")
+    .select("color")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("id", highId)
+    .single<{ color: string | null }>();
+  expect(error).toBeNull();
+  expect(data?.color).toBe("blue");
+});
+
 test("archived Choice options are hidden behind Show archived options, and support Restore and Permanent delete", async ({
   page,
 }) => {

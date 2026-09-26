@@ -53,13 +53,29 @@ export function FieldTypeChange({
   const panelId = `field-type-change-panel-${field.id}`;
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  async function changeTypeAndCloseOnSuccess(
+    state: FieldTypeChangeActionState,
+    formData: FormData,
+  ) {
+    const nextState = await changeTypeAction(state, formData);
+
+    if (nextState.success) {
+      setOpen(false);
+      window.setTimeout(() => {
+        buttonRef.current?.focus();
+      }, 0);
+    }
+
+    return nextState;
+  }
+
   const [preflightTransitionPending, startPreflightTransition] = useTransition();
   const [changeTransitionPending, startChangeTransition] = useTransition();
   const [preflightState, runPreflight, preflightPending] = useActionState(
     checkPreflightAction,
     initialFieldTypeChangePreflightState,
   );
-  const [changeState, runChange, changePending] = useActionState(changeTypeAction, {
+  const [changeState, runChange, changePending] = useActionState(changeTypeAndCloseOnSuccess, {
     success: false,
     message: "",
   });
@@ -150,6 +166,11 @@ export function FieldTypeChange({
       >
         {typeDescription}
       </button>
+      {changeState.success ? (
+        <span className="ml-2 text-xs font-medium text-emerald-700" role="status">
+          {changeState.message}
+        </span>
+      ) : null}
 
       {open ? (
         <div
@@ -247,11 +268,7 @@ export function FieldTypeChange({
             )}
           </div>
 
-          {changeState.success ? (
-            <p className="mt-3 text-sm text-emerald-700" role="status">
-              {changeState.message}
-            </p>
-          ) : changeState.message ? (
+          {!changeState.success && changeState.message ? (
             <p className="mt-3 text-sm text-red-700" role="alert">
               {changeState.message}
             </p>

@@ -190,6 +190,7 @@ test("Type badge opens the type-change panel, and a pristine field can change ty
   await fieldRow.getByRole("button", { name: "Change type", exact: true }).click();
 
   await expect(fieldRow.getByText("Field type changed.")).toBeVisible();
+  await expect(fieldRow.locator(".field-type-change-panel")).toHaveCount(0);
   await expect(
     fieldRow.getByRole("button", { name: "Change type for Priority, currently Number." }),
   ).toBeVisible();
@@ -293,6 +294,7 @@ test("changing a pristine field to Relation offers the same active-object target
   await fieldRow.getByRole("button", { name: "Change type", exact: true }).click();
 
   await expect(fieldRow.getByText("Field type changed.")).toBeVisible();
+  await expect(fieldRow.locator(".field-type-change-panel")).toHaveCount(0);
   await expect(
     fieldRow.getByRole("button", { name: "Change type for Owner, currently Relation." }),
   ).toBeVisible();
