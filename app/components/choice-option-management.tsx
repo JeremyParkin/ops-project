@@ -360,13 +360,13 @@ function OptionRow({
         aria-controls={bodyId}
         aria-current={open ? "true" : undefined}
         data-active={open ? "true" : undefined}
-        className="choice-option-tab relative z-0 inline-flex h-8 max-w-full items-center gap-1.5 border px-2 text-xs outline-none focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brass data-[active=true]:z-10 data-[active=true]:-mb-px"
+        className="choice-option-tab relative z-0 inline-flex h-8 max-w-full items-center gap-1.5 border px-2 text-xs outline-none focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brass data-[active=true]:z-10 data-[active=true]:-mb-[2px]"
       >
         <span className={`h-3 w-3 shrink-0 rounded-sm border ${swatchClass}`} aria-hidden="true" />
         <span className="truncate">{option.label}</span>
       </button>
       {open ? (
-        <div id={bodyId} className="choice-option-editor-panel order-last grid basis-full gap-2 border p-3">
+        <div id={bodyId} className="choice-option-editor-panel order-last -mt-px grid basis-full gap-2 border p-3">
           <form action={formAction} className="flex flex-wrap items-end gap-2">
             <div>
               <label htmlFor={`option-label-${option.id}`} className="block text-xs font-medium text-stone">
@@ -521,7 +521,7 @@ export function ChoiceOptionManagement({
       {activeRows.length === 0 ? (
         <p className="text-sm text-stone">No options yet.</p>
       ) : (
-        <div className="flex flex-wrap items-start gap-1.5">
+        <div className="flex flex-wrap items-start gap-x-1.5 gap-y-0">
           {activeRows.map((row) => (
             <OptionRow
               key={row.option.id}
