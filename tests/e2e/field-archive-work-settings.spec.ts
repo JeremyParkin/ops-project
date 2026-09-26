@@ -10,7 +10,7 @@ import {
   type TestEntity,
   type TestRun,
 } from "./helpers/supabase-test-data";
-import { expectAfterMutation, gotoEntity } from "./helpers/ui";
+import { gotoEntity } from "./helpers/ui";
 
 test.describe.configure({ mode: "serial" });
 
@@ -38,6 +38,12 @@ function fieldRow(page: Page, fieldName: string) {
     .locator("form")
     .filter({ has: page.locator(`input[name="fieldName"][value="${fieldName}"]`) })
     .locator("..");
+}
+
+function fieldArchiveButton(page: Page, fieldName: string, label: string | RegExp) {
+  return fieldRow(page, fieldName)
+    .locator('button[form^="field-archive-"]')
+    .getByText(label);
 }
 
 async function addWorkStatusFixture(entity: TestEntity, run: TestRun) {
@@ -78,7 +84,7 @@ async function addWorkStatusFixture(entity: TestEntity, run: TestRun) {
     workspace_id: DEMO_WORKSPACE_ID,
     field_definition_id: statusFieldId,
     label: "Done",
-    color: "green",
+    color: "emerald",
     position: 1,
   });
   expect(optionError).toBeNull();
@@ -117,13 +123,11 @@ test("archiving a Work Settings status field requires confirmation, then clears 
 
   await gotoEntity(page, entity, true);
 
-  await fieldRow(page, "Status").getByRole("button", { name: "Archive" }).click();
+  await fieldArchiveButton(page, "Status", "Archive").click();
   await expect(page.getByText(/This field is used by Work Settings/i)).toBeVisible();
 
-  await fieldRow(page, "Status")
-    .getByRole("button", { name: "Remove from Work Settings and archive" })
-    .click();
-  await expectAfterMutation(page.getByText("Field archived."));
+  await fieldArchiveButton(page, "Status", "Remove from Work Settings and archive").click();
+  await expect(page.locator('input[name="fieldName"][value="Status"]')).toHaveCount(0);
 
   const { data: entityType, error: entityError } = await supabase
     .from("entity_types")
