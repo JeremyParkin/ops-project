@@ -352,26 +352,22 @@ function OptionRow({
     : "border-dashed border-grit";
 
   return (
-    <div className={open ? "basis-full border border-grit" : "contents"}>
+    <div className="contents">
       <button
         type="button"
         onClick={onToggleOpen}
         aria-expanded={open}
         aria-controls={bodyId}
+        aria-current={open ? "true" : undefined}
         className={`inline-flex h-7 max-w-full items-center gap-1.5 border border-grit px-2 text-xs text-graphite outline-none hover:bg-chalk focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brass ${
-          open ? "m-2 mb-0" : ""
+          open ? "border-brass bg-chalk text-graphite" : ""
         }`}
       >
         <span className={`h-3 w-3 shrink-0 rounded-sm border ${swatchClass}`} aria-hidden="true" />
         <span className="truncate">{option.label}</span>
       </button>
-      {archiveState.message ? (
-        <p className={`px-3 pb-2 text-xs ${archiveState.success ? "text-status-sage" : "text-status-oxide"}`}>
-          {archiveState.message}
-        </p>
-      ) : null}
       {open ? (
-        <div id={bodyId} className="grid gap-2 border-t border-grit p-3">
+        <div id={bodyId} className="order-last grid basis-full gap-2 border border-grit p-3">
           <form action={formAction} className="flex flex-wrap items-end gap-2">
             <div>
               <label htmlFor={`option-label-${option.id}`} className="block text-xs font-medium text-stone">
@@ -429,6 +425,11 @@ function OptionRow({
           {blockedByDirtySwitch ? (
             <p className="text-xs text-status-oxide" role="alert">
               Save or close this option before editing another.
+            </p>
+          ) : null}
+          {archiveState.message ? (
+            <p className={`text-xs ${archiveState.success ? "text-status-sage" : "text-status-oxide"}`}>
+              {archiveState.message}
             </p>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">

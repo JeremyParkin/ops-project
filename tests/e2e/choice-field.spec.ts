@@ -194,6 +194,8 @@ test("builder creates a Choice field and configures options through the real UI"
   // inside that body, not conflated with opening the option item.
   const criticalOption = fieldRow.getByRole("button", { name: "Critical" });
   await criticalOption.click();
+  await expect(criticalOption).toHaveAttribute("aria-current", "true");
+  await expect(fieldRow.getByRole("button", { name: "Minor" })).toBeVisible();
   const criticalControls = await criticalOption.getAttribute("aria-controls");
   const criticalRow = fieldRow.locator(`[id="${criticalControls}"]`).locator("..");
   await criticalRow.getByRole("button", { name: "Up" }).click();
