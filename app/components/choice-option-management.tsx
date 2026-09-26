@@ -52,11 +52,11 @@ function FieldError({ message }: { message?: string }) {
 // Swatch-only, not chip+label: rendering every color as both a color chip
 // and its full text label was the single biggest contributor to the
 // new-option editor's height (dogfood, hosted verification after 139e7d6).
-// Color is still never the *only* signal of which is selected -- every
-// swatch keeps a literal accessible name (via aria-label on the input,
-// since there's no visible text for the label to derive one from) plus a
-// native `title` tooltip, and the checked swatch gets a visible ring, not
-// just a color difference.
+// Color is still never the *only* signal: every swatch keeps a literal
+// accessible name (via aria-label on the input, since there's no visible
+// text for the label to derive one from) plus a native `title` tooltip. The
+// saved option row chip is the visible source of truth for current color;
+// the picker only shows keyboard focus, not a persistent selected ring.
 function ColorSwatchPicker({
   legendId,
   defaultValue,
@@ -76,7 +76,7 @@ function ColorSwatchPicker({
     <div role="radiogroup" aria-labelledby={legendId} className="flex flex-wrap gap-1">
       <label
         title="No color"
-        className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-sm border border-dashed border-grit has-[:checked]:ring-2 has-[:checked]:ring-graphite has-[:checked]:ring-offset-1 has-[:checked]:ring-offset-white has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-brass"
+        className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-sm border border-dashed border-grit has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-brass"
       >
         <input
           type="radio"
@@ -96,7 +96,7 @@ function ColorSwatchPicker({
         <label
           key={color}
           title={CHOICE_OPTION_COLOR_LABELS[color]}
-          className={`h-6 w-6 shrink-0 cursor-pointer rounded-sm border ${CHOICE_OPTION_SWATCH_CLASSES[color]} has-[:checked]:ring-2 has-[:checked]:ring-graphite has-[:checked]:ring-offset-1 has-[:checked]:ring-offset-white has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-brass`}
+          className={`h-6 w-6 shrink-0 cursor-pointer rounded-sm border ${CHOICE_OPTION_SWATCH_CLASSES[color]} has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-brass`}
         >
           <input
             type="radio"
@@ -115,10 +115,12 @@ function ColorSwatchPicker({
 }
 
 function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction }) {
+  const labelInputRef = useRef<HTMLInputElement>(null);
   const [state, formAction, pending] = useActionState(
     addOptionAction,
     createInitialChoiceOptionFormState(),
   );
+  const [open, setOpen] = useState(false);
   const domId = useId();
   const colorLegendId = `${domId}-color-legend`;
 
@@ -138,21 +140,45 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
     const timer = setTimeout(() => setHiddenForState(state), 4000);
     return () => clearTimeout(timer);
   }, [state]);
+  useEffect(() => {
+    if (open && state.success) {
+      labelInputRef.current?.focus();
+    }
+  }, [open, state.success, state]);
   const showMessage = Boolean(state.message) && (!state.success || hiddenForState !== state);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true);
+          window.setTimeout(() => {
+            labelInputRef.current?.focus();
+          }, 0);
+        }}
+        className="flex h-9 items-center justify-center border border-dashed border-brass bg-chalk px-3 text-xs font-medium text-stone hover:bg-white"
+      >
+        + Add option
+      </button>
+    );
+  }
 
   return (
     <form
       action={formAction}
-      className="flex flex-wrap items-end gap-2 border border-dashed border-brass bg-chalk p-3"
+      className="flex flex-wrap items-end gap-2 border border-dashed border-brass bg-chalk p-2"
     >
       <div>
         <label htmlFor="new-option-label" className="block text-xs font-medium text-stone">
           New option (unsaved)
         </label>
         <input
+          ref={labelInputRef}
           id="new-option-label"
           name="optionLabel"
           key={state.success ? "reset" : "value"}
+          autoFocus={state.success}
           defaultValue={state.success ? "" : state.values.label}
           className="mt-1 h-8 border border-grit bg-white px-2 text-sm text-graphite"
           placeholder="Label"
@@ -177,6 +203,13 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
       >
         {pending ? "Saving..." : "Save option"}
       </button>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="h-8 border border-grit bg-white px-3 text-xs font-medium text-stone hover:bg-chalk"
+      >
+        Close
+      </button>
       {showMessage ? (
         <p
           className={`text-xs ${state.success ? "text-status-sage" : "text-status-oxide"}`}
@@ -189,10 +222,33 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
   );
 }
 
-function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
+function OptionRow({
+  row,
+  open,
+  blockedByDirtySwitch,
+  onToggleOpen,
+  onDirtyChange,
+}: {
+  row: ChoiceOptionRowActions;
+  open: boolean;
+  blockedByDirtySwitch: boolean;
+  onToggleOpen: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
   const { option, updateAction, archiveAction, restoreAction, deleteAction, moveUpAction, moveDownAction } = row;
+  async function updateAndTrackDirty(
+    formState: ChoiceOptionFormState,
+    formData: FormData,
+  ) {
+    const nextState = await updateAction(formState, formData);
+    if (nextState.success && formData.get("optionEditIntent") === "label") {
+      onDirtyChange(false);
+    }
+    return nextState;
+  }
+
   const [state, formAction, pending] = useActionState(
-    updateAction,
+    updateAndTrackDirty,
     createInitialChoiceOptionFormState({ label: option.label, color: option.color ?? "" }),
   );
   const [archiveState, archiveFormAction, archivePending] = useActionState(
@@ -221,14 +277,6 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
   const colorLegendId = `${domId}-color-legend`;
   const bodyId = `${domId}-body`;
   const colorFormRef = useRef<HTMLFormElement>(null);
-  // Saved options render collapsed by default (dogfood: Choice configuration
-  // was excessively tall with every option always expanded). A plain
-  // client-toggled div, not <details>/<summary>, because the collapsed row
-  // needs its own interactive Edit/Archive controls alongside the toggle --
-  // nested interactive controls inside a native <summary> are unreliable
-  // cross-browser (see page-primitives.tsx's CollapsibleSection, which
-  // avoids this for the same reason).
-  const [open, setOpen] = useState(false);
   const currentLabel = state.values.label || option.label;
   const [selectedColor, setSelectedColor] = useState(state.values.color ?? option.color ?? "");
 
@@ -298,7 +346,7 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
         <span className="min-w-0 flex-1 truncate text-sm text-graphite">{option.label}</span>
         <button
           type="button"
-          onClick={() => setOpen((current) => !current)}
+          onClick={onToggleOpen}
           aria-expanded={open}
           aria-controls={bodyId}
           className="h-7 shrink-0 border border-grit px-2 text-xs font-medium text-stone hover:bg-chalk"
@@ -333,10 +381,12 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
                 id={`option-label-${option.id}`}
                 name="optionLabel"
                 defaultValue={currentLabel}
+                onChange={(event) => onDirtyChange(event.currentTarget.value !== currentLabel)}
                 className="mt-1 h-8 border border-grit px-2 text-sm text-graphite"
               />
               <FieldError message={state.errors.optionLabel} />
             </div>
+            <input type="hidden" name="optionEditIntent" value="label" />
             <input type="hidden" name="optionColor" value={selectedColor} />
             <button
               type="submit"
@@ -347,6 +397,7 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
             </button>
           </form>
           <form ref={colorFormRef} action={formAction} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="optionEditIntent" value="color" />
             <input type="hidden" name="optionLabel" value={currentLabel} />
             <div>
               <span id={colorLegendId} className="block text-xs font-medium text-stone">
@@ -373,6 +424,11 @@ function OptionRow({ row }: { row: ChoiceOptionRowActions }) {
               role="status"
             >
               {state.message}
+            </p>
+          ) : null}
+          {blockedByDirtySwitch ? (
+            <p className="text-xs text-status-oxide" role="alert">
+              Save or close this option before editing another.
             </p>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
@@ -418,6 +474,26 @@ export function ChoiceOptionManagement({
   addOptionAction: OptionFormAction;
 }) {
   const orderedRows = [...rows].sort((left, right) => left.option.position - right.option.position);
+  const [openOptionId, setOpenOptionId] = useState<string | null>(null);
+  const [dirtyOptionId, setDirtyOptionId] = useState<string | null>(null);
+  const [blockedOptionId, setBlockedOptionId] = useState<string | null>(null);
+  function toggleOption(optionId: string) {
+    if (openOptionId === optionId) {
+      setOpenOptionId(null);
+      setDirtyOptionId((current) => (current === optionId ? null : current));
+      setBlockedOptionId(null);
+      return;
+    }
+
+    if (openOptionId && dirtyOptionId === openOptionId) {
+      setBlockedOptionId(openOptionId);
+      return;
+    }
+
+    setOpenOptionId(optionId);
+    setBlockedOptionId(null);
+  }
+
   // Archived options are hidden behind a disclosure by default, rather
   // than interleaved with active ones (dogfood): the active set is what
   // builders scan and maintain day to day, and an inactive option mixed
@@ -436,7 +512,19 @@ export function ChoiceOptionManagement({
       ) : (
         <div className="grid gap-2">
           {activeRows.map((row) => (
-            <OptionRow key={row.option.id} row={row} />
+            <OptionRow
+              key={row.option.id}
+              row={row}
+              open={openOptionId === row.option.id}
+              blockedByDirtySwitch={blockedOptionId === row.option.id}
+              onToggleOpen={() => toggleOption(row.option.id)}
+              onDirtyChange={(dirty) => {
+                setDirtyOptionId(dirty ? row.option.id : null);
+                if (!dirty && blockedOptionId === row.option.id) {
+                  setBlockedOptionId(null);
+                }
+              }}
+            />
           ))}
         </div>
       )}
@@ -453,7 +541,19 @@ export function ChoiceOptionManagement({
           </summary>
           <div className="grid gap-2 border-t border-grit p-3">
             {archivedRows.map((row) => (
-              <OptionRow key={row.option.id} row={row} />
+              <OptionRow
+                key={row.option.id}
+                row={row}
+                open={openOptionId === row.option.id}
+                blockedByDirtySwitch={blockedOptionId === row.option.id}
+                onToggleOpen={() => toggleOption(row.option.id)}
+                onDirtyChange={(dirty) => {
+                  setDirtyOptionId(dirty ? row.option.id : null);
+                  if (!dirty && blockedOptionId === row.option.id) {
+                    setBlockedOptionId(null);
+                  }
+                }}
+              />
             ))}
           </div>
         </details>

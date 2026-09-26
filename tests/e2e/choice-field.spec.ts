@@ -167,11 +167,19 @@ test("builder creates a Choice field and configures options through the real UI"
     .filter({ has: page.locator('input[name="fieldName"][value="Severity"]') })
     .locator("..");
 
-  // Add three options, one at a time, through the option-management UI.
+  // The new-option editor stays collapsed until the builder asks for it,
+  // then remains open after each successful add for rapid entry.
+  await expect(fieldRow.getByLabel("New option")).toHaveCount(0);
+  await fieldRow.getByRole("button", { name: "+ Add option" }).click();
+  await expect(fieldRow.getByLabel("New option")).toBeFocused();
+
+  // Add two options, one at a time, through the option-management UI.
   for (const label of ["Minor", "Critical"]) {
     await fieldRow.getByLabel("New option").fill(label);
     await fieldRow.getByRole("button", { name: "Save option" }).click();
     await expectAfterMutation(page.getByText("Option added."));
+    await expect(fieldRow.getByLabel("New option")).toBeVisible();
+    await expect(fieldRow.getByLabel("New option")).toBeFocused();
   }
 
   // Saved options render as a collapsed row (swatch + label text) by
@@ -214,11 +222,27 @@ test("existing Choice option color changes autosave without pressing Save", asyn
     .filter({ has: page.locator(`input[name="fieldName"][value="Priority"]`) })
     .locator("..");
   const highRow = fieldRow.getByText("High", { exact: true }).locator("..").locator("..");
+  const mediumRow = fieldRow.getByText("Medium", { exact: true }).locator("..").locator("..");
 
   await highRow.getByRole("button", { name: "Edit" }).click();
   await highRow.locator('label[title="Blue"]').click();
   await expectAfterMutation(highRow.getByText("Option updated."));
   await expect(highRow.getByRole("button", { name: "Save" })).toBeVisible();
+  await expect(highRow.locator("span").first()).toHaveClass(/bg-blue-400/);
+  await expect
+    .poll(async () => highRow.locator('label[title="Red"]').getAttribute("class"))
+    .not.toContain("has-[:checked]:ring");
+  await expect
+    .poll(async () => highRow.locator('label[title="Blue"]').getAttribute("class"))
+    .not.toContain("has-[:checked]:ring");
+
+  await highRow.getByLabel("Label").fill("High draft");
+  await mediumRow.getByRole("button", { name: "Edit" }).click();
+  await expect(highRow.getByText("Save or close this option before editing another.")).toBeVisible();
+  await expect(mediumRow.getByRole("button", { name: "Edit" })).toBeVisible();
+  await highRow.getByRole("button", { name: "Close" }).click();
+  await mediumRow.getByRole("button", { name: "Edit" }).click();
+  await expect(mediumRow.getByRole("button", { name: "Close" })).toBeVisible();
 
   const admin = createSupabaseTestClient();
   const { data, error } = await admin
