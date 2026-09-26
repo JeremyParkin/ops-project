@@ -9,9 +9,22 @@ export type FieldTypeChangeDependencySummary = {
   displayFieldReferenceCount: number;
   qualityReviewReferenceCount: number;
   peopleSensitiveReferenceCount: number;
-  viewReferenceCount: number;
   workflowReferenceCount: number;
   processReferenceCount: number;
+  viewReferenceCount: number;
+  viewColumnReferenceCount: number;
+  viewFilterReferenceCount: number;
+  viewSortReferenceCount: number;
+  viewBoardPresentationReferenceCount: number;
+  viewCalendarPresentationReferenceCount: number;
+  workSettingsAssignmentReferenceCount: number;
+  workSettingsDueReferenceCount: number;
+  workSettingsStatusReferenceCount: number;
+  viewColumnReferenceNames: string[];
+  viewFilterReferenceNames: string[];
+  viewSortReferenceNames: string[];
+  viewBoardPresentationReferenceNames: string[];
+  viewCalendarPresentationReferenceNames: string[];
 };
 
 export type FieldTypeChangePreflightState = {

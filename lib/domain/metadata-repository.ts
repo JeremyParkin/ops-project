@@ -549,12 +549,32 @@ type FieldTypeChangeDependencyRow = {
   display_field_reference_count: number;
   quality_review_reference_count: number;
   people_sensitive_reference_count: number;
-  view_reference_count: number;
   workflow_reference_count: number;
   process_reference_count: number;
+  view_reference_count?: number;
+  view_column_reference_count?: number;
+  view_filter_reference_count?: number;
+  view_sort_reference_count?: number;
+  view_board_presentation_reference_count?: number;
+  view_calendar_presentation_reference_count?: number;
+  work_settings_assignment_reference_count?: number;
+  work_settings_due_reference_count?: number;
+  work_settings_status_reference_count?: number;
+  view_column_reference_names?: string[];
+  view_filter_reference_names?: string[];
+  view_sort_reference_names?: string[];
+  view_board_presentation_reference_names?: string[];
+  view_calendar_presentation_reference_names?: string[];
 };
 
 function mapFieldTypeChangeDependencyRow(row: FieldTypeChangeDependencyRow) {
+  const viewFilterReferenceCount = row.view_filter_reference_count ?? 0;
+  const viewSortReferenceCount = row.view_sort_reference_count ?? 0;
+  const viewBoardPresentationReferenceCount =
+    row.view_board_presentation_reference_count ?? 0;
+  const viewCalendarPresentationReferenceCount =
+    row.view_calendar_presentation_reference_count ?? 0;
+
   return {
     recordValueCount: row.record_value_count,
     relationValueCount: row.relation_value_count,
@@ -562,9 +582,30 @@ function mapFieldTypeChangeDependencyRow(row: FieldTypeChangeDependencyRow) {
     displayFieldReferenceCount: row.display_field_reference_count,
     qualityReviewReferenceCount: row.quality_review_reference_count,
     peopleSensitiveReferenceCount: row.people_sensitive_reference_count,
-    viewReferenceCount: row.view_reference_count,
     workflowReferenceCount: row.workflow_reference_count,
     processReferenceCount: row.process_reference_count,
+    viewReferenceCount:
+      row.view_reference_count ??
+      viewFilterReferenceCount +
+        viewSortReferenceCount +
+        viewBoardPresentationReferenceCount +
+        viewCalendarPresentationReferenceCount,
+    viewColumnReferenceCount: row.view_column_reference_count ?? 0,
+    viewFilterReferenceCount,
+    viewSortReferenceCount,
+    viewBoardPresentationReferenceCount,
+    viewCalendarPresentationReferenceCount,
+    workSettingsAssignmentReferenceCount:
+      row.work_settings_assignment_reference_count ?? 0,
+    workSettingsDueReferenceCount: row.work_settings_due_reference_count ?? 0,
+    workSettingsStatusReferenceCount: row.work_settings_status_reference_count ?? 0,
+    viewColumnReferenceNames: row.view_column_reference_names ?? [],
+    viewFilterReferenceNames: row.view_filter_reference_names ?? [],
+    viewSortReferenceNames: row.view_sort_reference_names ?? [],
+    viewBoardPresentationReferenceNames:
+      row.view_board_presentation_reference_names ?? [],
+    viewCalendarPresentationReferenceNames:
+      row.view_calendar_presentation_reference_names ?? [],
   };
 }
 
@@ -575,7 +616,7 @@ export async function getFieldDefinitionTypeChangePreflight({
 }: FieldDefinitionLifecycleInput) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
-    .rpc("get_field_definition_type_change_preflight_authorized", {
+    .rpc("get_field_definition_type_change_preflight_v2_authorized", {
       p_workspace_id: workspaceId,
       p_entity_type_id: entityTypeId,
       p_field_definition_id: fieldDefinitionId,
@@ -608,7 +649,7 @@ export async function changeFieldDefinitionType({
 }) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
-    .rpc("change_field_definition_type_if_safe_authorized", {
+    .rpc("change_field_definition_type_if_safe_v2_authorized", {
       p_workspace_id: workspaceId,
       p_entity_type_id: entityTypeId,
       p_field_definition_id: fieldDefinitionId,

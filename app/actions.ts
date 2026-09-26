@@ -2588,52 +2588,95 @@ function formatFieldTypeChangeBlockMessage({
   dependencies: FieldTypeChangeDependencySummary;
 }) {
   const reasons: string[] = [];
+  const firstName = (names: string[]) => names[0] ?? "a saved view";
+  const quotedFirstName = (names: string[]) => `'${firstName(names)}'`;
+  const additionalCount = (names: string[], count: number) => {
+    const extra = Math.max(count - 1, names.length - 1, 0);
+
+    return extra > 0 ? ` and ${extra} other saved view${extra === 1 ? "" : "s"}` : "";
+  };
 
   if (dependencies.recordValueCount > 0) {
     reasons.push(
-      `${dependencies.recordValueCount} record value${dependencies.recordValueCount === 1 ? "" : "s"}`,
+      `${dependencies.recordValueCount} record value${dependencies.recordValueCount === 1 ? "" : "s"}. Clear existing values before changing the field type`,
     );
   }
 
   if (dependencies.relationValueCount > 0) {
     reasons.push(
-      `${dependencies.relationValueCount} relation value${dependencies.relationValueCount === 1 ? "" : "s"}`,
+      `${dependencies.relationValueCount} relation or workspace-member value${dependencies.relationValueCount === 1 ? "" : "s"}. Clear existing normalized values before changing the field type`,
     );
   }
 
   if (dependencies.choiceOptionCount > 0) {
     reasons.push(
-      `${dependencies.choiceOptionCount} Choice option${dependencies.choiceOptionCount === 1 ? "" : "s"}`,
+      `${dependencies.choiceOptionCount} Choice option${dependencies.choiceOptionCount === 1 ? "" : "s"}. Delete the options before changing this Choice field type`,
     );
   }
 
   if (dependencies.displayFieldReferenceCount > 0) {
-    reasons.push("configured as this object's display field");
+    reasons.push("configured as this object's display field. Choose another display field before changing its type");
   }
 
   if (dependencies.qualityReviewReferenceCount > 0) {
-    reasons.push("configured as the Quality Review status field");
+    reasons.push("configured as the Quality Review status field. Update Quality Review settings before changing its type");
   }
 
   if (dependencies.peopleSensitiveReferenceCount > 0) {
-    reasons.push("configured as a people-sensitive subject or author field");
+    reasons.push("configured as a people-sensitive subject or author field. Update people-sensitive settings before changing its type");
   }
 
-  if (dependencies.viewReferenceCount > 0) {
+  if (dependencies.viewFilterReferenceCount > 0) {
     reasons.push(
-      `${dependencies.viewReferenceCount} saved view reference${dependencies.viewReferenceCount === 1 ? "" : "s"}`,
+      `used by a filter in ${quotedFirstName(dependencies.viewFilterReferenceNames)}${additionalCount(dependencies.viewFilterReferenceNames, dependencies.viewFilterReferenceCount)}. Remove or update that filter before changing the field type`,
+    );
+  }
+
+  if (dependencies.viewSortReferenceCount > 0) {
+    reasons.push(
+      `used to sort ${quotedFirstName(dependencies.viewSortReferenceNames)}${additionalCount(dependencies.viewSortReferenceNames, dependencies.viewSortReferenceCount)}. Remove that sort before changing the field type`,
+    );
+  }
+
+  if (dependencies.viewBoardPresentationReferenceCount > 0) {
+    reasons.push(
+      `configures the Board view ${quotedFirstName(dependencies.viewBoardPresentationReferenceNames)}${additionalCount(dependencies.viewBoardPresentationReferenceNames, dependencies.viewBoardPresentationReferenceCount)}. Choose another Board field or change that view to Table before changing this field type`,
+    );
+  }
+
+  if (dependencies.viewCalendarPresentationReferenceCount > 0) {
+    reasons.push(
+      `configures the Calendar view ${quotedFirstName(dependencies.viewCalendarPresentationReferenceNames)}${additionalCount(dependencies.viewCalendarPresentationReferenceNames, dependencies.viewCalendarPresentationReferenceCount)}. Choose another Calendar field or change that view to Table before changing this field type`,
     );
   }
 
   if (dependencies.workflowReferenceCount > 0) {
     reasons.push(
-      `${dependencies.workflowReferenceCount} workflow reference${dependencies.workflowReferenceCount === 1 ? "" : "s"}`,
+      `${dependencies.workflowReferenceCount} workflow reference${dependencies.workflowReferenceCount === 1 ? "" : "s"}. Update workflows before changing the field type`,
     );
   }
 
   if (dependencies.processReferenceCount > 0) {
     reasons.push(
-      `${dependencies.processReferenceCount} process reference${dependencies.processReferenceCount === 1 ? "" : "s"}`,
+      `${dependencies.processReferenceCount} process reference${dependencies.processReferenceCount === 1 ? "" : "s"}. Update processes before changing the field type`,
+    );
+  }
+
+  if (dependencies.workSettingsAssignmentReferenceCount > 0) {
+    reasons.push(
+      "configured as this object's Work Settings assignment field. Update Work Settings before changing its type",
+    );
+  }
+
+  if (dependencies.workSettingsDueReferenceCount > 0) {
+    reasons.push(
+      "configured as this object's Work Settings due-date field. Update Work Settings before changing its type",
+    );
+  }
+
+  if (dependencies.workSettingsStatusReferenceCount > 0) {
+    reasons.push(
+      "configured as this object's Work Settings status field. Update Work Settings before changing its type",
     );
   }
 
@@ -2641,7 +2684,7 @@ function formatFieldTypeChangeBlockMessage({
     return `${fieldName}'s type cannot be changed right now.`;
   }
 
-  return `${fieldName}'s type cannot be changed because it has ${reasons.join(", ")}.`;
+  return `${fieldName}'s type cannot be changed: ${reasons.join("; ")}.`;
 }
 
 export async function getFieldTypeChangePreflightAction(
@@ -2672,6 +2715,15 @@ export async function getFieldTypeChangePreflightAction(
       checked: true,
       success: false,
       message: "Archived entities are read-only. Restore this entity before changing a field's type.",
+      pristine: false,
+    };
+  }
+
+  if (field.archivedAt) {
+    return {
+      checked: true,
+      success: false,
+      message: "Archived fields are read-only. Restore this field before changing its type.",
       pristine: false,
     };
   }
@@ -2723,7 +2775,14 @@ export async function changeFieldDefinitionTypeAction(
     };
   }
 
-  if (!["text", "number", "date", "boolean", "relation", "choice"].includes(newType)) {
+  if (field.archivedAt) {
+    return {
+      success: false,
+      message: "Archived fields are read-only. Restore this field before changing its type.",
+    };
+  }
+
+  if (!["text", "number", "date", "boolean", "relation", "choice", "workspace_member"].includes(newType)) {
     return { success: false, message: "Choose a supported field type." };
   }
 

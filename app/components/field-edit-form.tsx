@@ -15,7 +15,7 @@ type FieldEditFormProps = {
   // per-option lifecycle actions) -- kept out of this component so it stays
   // a plain field-metadata editor for every other field type.
   choiceOptionManagement?: ReactNode;
-  // Secondary "Change type…" recovery affordance, supplied by the parent
+  // Interactive type-badge recovery affordance, supplied by the parent
   // (same reason as choiceOptionManagement: it needs bound server actions
   // and the active entity-type list for a Relation target picker).
   typeChangeControl?: ReactNode;
@@ -229,13 +229,15 @@ export function FieldEditForm({
         </div>
 
         <div className="flex min-h-10 min-w-32 items-center">
-          <p
-            aria-label={`Type: ${typeDescription}`}
-            title={typeDescription}
-            className="field-type-chip inline-flex max-w-full items-center px-2.5 py-1 text-sm font-medium text-slate-700"
-          >
-            {typeDescription}
-          </p>
+          {typeChangeControl ?? (
+            <p
+              aria-label={`Type: ${typeDescription}`}
+              title={typeDescription}
+              className="field-type-chip inline-flex max-w-full items-center px-2.5 py-1 text-sm font-medium text-slate-700"
+            >
+              {typeDescription}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
@@ -320,7 +322,6 @@ export function FieldEditForm({
           {moveMessage}
         </p>
       ) : null}
-      {typeChangeControl}
       {field.type === "choice" ? choiceOptionManagement : null}
       <form
         id={`field-archive-${field.id}`}

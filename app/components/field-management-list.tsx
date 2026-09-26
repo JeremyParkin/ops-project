@@ -112,6 +112,11 @@ export function FieldManagementList({
           const typeChangeControl = field.archivedAt ? undefined : (
             <FieldTypeChange
               field={field}
+              relatedEntityName={
+                field.relatedEntityTypeId
+                  ? entityNameById[field.relatedEntityTypeId]
+                  : undefined
+              }
               entityTypes={activeEntityTypes}
               checkPreflightAction={getFieldTypeChangePreflightAction.bind(null, {
                 workspaceId,

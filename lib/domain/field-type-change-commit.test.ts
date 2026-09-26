@@ -138,6 +138,19 @@ type DependencyResult = {
   view_reference_count: number;
   workflow_reference_count: number;
   process_reference_count: number;
+  view_column_reference_count?: number;
+  view_filter_reference_count?: number;
+  view_sort_reference_count?: number;
+  view_board_presentation_reference_count?: number;
+  view_calendar_presentation_reference_count?: number;
+  work_settings_assignment_reference_count?: number;
+  work_settings_due_reference_count?: number;
+  work_settings_status_reference_count?: number;
+  view_column_reference_names?: string[];
+  view_filter_reference_names?: string[];
+  view_sort_reference_names?: string[];
+  view_board_presentation_reference_names?: string[];
+  view_calendar_presentation_reference_names?: string[];
 };
 
 async function preflight(client: SupabaseClient, workspaceId: string, entityTypeId: string, fieldDefinitionId: string) {
@@ -169,6 +182,35 @@ async function attemptChangeType(
     .single<DependencyResult>();
 }
 
+async function preflightV2(client: SupabaseClient, workspaceId: string, entityTypeId: string, fieldDefinitionId: string) {
+  return client
+    .rpc("get_field_definition_type_change_preflight_v2_authorized", {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_field_definition_id: fieldDefinitionId,
+    })
+    .single<DependencyResult>();
+}
+
+async function attemptChangeTypeV2(
+  client: SupabaseClient,
+  workspaceId: string,
+  entityTypeId: string,
+  fieldDefinitionId: string,
+  newType: string,
+  newRelatedEntityTypeId?: string,
+) {
+  return client
+    .rpc("change_field_definition_type_if_safe_v2_authorized", {
+      p_workspace_id: workspaceId,
+      p_entity_type_id: entityTypeId,
+      p_field_definition_id: fieldDefinitionId,
+      p_new_type: newType,
+      p_new_related_entity_type_id: newRelatedEntityTypeId ?? null,
+    })
+    .single<DependencyResult>();
+}
+
 async function createRecordWithValue(client: SupabaseClient, workspaceId: string, entityTypeId: string, key: string, value: unknown) {
   const { data, error } = await client
     .rpc("create_entity_record_with_relations_authorized", {
@@ -186,16 +228,28 @@ async function createEntityView(
   client: SupabaseClient,
   workspaceId: string,
   entityTypeId: string,
-  filters: unknown[] = [],
+  filtersOrOptions: unknown[] | {
+    name?: string;
+    filters?: unknown[];
+    sorts?: unknown[];
+    columnFieldDefinitionIds?: string[];
+    presentationMode?: "table" | "board" | "calendar";
+    presentationConfig?: Record<string, string>;
+  } = [],
 ) {
+  const options = Array.isArray(filtersOrOptions)
+    ? { filters: filtersOrOptions }
+    : filtersOrOptions;
   const { data, error } = await client
     .rpc("create_entity_view_authorized", {
       p_workspace_id: workspaceId,
       p_entity_type_id: entityTypeId,
-      p_name: `View ${randomUUID().slice(0, 8)}`,
-      p_filters: filters,
-      p_sorts: [],
-      p_column_field_definition_ids: [],
+      p_name: options.name ?? `View ${randomUUID().slice(0, 8)}`,
+      p_filters: options.filters ?? [],
+      p_sorts: options.sorts ?? [],
+      p_column_field_definition_ids: options.columnFieldDefinitionIds ?? [],
+      p_presentation_mode: options.presentationMode ?? "table",
+      p_presentation_config: options.presentationConfig ?? {},
     })
     .single<{ id: string }>();
   if (error) throw new Error(error.message);
@@ -604,6 +658,177 @@ describe("Safe pristine-only field type change", () => {
       expect(result.error).toBeNull();
       expect(result.data?.changed).toBe(false);
       expect(result.data?.view_reference_count).toBe(1);
+    });
+
+    it("v2 allows table-column saved-view references, preserves the column, and keeps mutation authoritative", async () => {
+      const workspaceId = await createWorkspace("Field Type V2 Column");
+      const builder = await memberWithCapabilities(workspaceId, "builder", ["schema.manage", "records.operate"]);
+      const client = await authenticatedClient(builder);
+      const entityTypeId = await createEntityType(workspaceId, "Task");
+      const { id: fieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Priority", type: "text", position: 1,
+      });
+      const viewId = await createEntityView(client, workspaceId, entityTypeId, {
+        name: "All tasks",
+        columnFieldDefinitionIds: [fieldId],
+      });
+
+      const preflightResult = await preflightV2(client, workspaceId, entityTypeId, fieldId);
+      expect(preflightResult.error).toBeNull();
+      expect(preflightResult.data?.pristine).toBe(true);
+      expect(preflightResult.data?.view_column_reference_count).toBe(1);
+
+      const result = await attemptChangeTypeV2(client, workspaceId, entityTypeId, fieldId, "choice");
+      expect(result.error).toBeNull();
+      expect(result.data?.changed).toBe(true);
+      expect(result.data?.view_column_reference_count).toBe(1);
+      expect((await getField(workspaceId, fieldId)).type).toBe("choice");
+
+      const admin = createSupabaseTestClient();
+      const { data: view, error: viewError } = await admin
+        .from("entity_views")
+        .select("column_field_definition_ids")
+        .eq("workspace_id", workspaceId)
+        .eq("id", viewId)
+        .single<{ column_field_definition_ids: string[] }>();
+      expect(viewError).toBeNull();
+      expect(view?.column_field_definition_ids).toEqual([fieldId]);
+    });
+
+    it("v2 keeps filters and sorts blocking with typed counts and names", async () => {
+      const workspaceId = await createWorkspace("Field Type V2 Views");
+      const builder = await memberWithCapabilities(workspaceId, "builder", ["schema.manage", "records.operate"]);
+      const client = await authenticatedClient(builder);
+      const entityTypeId = await createEntityType(workspaceId, "Task");
+      const { id: filterFieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Priority", type: "text", position: 1,
+      });
+      const { id: sortFieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Rank", type: "number", position: 2,
+      });
+      await createEntityView(client, workspaceId, entityTypeId, {
+        name: "High-priority tasks",
+        filters: [{ fieldDefinitionId: filterFieldId, operator: "equals", value: "High" }],
+      });
+      await createEntityView(client, workspaceId, entityTypeId, {
+        name: "Ranked tasks",
+        sorts: [{ fieldDefinitionId: sortFieldId, direction: "asc" }],
+      });
+
+      const filterResult = await attemptChangeTypeV2(client, workspaceId, entityTypeId, filterFieldId, "choice");
+      expect(filterResult.error).toBeNull();
+      expect(filterResult.data?.changed).toBe(false);
+      expect(filterResult.data?.view_filter_reference_count).toBe(1);
+      expect(filterResult.data?.view_filter_reference_names).toEqual(["High-priority tasks"]);
+
+      const sortResult = await attemptChangeTypeV2(client, workspaceId, entityTypeId, sortFieldId, "text");
+      expect(sortResult.error).toBeNull();
+      expect(sortResult.data?.changed).toBe(false);
+      expect(sortResult.data?.view_sort_reference_count).toBe(1);
+      expect(sortResult.data?.view_sort_reference_names).toEqual(["Ranked tasks"]);
+    });
+
+    it("v2 blocks Board and Calendar presentation fields authoritatively", async () => {
+      const workspaceId = await createWorkspace("Field Type V2 Presentation");
+      const builder = await memberWithCapabilities(workspaceId, "builder", ["schema.manage", "records.operate"]);
+      const client = await authenticatedClient(builder);
+      const entityTypeId = await createEntityType(workspaceId, "Task");
+      const { id: statusFieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Status", type: "choice", position: 1,
+      });
+      const { id: dueFieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Due Date", type: "date", position: 2,
+      });
+      await createEntityView(client, workspaceId, entityTypeId, {
+        name: "Board test",
+        presentationMode: "board",
+        presentationConfig: { choiceFieldDefinitionId: statusFieldId },
+      });
+      await createEntityView(client, workspaceId, entityTypeId, {
+        name: "Task calendar",
+        presentationMode: "calendar",
+        presentationConfig: { dateFieldDefinitionId: dueFieldId },
+      });
+
+      const boardResult = await attemptChangeTypeV2(client, workspaceId, entityTypeId, statusFieldId, "text");
+      expect(boardResult.error).toBeNull();
+      expect(boardResult.data?.changed).toBe(false);
+      expect(boardResult.data?.view_board_presentation_reference_count).toBe(1);
+      expect(boardResult.data?.view_board_presentation_reference_names).toEqual(["Board test"]);
+
+      const calendarResult = await attemptChangeTypeV2(client, workspaceId, entityTypeId, dueFieldId, "text");
+      expect(calendarResult.error).toBeNull();
+      expect(calendarResult.data?.changed).toBe(false);
+      expect(calendarResult.data?.view_calendar_presentation_reference_count).toBe(1);
+      expect(calendarResult.data?.view_calendar_presentation_reference_names).toEqual(["Task calendar"]);
+    });
+
+    it("v2 surfaces Work Settings assignment, due-date, and status mappings as named blockers", async () => {
+      const workspaceId = await createWorkspace("Field Type V2 Work");
+      const builder = await memberWithCapabilities(workspaceId, "builder", ["schema.manage"]);
+      const client = await authenticatedClient(builder);
+      const entityTypeId = await createEntityType(workspaceId, "Task");
+      const { id: assignmentFieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Assignee", type: "workspace_member", position: 1,
+      });
+      const { id: dueFieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Due Date", type: "date", position: 2,
+      });
+      const { id: statusFieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Status", type: "choice", position: 3,
+      });
+      const admin = createSupabaseTestClient();
+      const { error: settingsError } = await admin
+        .from("entity_types")
+        .update({
+          work_enabled: false,
+          work_assignment_field_id: assignmentFieldId,
+          work_due_field_id: dueFieldId,
+          work_status_field_id: statusFieldId,
+        })
+        .eq("workspace_id", workspaceId)
+        .eq("id", entityTypeId);
+      expect(settingsError).toBeNull();
+
+      const assignmentResult = await attemptChangeTypeV2(client, workspaceId, entityTypeId, assignmentFieldId, "text");
+      expect(assignmentResult.error).toBeNull();
+      expect(assignmentResult.data?.changed).toBe(false);
+      expect(assignmentResult.data?.work_settings_assignment_reference_count).toBe(1);
+
+      const dueResult = await attemptChangeTypeV2(client, workspaceId, entityTypeId, dueFieldId, "text");
+      expect(dueResult.error).toBeNull();
+      expect(dueResult.data?.changed).toBe(false);
+      expect(dueResult.data?.work_settings_due_reference_count).toBe(1);
+
+      const statusResult = await attemptChangeTypeV2(client, workspaceId, entityTypeId, statusFieldId, "text");
+      expect(statusResult.error).toBeNull();
+      expect(statusResult.data?.changed).toBe(false);
+      expect(statusResult.data?.work_settings_status_reference_count).toBe(1);
+    });
+
+    it("v2 catches a blocking saved-view dependency added after preflight", async () => {
+      const workspaceId = await createWorkspace("Field Type V2 Stale Preflight");
+      const builder = await memberWithCapabilities(workspaceId, "builder", ["schema.manage", "records.operate"]);
+      const client = await authenticatedClient(builder);
+      const entityTypeId = await createEntityType(workspaceId, "Task");
+      const { id: fieldId } = await createField(client, workspaceId, entityTypeId, {
+        key: `f_${randomUUID().slice(0, 8)}`, name: "Priority", type: "text", position: 1,
+      });
+
+      const preflightResult = await preflightV2(client, workspaceId, entityTypeId, fieldId);
+      expect(preflightResult.error).toBeNull();
+      expect(preflightResult.data?.pristine).toBe(true);
+
+      await createEntityView(client, workspaceId, entityTypeId, {
+        name: "Late filter",
+        filters: [{ fieldDefinitionId: fieldId, operator: "equals", value: "High" }],
+      });
+
+      const result = await attemptChangeTypeV2(client, workspaceId, entityTypeId, fieldId, "choice");
+      expect(result.error).toBeNull();
+      expect(result.data?.changed).toBe(false);
+      expect(result.data?.view_filter_reference_count).toBe(1);
+      expect((await getField(workspaceId, fieldId)).type).toBe("text");
     });
 
     it("workflow reference", async () => {
