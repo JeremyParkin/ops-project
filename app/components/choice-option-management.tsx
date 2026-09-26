@@ -157,7 +157,7 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
             labelInputRef.current?.focus();
           }, 0);
         }}
-        className="flex h-9 items-center justify-center border border-dashed border-brass bg-chalk px-3 text-xs font-medium text-stone hover:bg-white"
+        className="inline-flex h-8 max-w-full items-center gap-1.5 border border-dashed border-brass px-2 text-xs font-medium text-stone outline-none hover:bg-chalk hover:text-graphite focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brass"
       >
         + Add option
       </button>
@@ -167,7 +167,7 @@ function AddOptionForm({ addOptionAction }: { addOptionAction: OptionFormAction 
   return (
     <form
       action={formAction}
-      className="flex flex-wrap items-end gap-2 border border-dashed border-brass bg-chalk p-2"
+      className="order-last flex basis-full flex-wrap items-end gap-2 border border-dashed border-brass bg-chalk p-2"
     >
       <div>
         <label htmlFor="new-option-label" className="block text-xs font-medium text-stone">
@@ -518,32 +518,32 @@ export function ChoiceOptionManagement({
   return (
     <div className="grid gap-2 pt-3">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-stone">Options</h3>
-      {activeRows.length === 0 ? (
-        <p className="text-sm text-stone">No options yet.</p>
-      ) : (
-        <div className="flex flex-wrap items-start gap-x-1.5 gap-y-0">
-          {activeRows.map((row) => (
-            <OptionRow
-              key={row.option.id}
-              row={row}
-              open={openOptionId === row.option.id}
-              blockedByDirtySwitch={blockedOptionId === row.option.id}
-              onToggleOpen={() => toggleOption(row.option.id)}
-              onDirtyChange={(dirty) => {
-                setDirtyOptionId(dirty ? row.option.id : null);
-                if (!dirty && blockedOptionId === row.option.id) {
-                  setBlockedOptionId(null);
-                }
-              }}
-              onArchiveSuccess={() => {
-                setOpenOptionId((current) => (current === row.option.id ? null : current));
-                setDirtyOptionId((current) => (current === row.option.id ? null : current));
-                setBlockedOptionId((current) => (current === row.option.id ? null : current));
-              }}
-            />
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap items-start gap-x-1.5 gap-y-0">
+        {activeRows.length === 0 ? (
+          <p className="basis-full text-sm text-stone">No options yet.</p>
+        ) : null}
+        {activeRows.map((row) => (
+          <OptionRow
+            key={row.option.id}
+            row={row}
+            open={openOptionId === row.option.id}
+            blockedByDirtySwitch={blockedOptionId === row.option.id}
+            onToggleOpen={() => toggleOption(row.option.id)}
+            onDirtyChange={(dirty) => {
+              setDirtyOptionId(dirty ? row.option.id : null);
+              if (!dirty && blockedOptionId === row.option.id) {
+                setBlockedOptionId(null);
+              }
+            }}
+            onArchiveSuccess={() => {
+              setOpenOptionId((current) => (current === row.option.id ? null : current));
+              setDirtyOptionId((current) => (current === row.option.id ? null : current));
+              setBlockedOptionId((current) => (current === row.option.id ? null : current));
+            }}
+          />
+        ))}
+        <AddOptionForm addOptionAction={addOptionAction} />
+      </div>
       {archivedRows.length > 0 ? (
         <details className="group border border-grit [&::-webkit-details-marker]:hidden">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-stone hover:bg-chalk">
@@ -563,23 +563,22 @@ export function ChoiceOptionManagement({
                 open={openOptionId === row.option.id}
                 blockedByDirtySwitch={blockedOptionId === row.option.id}
                 onToggleOpen={() => toggleOption(row.option.id)}
-              onDirtyChange={(dirty) => {
-                setDirtyOptionId(dirty ? row.option.id : null);
-                if (!dirty && blockedOptionId === row.option.id) {
-                  setBlockedOptionId(null);
-                }
-              }}
-              onArchiveSuccess={() => {
-                setOpenOptionId((current) => (current === row.option.id ? null : current));
-                setDirtyOptionId((current) => (current === row.option.id ? null : current));
-                setBlockedOptionId((current) => (current === row.option.id ? null : current));
-              }}
-            />
+                onDirtyChange={(dirty) => {
+                  setDirtyOptionId(dirty ? row.option.id : null);
+                  if (!dirty && blockedOptionId === row.option.id) {
+                    setBlockedOptionId(null);
+                  }
+                }}
+                onArchiveSuccess={() => {
+                  setOpenOptionId((current) => (current === row.option.id ? null : current));
+                  setDirtyOptionId((current) => (current === row.option.id ? null : current));
+                  setBlockedOptionId((current) => (current === row.option.id ? null : current));
+                }}
+              />
             ))}
           </div>
         </details>
       ) : null}
-      <AddOptionForm addOptionAction={addOptionAction} />
     </div>
   );
 }
