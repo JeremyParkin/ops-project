@@ -135,6 +135,7 @@ test("Type badge opens the type-change panel, and a pristine field can change ty
   const run = createScenarioRun();
   const admin = createSupabaseTestClient();
   const entity = await createEntity(admin, run, "Ticket", [
+    { slug: "category", name: "Category", type: "text" },
     { slug: "priority", name: "Priority", type: "text" },
   ]);
   const viewId = await createView({
@@ -171,7 +172,21 @@ test("Type badge opens the type-change panel, and a pristine field can change ty
   await expect(newTypeSelect).toBeVisible();
   await expect(fieldRow.getByText("Table column references will be preserved.")).toBeVisible();
 
-  await newTypeSelect.selectOption("number");
+  const categoryRow = page
+    .locator("form")
+    .filter({ has: page.locator(`input[name="fieldName"][value="Category"]`) })
+    .locator("..");
+  await categoryRow
+    .getByRole("button", { name: "Change type for Category, currently Text." })
+    .click();
+  await expect(categoryRow.locator(".field-type-change-panel")).toHaveCount(1);
+  await expect(fieldRow.locator(".field-type-change-panel")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(categoryRow.locator(".field-type-change-panel")).toHaveCount(0);
+
+  await badge.click();
+
+  await fieldRow.locator('select[name="newType"]').selectOption("number");
   await fieldRow.getByRole("button", { name: "Change type", exact: true }).click();
 
   await expect(fieldRow.getByText("Field type changed.")).toBeVisible();

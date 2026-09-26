@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import type {
   FieldTypeChangeActionState,
   FieldTypeChangePreflightState,
@@ -17,6 +17,7 @@ const fieldTypeLabel: Record<FieldType, string> = {
   choice: "Choice",
   workspace_member: "Workspace Member",
 };
+const fieldTypePanelOpenEvent = "field-type-change-panel-open";
 
 type FieldTypeChangeProps = {
   field: FieldDefinition;
@@ -72,7 +73,28 @@ export function FieldTypeChange({
     field.type === "relation" && relatedEntityName ? ` to ${relatedEntityName}` : ""
   }`;
 
+  useEffect(() => {
+    function closeWhenAnotherPanelOpens(event: Event) {
+      if (!(event instanceof CustomEvent) || event.detail?.fieldId === field.id) {
+        return;
+      }
+
+      setOpen(false);
+    }
+
+    window.addEventListener(fieldTypePanelOpenEvent, closeWhenAnotherPanelOpens);
+
+    return () => {
+      window.removeEventListener(fieldTypePanelOpenEvent, closeWhenAnotherPanelOpens);
+    };
+  }, [field.id]);
+
   function openAndCheck() {
+    window.dispatchEvent(
+      new CustomEvent(fieldTypePanelOpenEvent, {
+        detail: { fieldId: field.id },
+      }),
+    );
     setOpen(true);
     startPreflightTransition(() => {
       runPreflight(new FormData());
