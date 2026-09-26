@@ -318,8 +318,8 @@ export function FieldEditForm({
           </div>
         ) : null}
       </form>
-      <form id={`field-move-up-${field.id}`} action={moveUpAction} />
-      <form id={`field-move-down-${field.id}`} action={moveDownAction} />
+      <form id={`field-move-up-${field.id}`} action={moveUpAction} className="hidden" />
+      <form id={`field-move-down-${field.id}`} action={moveDownAction} className="hidden" />
       {moveMessage ? (
         <p
           className={`text-sm ${moveSuccess ? "text-emerald-700" : "text-red-700"}`}
@@ -332,6 +332,7 @@ export function FieldEditForm({
       <form
         id={`field-archive-${field.id}`}
         action={archiveAction}
+        className="hidden"
         onSubmit={(event) => {
           if (workflowReferenceCount === 0 && viewReferenceCount === 0) {
             return;
